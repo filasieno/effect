@@ -1,0 +1,21 @@
+{
+    "env": {
+      "myIncludePath": [
+        "${workspaceFolder}/include", 
+        "${workspaceFolder}/src",
+        "/nix/store/g429sj5xghma1gyx64msx4sarz1prmv2-libcxx-20.1.6/share/libc++/v1"
+      ],
+      "myDefines": ["DEBUG", "MY_FEATURE=1"]
+    },
+    "configurations": [
+      {
+        "name": "Linux",
+        "intelliSenseMode": "linux-clang-x64",
+        "compilerPath": "/nix/store/285dkjl80a92ds4idky6hidy7w5ihc0k-clang-wrapper-20.1.6/bin/clang++",
+        "cStandard": "c17",
+        "cppStandard": "c++23"
+      }
+    ],
+    "version": 4,
+    "enableConfigurationSquiggles": true
+  }
