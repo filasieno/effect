@@ -6,15 +6,18 @@ LDFLAGS = -luring
 .PHONY: all
 all:: build/io
 
+%/.:
+	mkdir -p $(@D)
+
 .PHONY: run
 run:: build/io
-	valgrind ./io
+	reset
+	build/io
 
-build/io: build/io.o
+build/io: build/io.o | build/.
 	$(CXX) $< -o $@ $(LDFLAGS)
 
-build/io.o:  src/io.cc
-	@mkdir -p build
+build/io.o:  src/io.cc | build/.
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 .PHONY: clean
