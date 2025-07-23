@@ -152,9 +152,9 @@ int io_init(IOSystem* io, struct io_uring_params* params, unsigned int entries =
     return 0;
 }
 
-void io_fini(IOSystem& io) {
-    munmap(io.uring_buff, io.uring_buff_size);
-    close(io.uring_fd);
+void io_fini(IOSystem* io) {
+    munmap(io->uring_buff, io->uring_buff_size);
+    close(io->uring_fd);
 }
 
 int io_submit_read(IOSystem* io, int fd, void* buff, U64 buff_len, U64 offset) noexcept {
