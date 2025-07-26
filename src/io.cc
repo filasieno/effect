@@ -423,6 +423,7 @@ int main() {
     int res;
     struct io_uring_cqe* cqe;    
 
+    // ----------------------------------------------------------------------
     // open
     res = io.open_file("test.txt", O_RDWR | O_CREAT | O_TRUNC | O_NONBLOCK, 0666);  
     if (res < 0) {
@@ -434,13 +435,13 @@ int main() {
 
     // wait
     res = io.wait_one(&cqe);
-    
     if (res < 0) {
         std::printf("Failed to wait for completion\n");
         io.fini();
         return -1;
     }
     
+    // ----------------------------------------------------------------------
     // write
     int fd = cqe->res; // Get the file descriptor from the completion event
     res = io.write_file(fd, "Hello World!", 12, 0);
@@ -459,6 +460,7 @@ int main() {
         return -1;
     }
 
+    // ----------------------------------------------------------------------
     // close
     res = io.close(fd);
     if (res < 0) {
