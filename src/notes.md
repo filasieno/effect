@@ -119,8 +119,8 @@ Mapping 1: Combined SQ/CQ Rings (36928 bytes total)
 |   - CQE[2047] @ 32816 [...]                                                          |
 +--------------------------------------------------------------------------------------+
 | SQ Index Array: 1024 × 4 bytes = 4096 bytes (32832 to 36928)                         |
-|   - Index[0]  @ 32832 (uint32_t)  [points to SQE slot for submission]                |
-|   - Index[1]  @ 32836 (uint32_t)  [...]                                              |
+|   - Index[0]  @ 32832 (uint32_t)   [points to SQE slot for submission]               |
+|   - Index[1]  @ 32836 (uint32_t)   [...]                                             |
 |   - ...                                                                              |
 |   - Index[1023] @ 36924 (uint32_t) [...]                                             |
 +--------------------------------------------------------------------------------------+
@@ -137,3 +137,232 @@ Mapping 2: SQEs Array (65536 bytes total)
 |   - SQE[1023] @ 65472 [...]                                           |
 +-----------------------------------------------------------------------+
 ```
+
+## Submission state changes
+
+### Initial state
+
+```text
+Submission Queue Ring (SQ)
++-----------------+
+| head    →  3    |     SQEs Array
+| tail    →  3    |    +-------------+
+| mask    →  7    |    | 0:  ...     |
+| entries → 8     |    | 1:  ...     |
++-----------------+    | 2:  ...     |
+                       | 3:  empty   | ← tail points here
+Array [0,1,2,3,...]    | 4:  empty   |
+                       | 5:  empty   |
+                       | 6:  empty   |
+                       | 7:  empty   |
+                       +-------------+
+```                       
+
+### Enqueue request
+
+Steps: 
+ 1. Read the next SQE index from the SQ ring tail 
+ 2. get the next SQE index
+
+```c++
+int io_submit_file_write(
+        IOSystem*   io, 
+        int         fd, 
+        const void* buff, 
+        U64         buff_len, 
+        U64         offset, 
+        void*       user_data
+    ) noexcept {   
+
+    
+    U32 sqe_index_unmasked = *io->sring_tail;
+    u32 mask = *io->sring_mask;
+    U32 sqe_index = sqe_index_unmasked & mask;
+
+    // Add our submission queue entry to the tail of the SQE ring buffer 
+    
+    
+    struct io_uring_sqe *sqe = &io->sqes[sqe_index];
+    io->sring_array[sqe_index] = sqe_index;
+    sqe_index_unmasked++;
+
+    // Fill in the parameters required for the read or write operation 
+    sqe->opcode = IORING_OP_WRITE;
+    sqe->fd = fd;
+    sqe->addr = (unsigned long) buff;
+    sqe->len = buff_len;
+    sqe->off = offset;
+
+    // Update the tail 
+    io_uring_smp_store_release(io->sring_tail, tail);
+    
+    // ...
+
+    return ret;
+}
+```
+
+### After enqueueing request
+
+
+```text
+Submission Queue Ring (SQ)
++-----------------+
+| head    →  3    |     SQEs Array
+| tail    →  4    |     +------------------+
+| mask    →  7    |     | 0:  ...          | 
+| entries →  8    |     | 1:  ...          | 
++-----------------+     | 2:  ...          | 
+                        | 3:  OPENAT       | ← filled with open request
+Array [0,1,2,3,...]     | 4:  empty        | ← new tail points here
+                        | 5:  empty        |
+                        | 6:  empty        |
+                        | 7:  empty        |
+                        +------------------+
+```
+
+### After `io_ring_enter`
+
+
+```text
+     Kernel Space                User Space
+    +------------+              +-----------------+
+    |            |              | SQ              |
+    | Processing | ←----------- | OPENAT request  |
+    | OPENAT     |              |                 |
+    |            |              |                 |
+    |            |              |                 |
+    |  Result    | -----------→ | CQ (completion) |
+    |            |              |                 |
+    +------------+              +-----------------+ 
+```
+
+CQ will eventually contain:
+
+- fd number (positive) on success
+- negative errno on failure
+
+## x64 memory model 
+
+### Basic Memory Model Concepts
+
+1. Store Buffer
+
+   - CPUs can buffer writes before committing to main memory
+   - Other cores may not immediately see writes
+   - Creates potential for memory reordering
+2. Memory Ordering x64 supports several ordering types:
+   - *Relaxed*: No ordering guarantees
+   - *Acquire*: Prevents reads from moving before the operation
+   - *Release*: Prevents writes from moving after the operation 
+   - *Sequential Consistency*: Full ordering barriers
+
+### Key Memory Operations
+
+```c++
+// Atomic store with release semantics
+std::atomic<int> x{0};
+x.store(1, std::memory_order_release);
+
+// Atomic load with acquire semantics
+int val = x.load(std::memory_order_acquire);
+
+// Full memory fence
+std::atomic_thread_fence(std::memory_order_seq_cst);
+```
+
+### Hardware Guarantees
+
+X64 provides these key guarantees:
+
+1. Aligned atomic operations are always atomic
+2. Writes to the same location are observed in program order
+3. Memory barriers ensure global visibility
+
+### Common Patterns
+
+#### Producer-Consumer
+
+```c++
+std::atomic<int> data{0};
+std::atomic<bool> ready{false};
+
+// Producer
+data.store(42, std::memory_order_relaxed);
+ready.store(true, std::memory_order_release);
+
+// Consumer
+if (ready.load(std::memory_order_acquire)) {
+    // Safe to read data
+    int val = data.load(std::memory_order_relaxed);
+}
+```
+
+#### Double-Checked Locking
+
+```c++
+std::atomic<bool> initialized{false};
+std::mutex init_mutex;
+
+void init() {
+    if (!initialized.load(std::memory_order_acquire)) {
+        std::lock_guard<std::mutex> lock(init_mutex);
+        if (!initialized.load(std::memory_order_relaxed)) {
+            // Do initialization
+            initialized.store(true, std::memory_order_release);
+        }
+    }
+}
+```
+
+### Best Practices
+
+1. Use `std::memory_order_seq_cst` by default unless performance critical 
+2. Pair release stores with acquire loads
+3. Use relaxed ordering only when you fully understand the consequences
+4. Prefer higher-level synchronization (mutex, condition variables) when possible
+
+### Common Pitfalls
+
+1. Missing Memory Orders
+
+```c++
+// Wrong - possible reordering
+atomic<bool> flag{false};
+int data = 0;
+data = 42;
+flag.store(true); // Need release semantics
+
+// Correct
+data = 42;
+flag.store(true, std::memory_order_release);
+```
+
+2. Incorrect Pairing
+
+```c++
+// Wrong - acquire/release mismatch
+atomic<int> x{0};
+x.store(1, std::memory_order_release);
+int val = x.load(std::memory_order_relaxed); // Should be acquire
+
+// Correct
+x.store(1, std::memory_order_release);
+int val = x.load(std::memory_order_acquire);
+```
+
+### Performance Considerations
+
+1. Sequential consistency (memory_order_seq_cst) is most expensive
+2. Acquire/Release ordering has moderate cost
+3. Relaxed ordering has minimal overhead
+4. Memory fences are expensive - use sparingly
+
+### Debug Tips
+
+1. Use thread sanitizer to detect race conditions
+2. Enable CPU memory ordering warnings in compiler
+3. Test with different memory orders in stress tests
+4. Document memory ordering assumptions in code
+
+Remember: When in doubt, use stronger memory ordering guarantees and only optimize when necessary and after thorough testing.
