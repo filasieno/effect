@@ -366,3 +366,70 @@ int val = x.load(std::memory_order_acquire);
 4. Document memory ordering assumptions in code
 
 Remember: When in doubt, use stronger memory ordering guarantees and only optimize when necessary and after thorough testing.
+
+
+
+```
+The issue is in your suspend effect implementation. When a task suspends, it's transferring control back to the scheduler, but the scheduler code is not properly handling the task resumption flow.
+
+Looking at the code in effects.cc, the SuspendEffect::await_suspend is correctly:
+
+Moving the current task to READY state
+
+Moving the scheduler task to RUNNING state
+
+Returning a handle to the scheduler task
+
+However, in kernel.cc, the scheduler's code is not properly handling the continuation after a task suspends. The scheduler coroutine appears to be restarting from the beginning rather than continuing from where it left off.
+
+The issue is in the scheduler function - after resuming the main task, it continues execution and hits the main loop again without properly handling the suspension point. It should instead pick up from where it left off when a task suspends.
+
+Here's what's happening:
+
+Scheduler starts and spawns main task
+
+Main task runs and hits suspend()
+
+Control transfers back to scheduler via symmetric transfer
+
+Instead of continuing after the main_task.resume() line, the scheduler restarts from the beginning
+
+This causes the started counter to increment again, triggering the assertion
+
+To fix this, you need to restructure the scheduler code to properly handle the continuation after task suspension. The scheduler should:
+
+Have a clear entry point for initial startup
+
+Have a separate path for handling suspended tasks
+
+Properly maintain its state between task switches
+
+The scheduler should look more like this pattern:
+
+kernel.cc 127:130
+
+
+
+
+SchedulerTask scheduler(std::function<Task()> user_main_task) noexcept {    
+    // Initial startup - only runs once
+    Task main_task = user_main_task();
+    main_task.resume();
+
+    // Main scheduling loop - handles suspended tasks
+    while (true) {
+        if (g_kernel.ready_count > 0) {
+            // Handle ready tasks...
+        }
+        // Handle other states...
+    }
+    co_return;
+}
+This way, the scheduler won't restart from the beginning when tasks suspend back to it.
+```
+
+
+
+```
+The Root Cause
+In your scheduler() function in kernel.cc, after you resume the main task, you have:

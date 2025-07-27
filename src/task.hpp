@@ -107,6 +107,24 @@ void debugTaskCount() noexcept;
 // Task Wrappers
 // -----------------------------------------------------------------------------
 
+
+struct ExecuteTaskEffect {
+
+    ExecuteTaskEffect(TaskHdl hdl) : hdl(hdl) {};
+
+    bool await_ready() const noexcept {
+        return hdl.done();
+    }
+
+    TaskHdl await_suspend(TaskHdl currentTaskHdl) const noexcept;
+
+    void await_resume() const noexcept {
+        std::printf("Task(%p)::await_resume(): has returned\n", &hdl.promise()); 
+    }
+
+    TaskHdl hdl;
+};
+
 struct Task {
     using promise_type = TaskPromise;
 
@@ -114,39 +132,15 @@ struct Task {
     
     Task(TaskHdl hdl) : hdl(hdl) {}
 
-    void resume() noexcept;
-
-    void destroy() {
-        hdl.destroy();
-    }
-
-    bool done() const {
-        return hdl.done();
+    auto operator co_await() const noexcept {
+        return ExecuteTaskEffect(hdl);
     }
 
     TaskState state() const;
 
-    TaskHdl hdl;
-};
-
-struct SchedulerTask {
-    using promise_type = TaskPromise;
-    
-    SchedulerTask(TaskHdl hdl) noexcept : hdl(hdl) {}
-
-    ~SchedulerTask() noexcept {
-        hdl.destroy();
-    }
-
-    void resume() noexcept {
-        hdl.resume();
-    }
-
     bool done() const noexcept {
         return hdl.done();
     }
-
-    TaskState state() const noexcept;
 
     TaskHdl hdl;
 };
@@ -156,7 +150,7 @@ struct SchedulerTask {
 // Utilities
 // -----------------------------------------------------------------------------
 
-static TaskPromise* wait_node_to_promise(DList* node);
+static TaskPromise* waitListNodeToTask(DList* node);
 
 // -----------------------------------------------------------------------------
 // Effects
@@ -175,14 +169,12 @@ constexpr auto suspend() noexcept-> SuspendEffect;
 // Inline implementation 
 // ==============================================================================
 
-inline TaskPromise* wait_node_to_promise(DList* node) {
+inline TaskPromise* waitListNodeToTask(DList* node) {
     unsigned long long promise_off = ((unsigned long long)node) - offsetof(TaskPromise, wait_node);
     return (TaskPromise*)promise_off;
 }
 
-inline TaskState SchedulerTask::state() const noexcept {
-    return hdl.promise().state;
-}
+
 
 inline TaskState Task::state() const {  
     return hdl.promise().state;

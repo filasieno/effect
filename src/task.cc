@@ -112,7 +112,7 @@ CoroHdl TaskPromise::FinalSuspend::await_suspend(TaskHdl hdl) const noexcept {
         
         // If there are ready tasks, we can just return the current handle
         DList* next_ready_promise_node = g_kernel.ready_list.pop_front();
-        TaskPromise* next_ready_promise = wait_node_to_promise(next_ready_promise_node);
+        TaskPromise* next_ready_promise = waitListNodeToTask(next_ready_promise_node);
         assert(next_ready_promise->state == TaskState::READY);
         next_ready_promise->wait_node.detach();
         --g_kernel.ready_count;
@@ -152,47 +152,47 @@ CoroHdl TaskPromise::FinalSuspend::await_suspend(TaskHdl hdl) const noexcept {
 // Task
 // -----------------------------------------------------------------------------
 
-void Task::resume() noexcept {
-    // Check invariants
-    checkTaskCountInvariant();
+// void Task::resume() noexcept {
+//     // Check invariants
+//     checkTaskCountInvariant();
     
-    if (hdl.done()) return;
-    std::printf("Task(%p)::resume(): requested to resume Task(%p)\n", g_kernel.current_task_promise, &hdl.promise());
+//     if (hdl.done()) return;
+//     std::printf("Task(%p)::resume(): requested to resume Task(%p)\n", g_kernel.current_task_promise, &hdl.promise());
     
-    // Ensure that the target task is READY
-    TaskPromise* target_promise = &hdl.promise();
-    assert(target_promise->state == TaskState::READY);
-    assert(!target_promise->wait_node.detached());
-    // todo: check that the target task is in the ready list
+//     // Ensure that the target task is READY
+//     TaskPromise* target_promise = &hdl.promise();
+//     assert(target_promise->state == TaskState::READY);
+//     assert(!target_promise->wait_node.detached());
+//     // todo: check that the target task is in the ready list
 
-    // Ensure that the current task is RUNNING
-    TaskPromise* current_promise = g_kernel.current_task_promise;  
-    assert(current_promise != nullptr);
-    assert(current_promise->state == TaskState::RUNNING);
-    assert(current_promise->wait_node.detached());
+//     // Ensure that the current task is RUNNING
+//     TaskPromise* current_promise = g_kernel.current_task_promise;  
+//     assert(current_promise != nullptr);
+//     assert(current_promise->state == TaskState::RUNNING);
+//     assert(current_promise->wait_node.detached());
 
-    // Move the current task from RUNNING to READY
-    current_promise->state = TaskState::READY;
-    ++g_kernel.ready_count;
-    g_kernel.ready_list.push_back(&current_promise->wait_node);
+//     // Move the current task from RUNNING to READY
+//     current_promise->state = TaskState::READY;
+//     ++g_kernel.ready_count;
+//     g_kernel.ready_list.push_back(&current_promise->wait_node);
     
-    // Move the target task from READY to RUNNING
-    --g_kernel.ready_count;
-    target_promise->wait_node.detach();
-    target_promise->state = TaskState::RUNNING;
-    g_kernel.current_task_promise = target_promise;
+//     // Move the target task from READY to RUNNING
+//     --g_kernel.ready_count;
+//     target_promise->wait_node.detach();
+//     target_promise->state = TaskState::RUNNING;
+//     g_kernel.current_task_promise = target_promise;
 
-    std::printf("Task(%p)::resume(): is the new RUNNING Task\n", g_kernel.current_task_promise);
+//     std::printf("Task(%p)::resume(): is the new RUNNING Task\n", g_kernel.current_task_promise);
     
-    // Check post-conditions
-    assert(g_kernel.current_task_promise == target_promise);
-    assert(g_kernel.current_task_promise->state == TaskState::RUNNING);
-    assert(g_kernel.current_task_promise->wait_node.detached());
-    checkTaskCountInvariant();
+//     // Check post-conditions
+//     assert(g_kernel.current_task_promise == target_promise);
+//     assert(g_kernel.current_task_promise->state == TaskState::RUNNING);
+//     assert(g_kernel.current_task_promise->wait_node.detached());
+//     checkTaskCountInvariant();
 
-    // Resume the target task
-    hdl.resume();
-}
+//     // Resume the target task
+//     hdl.resume();
+// }
 
 // -----------------------------------------------------------------------------
 // Debug utilities
