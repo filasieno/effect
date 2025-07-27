@@ -337,10 +337,11 @@ constexpr TaskHdl TaskPromise::FinalSuspend::await_suspend(TaskHdl hdl) const no
     
     if (g_kernel.waiting_count > 0) {
         std::printf("waiting_count > 0\n");  
-        std::printf("deadlock detetcted\n");
+        std::printf("deadlock detected\n");
     }
     std::printf("waiting_count == 0\n");   
     // There are no waiting tasks
     g_kernel.interrupted = 1;
+    // std::printf("Scheduler {address: %p; promise: %p}\n", g_kernel.scheduler_task_hdl.address(), &g_kernel.scheduler_task_hdl.promise());
     return g_kernel.scheduler_task_hdl;
 }

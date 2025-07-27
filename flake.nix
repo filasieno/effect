@@ -37,6 +37,7 @@
           clang-tools          
           liburing.dev
           valgrind
+          vscode-extensions.vadimcn.vscode-lldb          
         ];          
 
         buildInputs = with pkgs; [
