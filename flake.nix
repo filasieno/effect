@@ -37,7 +37,6 @@
           clang-tools          
           liburing.dev
           valgrind
-          vscode-extensions.vadimcn.vscode-lldb          
         ];          
 
         buildInputs = with pkgs; [
@@ -71,6 +70,7 @@
             nativeBuildInputs = with pkgs; [
               lldb
               liburing.dev            
+              inotify-tools       
             ];
             
             buildInputs = with pkgs; [

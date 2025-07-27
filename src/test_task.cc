@@ -9,5 +9,5 @@ Task main_task() noexcept {
 }
 
 int main() {
-	return g_kernel.run(main_task);	
+	return startMainTask(main_task);
 }

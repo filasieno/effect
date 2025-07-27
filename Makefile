@@ -17,7 +17,8 @@ CPPFLAGS = -I./src
 CC := $(CXX)
 
 .PHONY: all
-all:: build/io build/task
+#all:: build/io build/task
+all:: build/test_dlist build/test_task
 
 .PRECIOUS: %/.
 %/.:
@@ -28,7 +29,7 @@ run_%: build/%
 
 test_%: build/test_%
 	@printf -- '\e[33m---------- Running test:\e[0m %s\n' '$<'
-	"$<"
+	"$<" | cat -n
 	printf --  '\e[33m---------- Finished test:\e[0m %s\n' '$<'
 
 .PRECIOUS: build/%.o
@@ -56,13 +57,18 @@ test::
 	reset
 
 .PHONY: watch
-watch: build/test_dlist build/test_task
+watch: 
 	@printf -- '\e[33m---------- Watching for changes...\e[0m\n'
 	inotifywait -qmr -e close_write,delete,move ./src | while read -r event; do
 		reset
 		printf -- '\e[33m---------- Detected change:\e[0m %s\n' "$$event"
 		while read -r -t 1.0 debounce_event; do :; done
-		make  $^ || true
+		declare -i exit_code=0
+		if ! make all; then
+			printf -- '\e[31m---------- Build failed\e[0m\n'
+		else
+			printf -- '\e[32m---------- Build successful\e[0m\n'
+		fi
 	done
 
 
@@ -74,4 +80,6 @@ build/io: build/io.o
 build/task: build/main.o
 
 test:: test_dlist
+
+build/test_task: build/task.o build/effects.o build/kernel.o
 test:: test_task
