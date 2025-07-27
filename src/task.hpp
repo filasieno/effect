@@ -264,6 +264,10 @@ inline constexpr bool SuspendEffect::await_ready() const noexcept {
 }
 
 inline constexpr CoroHdl SuspendEffect::await_suspend(TaskHdl current_task_hdl) const noexcept {
+    //
+    // TODO: Comprire bene tutti i casi
+    //
+
     TaskPromise& current_promise = current_task_hdl.promise();
 
     // Ensure that the current task is RUNNING and that it is correctly set as the current task
