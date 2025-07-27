@@ -56,7 +56,7 @@ test::
 	reset
 
 .PHONY: watch
-watch:: build/test_dlist build/test_task
+watch: build/test_dlist build/test_task
 	@printf -- '\e[33m---------- Watching for changes...\e[0m\n'
 	inotifywait -qmr -e close_write,delete,move ./src | while read -r event; do
 		reset
