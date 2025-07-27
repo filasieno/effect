@@ -165,7 +165,7 @@ struct Kernel {
 
 } g_kernel;
 
-static CoroHdl schedule_next_task(TaskHdl hdl) noexcept;
+// static CoroHdl schedule_next_task(TaskHdl hdl) noexcept;
 
 static void debug_task_count() noexcept {
     int running_count = g_kernel.current_task_promise != nullptr ? 1 : 0;
@@ -209,7 +209,7 @@ inline void* TaskPromise::operator new(std::size_t n) noexcept {
     unsigned long long frame_head = (unsigned long long)mem;
     unsigned long long frame_tail = frame_head + n;
     unsigned long long task_addr  = frame_tail - sizeof(TaskPromise) - 8;
-    printf("TaskPromise: Did allocate a Task(%p) of size: %zu\n", task_addr, n); 
+    printf("TaskPromise: Did allocate a Task(%p) of size: %zu\n", (void*)task_addr, n); 
     return mem;
 }
 
@@ -217,10 +217,10 @@ inline void TaskPromise::operator delete(void* ptr, std::size_t sz) {
     unsigned long long frame_head = (unsigned long long)ptr;
     unsigned long long frame_tail = frame_head + sz;
     unsigned long long task_addr  = frame_tail - sizeof(TaskPromise) - 8;
-    printf("TaskPromise: About to free Task(%p) of size: %zu\n", task_addr, sz);  
+    printf("TaskPromise: About to free Task(%p) of size: %zu\n", (void*)task_addr, sz);  
     
     std::free(ptr);
-    printf("TaskPromise: Did free Task(%p) of size: %zu\n", task_addr, sz);   
+    printf("TaskPromise: Did free Task(%p) of size: %zu\n", (void*)task_addr, sz);   
 }
 
 inline TaskPromise::TaskPromise() {
@@ -509,7 +509,7 @@ void Task::resume() noexcept {
     assert(!promise.wait_node.detached()); 
     g_kernel.check_task_count_invariant();
 
-    std::printf("TaskPromise::InitialSuspend::await_suspend(TaskHdl hdl): newly spawned Task(%p) is READY\n", &promise, promise.state); 
+    std::printf("TaskPromise::InitialSuspend::await_suspend(TaskHdl hdl): newly spawned Task(%p) is %s\n", (void*)&promise, promise.state); 
 }
 
 void Kernel::check_task_count_invariant() noexcept {

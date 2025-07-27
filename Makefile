@@ -8,11 +8,13 @@ MAKEFLAGS += --no-builtin-rules
 
 TARGET_ARCH = -march=x86-64
 CXX = clang++
-CXXFLAGS =  -Wall -Wextra
-CXXFLAGS +=  -std=c++2c -fno-exceptions -fno-rtti
-CXXFLAGS +=  -g
-LDFLAGS = -luring 
+CXXFLAGS = -Wall -Wextra
+CXXFLAGS += -std=c++2c -fno-exceptions -fno-rtti
+CXXFLAGS += -g
+LDFLAGS =
+LDLIBS = -luring 
 CPPFLAGS = -I./src
+CC := $(CXX)
 
 .PHONY: all
 all:: build/io build/task
@@ -25,17 +27,21 @@ run_%: build/%
 	"$<"
 
 test_%: build/test_%
-	@echo "----------" "Running test: $<" 
+	@printf -- '\e[33m---------- Running test:\e[0m %s\n' '$<'
 	"$<"
-	echo  "----------" "Finished test: $<"
-	
--include $(patsubst src/%.cc,build/%.d,$(wildcard src/*.cc))
+	printf --  '\e[33m---------- Finished test:\e[0m %s\n' '$<'
 
+.PRECIOUS: build/%.o
 build/%.o: src/%.cc | build/.
 	$(COMPILE.cc) -MMD -MP -MF build/$*.d -o $@ -c $< 
 
-# build/%: build/%.o | build/.
-# 	$(LINK.o) $(LOADLIBES) $(LDLIBS)  -o $@ $^
+-include $(patsubst src/%.cc,build/%.d,$(wildcard src/*.cc))
+
+.PRECIOUS: build/%
+build/%: build/%.o  | build/.
+#	$(LINK.o) $(LDLIBS) -o $@ $^
+	$(CXX) $(LDFLAGS) $(TARGET_ARCH) $(LDLIBS) -o $@ $^
+
 
 .PHONY: clean
 clean::
@@ -44,22 +50,28 @@ clean::
 .PHONY: run
 run:: 
 
-
 .PHONY: test
 #test:: clean
 test::
 	reset
 
-build/io: build/io.o | build/.
-	$(CXX) $(LDFLAGS) $< -o $@ 
+.PHONY: watch
+watch:: build/test_dlist build/test_task
+	@printf -- '\e[33m---------- Watching for changes...\e[0m\n'
+	inotifywait -qmr -e close_write,delete,move ./src | while read -r event; do
+		reset
+		printf -- '\e[33m---------- Detected change:\e[0m %s\n' "$$event"
+		while read -r -t 1.0 debounce_event; do :; done
+		make  $^ || true
+	done
 
-build/task: build/main.o | build/.
-	$(CXX) $(LDFLAGS) $< -o $@ 
 
-build/test_dlist: build/test_dlist.o | build/.
-	$(CXX) $(LDFLAGS) $< -o $@ 
+
+#----------------------------------------
+
+build/io: build/io.o
+
+build/task: build/main.o
+
 test:: test_dlist
-
-build/test_task: build/test_task.o | build/.
-	$(CXX) $(LDFLAGS) $< -o $@ 
 test:: test_task
