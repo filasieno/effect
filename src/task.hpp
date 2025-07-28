@@ -8,6 +8,7 @@
 #include <print>
 #include <functional>
 #include "dlist.hpp"
+#include "defs.hpp"
 
 struct Kernel;
 struct Task;
@@ -19,6 +20,9 @@ struct NopEffect;
 
 using TaskHdl = std::coroutine_handle<TaskPromise>;
 using CoroHdl = std::coroutine_handle<>;
+
+template <typename... Args>
+using TaskFn = std::function<Task(Args...)>;
 
 enum class TaskState {
     CREATED,    // Task has been created (BUT NOT REGISTERED WITH THE RUNTINME)
@@ -73,19 +77,18 @@ struct TaskPromise {
 // -----------------------------------------------------------------------------
 
 struct Kernel {
-    int task_count;
-    int ready_count;      // number of live tasks 
-    int waiting_count;    // task waiting for execution (On Internal Critical sections)
-    int io_waiting_count; // task waiting for IO URing
-    int zombie_count;     // dead tasks
+    int     task_count;
+    int     ready_count;      // number of live tasks 
+    int     waiting_count;    // task waiting for execution (On Internal Critical sections)
+    int     io_waiting_count; // task waiting for IO URing
+    int     zombie_count;     // dead tasks
 
-    int          interrupted;
-    TaskPromise* current_task_promise;
-    TaskPromise* scheduler_task_promise;
-    DList        zombie_list;
-    DList        ready_list;
-
-    DList        task_list;  // global task list
+    int     interrupted;
+    TaskHdl current_task_hdl;
+    TaskHdl scheduler_task_hdl;
+    DList   zombie_list;
+    DList   ready_list;
+    DList   task_list;  // global task list
 };
 
 extern struct Kernel g_kernel;
@@ -174,8 +177,6 @@ inline TaskPromise* waitListNodeToTask(DList* node) {
     return (TaskPromise*)promise_off;
 }
 
-
-
 inline TaskState Task::state() const {  
     return hdl.promise().state;
 }
@@ -183,7 +184,8 @@ inline TaskState Task::state() const {
 inline constexpr auto suspend() noexcept-> SuspendEffect { return {}; }
 
 inline constexpr void TaskPromise::InitialSuspend::await_resume() const noexcept {
-    std::printf("TaskPromise::InitialSuspend::await_resume(): started Task(%p); state: %d\n", g_kernel.current_task_promise, g_kernel.current_task_promise->state);
+    TaskPromise& current_task = g_kernel.current_task_hdl.promise();
+    std::printf("TaskPromise::InitialSuspend::await_resume(): started Task(%p); state: %d\n", &current_task, current_task.state); 
 }
 
 //  SuspendEffect
@@ -194,6 +196,8 @@ inline constexpr bool SuspendEffect::await_ready() const noexcept {
 }
 
 inline constexpr void SuspendEffect::await_resume() const noexcept {
-    std::printf("SuspendEffect::await_resume(): resumed Task(%p)\n", g_kernel.current_task_promise);
+    std::printf("SuspendEffect::await_resume(): resumed Task(%p)\n", &g_kernel.current_task_hdl.promise());
 }
+
+// -----
 

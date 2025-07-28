@@ -97,7 +97,7 @@ CoroHdl TaskPromise::FinalSuspend::await_suspend(TaskHdl hdl) const noexcept {
     
     // Check preconditions
     assert(current_promise.state == TaskState::RUNNING);
-    assert(g_kernel.current_task_promise == &current_promise);
+    assert(g_kernel.current_task_hdl == hdl);
     assert(current_promise.wait_node.detached());
     checkTaskCountInvariant();
 
@@ -108,7 +108,7 @@ CoroHdl TaskPromise::FinalSuspend::await_suspend(TaskHdl hdl) const noexcept {
         current_promise.state = TaskState::ZOMBIE;
         ++g_kernel.zombie_count;
         g_kernel.zombie_list.push_back(&current_promise.wait_node);
-        g_kernel.current_task_promise = nullptr;
+        g_kernel.current_task_hdl = TaskHdl();
         
         // If there are ready tasks, we can just return the current handle
         DList* next_ready_promise_node = g_kernel.ready_list.pop_front();
@@ -116,7 +116,7 @@ CoroHdl TaskPromise::FinalSuspend::await_suspend(TaskHdl hdl) const noexcept {
         assert(next_ready_promise->state == TaskState::READY);
         next_ready_promise->wait_node.detach();
         --g_kernel.ready_count;
-        g_kernel.current_task_promise = next_ready_promise;
+        g_kernel.current_task_hdl = TaskHdl::from_promise(*next_ready_promise);
         next_ready_promise->state = TaskState::RUNNING;
         return TaskHdl::from_promise(*next_ready_promise);
     } 
@@ -139,10 +139,10 @@ CoroHdl TaskPromise::FinalSuspend::await_suspend(TaskHdl hdl) const noexcept {
     
     // There are no waiting tasks
     
-    assert(g_kernel.scheduler_task_promise == g_kernel.current_task_promise);
+    assert(g_kernel.scheduler_task_hdl == g_kernel.current_task_hdl); 
     std::printf("TaskPromise::FinalSuspend::await_suspend(TaskHdl hdl): The scheduer is the last task running\n");
     g_kernel.interrupted = 1;
-    g_kernel.scheduler_task_promise->state = TaskState::ZOMBIE;
+    g_kernel.scheduler_task_hdl.promise().state = TaskState::ZOMBIE;
     
     // Noop coroutine will force a symetric transfer exit; use std::coroutine_handle<> as a more flexible return type
     return std::noop_coroutine();
@@ -198,23 +198,8 @@ CoroHdl TaskPromise::FinalSuspend::await_suspend(TaskHdl hdl) const noexcept {
 // Debug utilities
 // -----------------------------------------------------------------------------
 
-void checkTaskCountInvariant() noexcept {
-    int running_count = g_kernel.current_task_promise != nullptr ? 1 : 0;
-    bool condition = g_kernel.task_count == running_count + g_kernel.ready_count + g_kernel.waiting_count + g_kernel.io_waiting_count + g_kernel.zombie_count; // -1 for the running task
-    if (!condition) {
-        std::printf("Task       count: %d\n", g_kernel.task_count);
-        std::printf("----------------:--------\n"); 
-        std::printf("Running    count: %d\n", running_count); 
-        std::printf("Ready      count: %d\n", g_kernel.ready_count);
-        std::printf("Waiting    count: %d\n", g_kernel.waiting_count);
-        std::printf("IO waiting count: %d\n", g_kernel.io_waiting_count);
-        std::printf("Zombie     count: %d\n", g_kernel.zombie_count);
-        assert(false);  
-    }
-}
-
 void debugTaskCount() noexcept {
-    int running_count = g_kernel.current_task_promise != nullptr ? 1 : 0;
+    int running_count = g_kernel.current_task_hdl != TaskHdl() ? 1 : 0;
     std::printf("----------------:--------\n"); 
     std::printf("Task       count: %d\n", g_kernel.task_count);
     std::printf("----------------:--------\n"); 
@@ -225,5 +210,17 @@ void debugTaskCount() noexcept {
     std::printf("Zombie     count: %d\n", g_kernel.zombie_count);
     std::printf("----------------:--------\n"); 
 }
+
+void checkTaskCountInvariant() noexcept {
+    if (DEFINED_DEBUG) {
+        int running_count = g_kernel.current_task_hdl != TaskHdl() ? 1 : 0;
+        bool condition = g_kernel.task_count == running_count + g_kernel.ready_count + g_kernel.waiting_count + g_kernel.io_waiting_count + g_kernel.zombie_count; // -1 for the running task
+        if (!condition) {
+            debugTaskCount();
+            std::abort();
+        }
+    }    
+}
+
 
 

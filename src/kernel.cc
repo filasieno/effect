@@ -1,10 +1,14 @@
 #include "task.hpp"
 
+namespace ttk {
+
+}
+
+
 struct Kernel g_kernel;
 
 static void initKernel() noexcept;
 static void finiKernel() noexcept; 
-
 
 struct KernelBootPromise;
 
@@ -27,10 +31,10 @@ struct ExecuteSchedulerTaskEffect {
         assert(g_kernel.task_count == 1);
         assert(g_kernel.ready_count == 1);
         assert(scheduler_promise.state == TaskState::READY);
-        assert(g_kernel.current_task_promise == nullptr);
+        assert(g_kernel.current_task_hdl == TaskHdl());
 
         // Setup SchedulerTask for execution (from READY -> RUNNING)
-        g_kernel.current_task_promise = &scheduler_promise;
+        g_kernel.current_task_hdl = schedulerHdl;
         scheduler_promise.state = TaskState::RUNNING;
         scheduler_promise.wait_node.detach();
         --g_kernel.ready_count;
@@ -102,7 +106,7 @@ struct KernelBootTask {
 KernelBootTask startKernelBootTask(std::function<Task()> user_main_task) noexcept {
     SchedulerTask scheduler_task = scheduler(user_main_task);
     std::printf("startMainTask(std::function<Task()>): Scheduler is Task(%p)\n", &scheduler_task.hdl.promise());
-    g_kernel.scheduler_task_promise = &scheduler_task.hdl.promise();
+    g_kernel.scheduler_task_hdl = scheduler_task.hdl;
     co_await ExecuteSchedulerTaskEffect(scheduler_task.hdl);
     
     // The scheduler task never returns; it runs until completion
@@ -128,7 +132,8 @@ void initKernel() noexcept {
     g_kernel.io_waiting_count = 0;
     g_kernel.zombie_count = 0;
     g_kernel.interrupted = 0;
-    g_kernel.current_task_promise = nullptr;
+    g_kernel.current_task_hdl   = TaskHdl();
+    g_kernel.scheduler_task_hdl = TaskHdl();
     g_kernel.zombie_list.init();
     g_kernel.ready_list.init();
     g_kernel.task_list.init();
@@ -154,13 +159,13 @@ SchedulerTask scheduler(std::function<Task()> user_main_task) noexcept {
     std::fflush(stdout);
     assert(started == 1);
 
-    std::printf(">> SchedulerTask(%p): started\n", g_kernel.current_task_promise);
-    std::printf(">> SchedulerTask(%p): about to spawn main task\n", g_kernel.current_task_promise); // g_kernel.current_task_promise 
+    std::printf(">> SchedulerTask(%p): started\n", &g_kernel.current_task_hdl.promise());
+    std::printf(">> SchedulerTask(%p): about to spawn main task\n", &g_kernel.current_task_hdl.promise()); // g_kernel.current_task_promise 
     Task main_task = user_main_task();
-    std::printf(">> SchedulerTask(%p): Main task is Task(%p)\n", g_kernel.current_task_promise, &main_task.hdl.promise());
+    std::printf(">> SchedulerTask(%p): Main task is Task(%p)\n", &g_kernel.current_task_hdl.promise(), &main_task.hdl.promise());
     assert(!main_task.hdl.done());
     assert(main_task.state() == TaskState::READY);
-    std::printf(">> SchedulerTask(%p): did spawn main task\n", g_kernel.current_task_promise);
+    std::printf(">> SchedulerTask(%p): did spawn main task\n", &g_kernel.current_task_hdl.promise());
 
     while (true) {
         // If we have a ready task, resume it
@@ -169,9 +174,9 @@ SchedulerTask scheduler(std::function<Task()> user_main_task) noexcept {
             TaskPromise* next_ready_promise = waitListNodeToTask(next_ready_promise_node);
 
             // check invariants
-            TaskPromise& scheduler_promise = *g_kernel.scheduler_task_promise;
+            TaskPromise& scheduler_promise = g_kernel.current_task_hdl.promise();
             assert(next_ready_promise->state == TaskState::READY);
-            assert(g_kernel.current_task_promise == &scheduler_promise);
+            assert(&g_kernel.current_task_hdl.promise() == &scheduler_promise);
             assert(scheduler_promise.wait_node.detached());
             checkTaskCountInvariant();
 
@@ -179,10 +184,10 @@ SchedulerTask scheduler(std::function<Task()> user_main_task) noexcept {
             scheduler_promise.state = TaskState::READY;
             ++g_kernel.ready_count;
             g_kernel.ready_list.push_back(&scheduler_promise.wait_node);
-            g_kernel.current_task_promise = nullptr;
+            g_kernel.current_task_hdl = TaskHdl();
             checkTaskCountInvariant();
             
-            co_await ExecuteTaskEffect(TaskHdl::from_promise(*next_ready_promise));
+            co_await ExecuteTaskEffect(g_kernel.current_task_hdl);
             continue;
         }
     }
@@ -193,3 +198,4 @@ SchedulerTask scheduler(std::function<Task()> user_main_task) noexcept {
 TaskState SchedulerTask::state() const noexcept {
     return hdl.promise().state;
 }
+

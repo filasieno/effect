@@ -2,6 +2,8 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <format>
+#include <source_location>
 
 #ifdef NDEBUG
 #define assertf(expr, ...) ((void)0)
@@ -19,10 +21,6 @@
 		} \
 	} while (0)
 #endif
-
-
-#include <format>
-#include <source_location>
 
 #ifdef NDEBUG
 #define assertpp(expr, fmt, ...) ((void)0)
