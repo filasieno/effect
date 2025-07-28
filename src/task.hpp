@@ -97,7 +97,7 @@ extern struct Kernel g_kernel;
 // Kernel API 
 // -----------------------------------------------------------------------------
 
-int startMainTask(std::function<Task()> user_main_task) noexcept;
+int runMainTask(std::function<Task()> user_main_task) noexcept;
 
 // -----------------------------------------------------------------------------
 // Debug & invariant Utilities
@@ -186,6 +186,7 @@ inline constexpr auto suspend() noexcept-> SuspendEffect { return {}; }
 inline constexpr void TaskPromise::InitialSuspend::await_resume() const noexcept {
     TaskPromise& current_task = g_kernel.current_task_hdl.promise();
     std::printf("TaskPromise::InitialSuspend::await_resume(): started Task(%p); state: %d\n", &current_task, current_task.state); 
+    std::fflush(stdout);
 }
 
 //  SuspendEffect

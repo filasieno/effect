@@ -1,10 +1,5 @@
 #include "task.hpp"
 
-namespace ttk {
-
-}
-
-
 struct Kernel g_kernel;
 
 static void initKernel() noexcept;
@@ -24,13 +19,15 @@ struct ExecuteSchedulerTaskEffect {
 
     TaskHdl await_suspend(KernelBootTaskHdl currentTaskHdl) const noexcept {
         (void)currentTaskHdl;
-        
         TaskPromise& scheduler_promise = schedulerHdl.promise();
-
+        std::print("ExecuteSchedulerTaskEffect::await_suspend: about to suspend KernelBootTaskHdl({0})\n", (void*)&currentTaskHdl.promise()); 
+        
         // Check expected state post scheduler construction
+        
         assert(g_kernel.task_count == 1);
         assert(g_kernel.ready_count == 1);
         assert(scheduler_promise.state == TaskState::READY);
+        assert(!scheduler_promise.wait_node.detached());
         assert(g_kernel.current_task_hdl == TaskHdl());
 
         // Setup SchedulerTask for execution (from READY -> RUNNING)
@@ -41,11 +38,13 @@ struct ExecuteSchedulerTaskEffect {
     
         // Check expected state post task system bootstrap
         checkTaskCountInvariant();
-
+        std::print("ExecuteSchedulerTaskEffect::await_suspend: about to resume Task({0})\n", (void*)&schedulerHdl.promise());
         return schedulerHdl;
     }
 
-    void await_resume() const noexcept {}
+    void await_resume() const noexcept {
+        std::print("ExecuteSchedulerTaskEffect: await_resume\n");
+    }
 
     TaskHdl schedulerHdl;
 };
@@ -72,17 +71,33 @@ static SchedulerTask scheduler(std::function<Task()> user_main_task) noexcept;
 
 struct KernelBootPromise {
 
-    KernelBootPromise(std::function<Task()> user_main_task) : user_main_task(user_main_task){}
-    ~KernelBootPromise() {}
+    KernelBootPromise(std::function<Task()> user_main_task) : user_main_task(user_main_task){
+        std::print("KernelBootPromise({0}): initialized\n", (void*)this);  
+    }
+    ~KernelBootPromise() {
+        std::print("KernelBootPromise({0}): finalized\n", (void*)this);  
+    }
     
     KernelBootTaskHdl get_return_object() noexcept {
+        std::print("KernelBootPromise({0})::get_return_object: returning handle\n", (void*)this);     
         return KernelBootTaskHdl::from_promise(*this);
     }
 
-    std::suspend_never initial_suspend() noexcept { return {}; }
-    std::suspend_never final_suspend() noexcept { return {}; }
-    void               return_void() noexcept {}
-    void               unhandled_exception() noexcept { assert(false); }
+    std::suspend_always initial_suspend() noexcept { 
+        std::print("KernelBootPromise({0})::initial_suspend (std::suspend_always)\n", (void*)this);    
+        return {}; 
+    }
+
+    std::suspend_never final_suspend() noexcept { 
+        std::print("KernelBootPromise({0})::final_suspend (std::suspend_never)\n", (void*)this);    
+        return {}; 
+    }
+
+    void return_void() noexcept {
+        std::print("KernelBootPromise({0})::return_void\n", (void*)this);    
+    }
+
+    void unhandled_exception() noexcept { assert(false); }
 
     std::function<Task()> user_main_task;
 };
@@ -103,25 +118,44 @@ struct KernelBootTask {
     KernelBootTaskHdl hdl;
 };
 
-KernelBootTask startKernelBootTask(std::function<Task()> user_main_task) noexcept {
+KernelBootTask mainKernelTask(std::function<Task()> user_main_task) noexcept {
+    
+    std::print("mainKernelTask(std::function<Task): started the main kernel task\n"); 
+    
+    // Spawn the SchedulerTask
+    std::print("mainKernelTask(std::function<Task): about to spawn the SchedulerTask\n"); 
     SchedulerTask scheduler_task = scheduler(user_main_task);
-    std::printf("startMainTask(std::function<Task()>): Scheduler is Task(%p)\n", &scheduler_task.hdl.promise());
     g_kernel.scheduler_task_hdl = scheduler_task.hdl;
+    std::print("mainKernelTask(std::function<Task): did spawn SchedulerTask({0})\n", (void*)&scheduler_task.hdl.promise()); 
+
+    std::print("mainKernelTask(std::function<Task): about to execute SchedulerTask({0})\n", (void*)&scheduler_task.hdl.promise());  
     co_await ExecuteSchedulerTaskEffect(scheduler_task.hdl);
+    std::print("mainKernelTask(std::function<Task): did to execute SchedulerTask({0})\n", (void*)&scheduler_task.hdl.promise());  
     
     // The scheduler task never returns; it runs until completion
     assert(scheduler_task.hdl.done());
 
+    std::print("mainKernelTask(std::function<Task): terminated the main kernel task\n"); 
     co_return;
 }
 
-int startMainTask(std::function<Task()> user_main_task) noexcept {
+int runMainTask(std::function<Task()> user_main_task) noexcept {
+    std::setbuf(stdout, nullptr);
+    std::setbuf(stderr, nullptr); 
+
+    std::print("runMainTask(): started ...\n"); 
     initKernel();
 
-    KernelBootTask kernel_boot_task = startKernelBootTask(user_main_task);
+    
+    std::print("runMainTask(): About to create the KernelBootTask\n");  
+    KernelBootTask kernel_boot_task = mainKernelTask(user_main_task);
+    std::print("runMainTask(): Did create the KernelBootTask({0})\n", (void*)&kernel_boot_task.hdl.promise());  
+    std::print("runMainTask(): About to run the KernelBootTask({0})\n", (void*)&kernel_boot_task.hdl.promise());      
     kernel_boot_task.run();
+    std::print("runMainTask(): did run the KernelBootTask({0})\n", (void*)&kernel_boot_task.hdl.promise());       
         
     finiKernel();
+    std::print("runMainTask(): terminted ...\n");  
     return 0; 
 }
 

@@ -9,5 +9,5 @@ Task main_task() noexcept {
 }
 
 int main() {
-	return startMainTask(main_task);
+	return runMainTask(main_task);
 }

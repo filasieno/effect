@@ -25,6 +25,7 @@
 #ifdef NDEBUG
 #define assertpp(expr, fmt, ...) ((void)0)
 #else
+
 template<typename... Args>
 inline void assertpp(bool expr, std::string_view fmt, Args&&... args, const std::source_location& loc = std::source_location::current()) {
 	if (!expr && !std::is_constant_evaluated()) {
