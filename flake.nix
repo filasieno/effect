@@ -36,7 +36,6 @@
           clang 
           clang-tools          
           liburing.dev
-          valgrind
         ];          
 
         buildInputs = with pkgs; [
@@ -70,7 +69,10 @@
             nativeBuildInputs = with pkgs; [
               lldb
               liburing.dev            
-              inotify-tools       
+              inotify-tools  
+              doxygen
+              valgrind 
+              graphviz
             ];
             
             buildInputs = with pkgs; [
