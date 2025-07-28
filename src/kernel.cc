@@ -200,30 +200,32 @@ SchedulerTask scheduler(std::function<Task()> user_main_task) noexcept {
     assert(!main_task.hdl.done());
     assert(main_task.state() == TaskState::READY);
     std::printf(">> SchedulerTask(%p): did spawn main task\n", &g_kernel.current_task_hdl.promise());
+    
+    debugTaskCount();
 
     while (true) {
+        std::print(">> SchedulerTask({}): begin scheduler loop\n", (void*)&g_kernel.current_task_hdl.promise());
+
         // If we have a ready task, resume it
+        std::print(">> SchedulerTask({}): ready count: {}\n", (void*)&g_kernel.current_task_hdl.promise(), g_kernel.ready_count);
         if (g_kernel.ready_count > 0) {
-            DList* next_ready_promise_node = g_kernel.ready_list.pop_front();
+            std::print(">> SchedulerTask({}): ready count {} > 0\n", (void*)&g_kernel.current_task_hdl.promise(), g_kernel.ready_count);
+
+            // Pop the next ready task and get its handle
+            DList* next_ready_promise_node = g_kernel.ready_list.prev;
             TaskPromise* next_ready_promise = waitListNodeToTask(next_ready_promise_node);
-
-            // check invariants
-            TaskPromise& scheduler_promise = g_kernel.current_task_hdl.promise();
-            assert(next_ready_promise->state == TaskState::READY);
-            assert(&g_kernel.current_task_hdl.promise() == &scheduler_promise);
-            assert(scheduler_promise.wait_node.detached());
-            checkTaskCountInvariant();
-
-            // move the scheduler task from RUNNING to READY
-            scheduler_promise.state = TaskState::READY;
-            ++g_kernel.ready_count;
-            g_kernel.ready_list.push_back(&scheduler_promise.wait_node);
-            g_kernel.current_task_hdl = TaskHdl();
-            checkTaskCountInvariant();
-            
-            co_await ExecuteTaskEffect(g_kernel.current_task_hdl);
+            TaskHdl next_ready_task_hdl = TaskHdl::from_promise(*next_ready_promise);
+            assert(next_ready_task_hdl != g_kernel.scheduler_task_hdl);
+            co_await ExecuteTaskEffect(next_ready_task_hdl);
             continue;
         }
+        std::print(">> SchedulerTask({}): ready count == 0\n", (void*)&g_kernel.current_task_hdl.promise());
+        DList* zombie_promise_node = g_kernel.zombie_list.pop_front();
+        TaskPromise* zombie_promise = waitListNodeToTask(zombie_promise_node);
+        TaskHdl zombie_hdl = TaskHdl::from_promise(*zombie_promise);
+        zombie_hdl.destroy();
+        
+        if (g_kernel.zombie_count == 0 && g_kernel.ready_count== 0) break;
     }
     co_return;
 }
