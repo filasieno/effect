@@ -29,7 +29,7 @@ run_%: build/%
 
 test_%: build/test_%
 	@printf -- '\e[33m---------- Running test:\e[0m %s\n' '$<'
-	"$<" | cat -n
+	"$<" 2>&1 | cat -n
 	printf --  '\e[33m---------- Finished test:\e[0m %s\n' '$<'
 
 .PRECIOUS: build/%.o
@@ -71,6 +71,16 @@ watch:
 		fi
 	done
 
+.PHONY: doc
+doc:: doxygen
+
+.PRECIOUS: build/%.pdf
+build/%.pdf: src/%.md | build/.
+	pandoc --pdf-engine=latexmk -o $@  $<
+
+.PHONY: doxygen
+doxygen: | build/doc/.
+	doxygen Doxyfile
 
 
 #----------------------------------------
