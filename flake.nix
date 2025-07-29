@@ -22,6 +22,7 @@
       inherit system;
       overlays = [ clangOverlay ];
     };
+
   in  
   
   {
@@ -36,6 +37,9 @@
           clang 
           clang-tools          
           liburing.dev
+          doxygen
+          valgrind 
+          graphviz
         ];          
 
         buildInputs = with pkgs; [
@@ -49,7 +53,8 @@
 
         installPhase = ''
           mkdir -p $out
-          cp ./build/io $out/io
+          cp ./build/test_dlist $out/test_dlist
+          cp ./build/test_task  $out/test_task
         ''; 
       };
       default = self.packages.x86_64-linux.effect;
