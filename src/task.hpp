@@ -1,14 +1,15 @@
 #pragma once
 
-// -----------------------------------------------------------------------------
-// Basic definitions
-// -----------------------------------------------------------------------------
 
 #include <coroutine>
 #include <print>
 #include <functional>
 #include "dlist.hpp"
 #include "defs.hpp"
+
+// -----------------------------------------------------------------------------
+// Basic definitions
+// -----------------------------------------------------------------------------
 
 struct Kernel;
 struct Task;
@@ -148,6 +149,77 @@ struct Task {
     TaskHdl hdl;
 };
 
+struct Condition {
+    struct WaitEffect {
+        
+        explicit WaitEffect(Condition& condition) : condition(condition) {}
+        
+        constexpr bool await_ready() const noexcept {
+            return condition.hdl == TaskHdl();
+        }
+
+        constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) const noexcept {
+            assert(g_kernel.current_task_hdl == currentTaskHdl);
+            
+            std::print("Condition::WaitEffect::await_suspend: requested to block Task({})\n", (void*)&currentTaskHdl.promise());
+            
+            // // Check the current Task
+            // TaskPromise& current_task_promise = g_kernel.current_task_hdl.promise(); 
+            // assert(current_task_promise.wait_node.detached());
+            // assert(current_task_promise.state == TaskState::RUNNING); 
+            // checkTaskCountInvariant();
+
+            // // Block the current Task
+            // current_task_promise.state = TaskState::WAITING;
+            // ++g_kernel.waiting_count;
+            // condition.wait_node.push_back(&current_task_promise.wait_node);
+            // g_kernel.current_task_hdl = TaskHdl();
+            // checkTaskCountInvariant();
+
+            // // Move the target task from READY to RUNNING
+            // TaskPromise& target_task_promise = g_kernel.scheduler_task_hdl.promise();
+            // target_task_promise.state = TaskState::RUNNING;
+            // target_task_promise.wait_node.detach();
+            // --g_kernel.ready_count;
+            // g_kernel.current_task_hdl = hdl;
+            // checkTaskCountInvariant();
+            return currentTaskHdl;
+        }
+
+        constexpr void await_resume() const noexcept {}
+
+        Condition& condition;
+    };
+
+    Condition() {
+        wait_node.init();
+    }
+
+    int signalAll() {
+        int signalled = 0;
+        // while (!wait_node.detached()) {
+        //     DList* next_waiting_task = wait_node.pop_front();
+        //     TaskPromise* next_waiting_task_promise = waitListNodeToTask(next_waiting_task);
+        //     assert(next_waiting_task_promise->state == TaskState::WAITING);
+        //     --g_kernel.waiting_count;
+        //     next_waiting_task_promise->state = TaskState::READY;
+        //     g_kernel.ready_list.push_back(&next_waiting_task_promise->wait_node);
+        //     --g_kernel.ready_count;
+        //     ++signalled;
+        // }
+        return signalled;
+    }
+    
+    void reset() {
+        hdl = TaskHdl();
+        wait_node.init();
+    }
+
+    WaitEffect wait() { return WaitEffect(*this); }
+
+    TaskHdl hdl;
+    DList   wait_node;
+};
 
 // -----------------------------------------------------------------------------
 // Utilities
@@ -167,6 +239,18 @@ struct SuspendEffect {
 
 constexpr auto suspend() noexcept-> SuspendEffect;
 
+
+struct GetCurrentTaskEffect {
+    constexpr bool    await_ready() const noexcept        { return false;                } 
+    constexpr TaskHdl await_suspend(TaskHdl hdl) noexcept { this->hdl = hdl; return hdl; }
+    constexpr TaskHdl await_resume() const noexcept       { return hdl;                  }
+    
+    TaskHdl hdl;
+};
+
+inline GetCurrentTaskEffect getCurrentTask() noexcept {
+    return {};
+}
 
 // ==============================================================================
 // Inline implementation 

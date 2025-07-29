@@ -6,30 +6,38 @@
 #include <functional>
 #include "io_utils.h"
 
-typedef unsigned char Byte; 
-typedef __u32  U32;  
-typedef __u64  U64;   
+typedef __u8  Byte; 
+
+typedef __u8  U8;   
+typedef __u16 U16;   
+typedef __u32 U32;  
+typedef __u64 U64;
+typedef __s8  I8;   
+typedef __s16 I16;   
+typedef __s32 I32;  
+typedef __s64 I64;
+
 
 struct IOSystem {
-    int uring_fd;
+    int   uring_fd;
     
     void* uring_buff;
-    int uring_buff_size;    
+    int   uring_buff_size;    
 
     void* sqe_buff;
     int   sqe_buff_size;    
 
-    U32* sring_head; 
-    U32* sring_tail;
-    U32* sring_mask;
-    U32* sring_entries;
-    U32* sring_flags;
-    U32* sring_array;
+    U32*  sring_head; 
+    U32*  sring_tail;
+    U32*  sring_mask;
+    U32*  sring_entries;
+    U32*  sring_flags;
+    U32*  sring_array;
     
-    U32* cring_head;
-    U32* cring_tail;
-    U32* cring_mask;    
-    U32* cring_entries;
+    U32*  cring_head;
+    U32*  cring_tail;
+    U32*  cring_mask;    
+    U32*  cring_entries;
 
     struct io_uring_sqe* sqes;
     struct io_uring_cqe* cqes; 
