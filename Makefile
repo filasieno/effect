@@ -29,8 +29,17 @@ run_%: build/%
 
 test_%: build/test_%
 	@printf -- '\e[33m---------- Running test:\e[0m %s\n' '$<'
-	"$<" 2>&1 | cat -n
+	"$<" | cat -n
 	printf --  '\e[33m---------- Finished test:\e[0m %s\n' '$<'
+
+#build/precompiled.pch: src/precompiled.hpp | build/.
+#	$(COMPILE.cc) -x c++-header -MMD -MP -MF build/precompiled.d -o $@ -c $< 
+#
+#-include build/precompiled.d
+
+#.PRECIOUS: build/%.o
+#build/%.o: src/%.cc build/precompiled.pch | build/.
+#	$(COMPILE.cc) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $< 
 
 .PRECIOUS: build/%.o
 build/%.o: src/%.cc | build/.
