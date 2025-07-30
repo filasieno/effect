@@ -1,7 +1,7 @@
 
 #include "task.hpp"
 
-TaskHdl SuspendEffect::await_suspend(TaskHdl current_task_hdl) const noexcept {
+TaskHdl SuspendOp::await_suspend(TaskHdl current_task_hdl) const noexcept {
     //
     // TODO: Comprire bene tutti i casi
     //
@@ -9,57 +9,57 @@ TaskHdl SuspendEffect::await_suspend(TaskHdl current_task_hdl) const noexcept {
     TaskPromise& current_promise = current_task_hdl.promise();
 
     if constexpr (DEFINED_DEBUG) {
-        assert(g_kernel.current_task_hdl == current_task_hdl);  
+        assert(gKernel.currentTask == current_task_hdl);  
         assert(current_promise.state == TaskState::RUNNING);
-        assert(current_promise.wait_node.detached());
+        assert(current_promise.waitNode.detached());
         checkTaskCountInvariant();
     }
     
-    std::printf("SuspendEffect: suspending task(%p)\n", &g_kernel.current_task_hdl.promise());
+    std::printf("SuspendEffect: suspending task(%p)\n", &gKernel.currentTask.promise());
     std::printf("Task(%p): scheduleNextTask() suspending the current task\n", &current_promise); 
 
     // Move the current task from RUNNINIG to READY
     current_promise.state = TaskState::READY;
-    ++g_kernel.ready_count;
-    g_kernel.ready_list.push_back(&current_promise.wait_node);
-    g_kernel.current_task_hdl = TaskHdl();
+    ++gKernel.readyCount;
+    gKernel.readyList.push_back(&current_promise.waitNode);
+    gKernel.currentTask = TaskHdl();
     checkTaskCountInvariant();
     
     // Resume the SchedulerTask
-    TaskPromise& scheduler_promise = g_kernel.scheduler_task_hdl.promise();
+    TaskPromise& scheduler_promise = gKernel.schedulerTask.promise();
     scheduler_promise.state = TaskState::RUNNING;
-    scheduler_promise.wait_node.detach(); // remove from ready list
-    --g_kernel.ready_count;
-    g_kernel.current_task_hdl = g_kernel.scheduler_task_hdl;
+    scheduler_promise.waitNode.detach(); // remove from ready list
+    --gKernel.readyCount;
+    gKernel.currentTask = gKernel.schedulerTask;
     checkTaskCountInvariant();
 
     return TaskHdl::from_promise(scheduler_promise);
 }
 
-TaskHdl ExecuteTaskEffect::await_suspend(TaskHdl currentTaskHdl) const noexcept {
-    assert(g_kernel.current_task_hdl == currentTaskHdl);
+TaskHdl ResumeTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept {
+    assert(gKernel.currentTask == currentTaskHdl);
     
-    std::print("Task({0})::resume(): requested to resume Task({1})\n", (void*)&g_kernel.current_task_hdl.promise(), (void*)&hdl.promise());
+    std::print("Task({0})::resume(): requested to resume Task({1})\n", (void*)&gKernel.currentTask.promise(), (void*)&hdl.promise());
     
     // Check the current Task
-    TaskPromise& current_task_promise = g_kernel.current_task_hdl.promise(); 
-    assert(current_task_promise.wait_node.detached());
+    TaskPromise& current_task_promise = gKernel.currentTask.promise(); 
+    assert(current_task_promise.waitNode.detached());
     assert(current_task_promise.state == TaskState::RUNNING); 
     checkTaskCountInvariant();
 
     // Suspend the current Task
     current_task_promise.state = TaskState::READY;
-    ++g_kernel.ready_count;
-    g_kernel.ready_list.push_back(&current_task_promise.wait_node);
-    g_kernel.current_task_hdl = TaskHdl();
+    ++gKernel.readyCount;
+    gKernel.readyList.push_back(&current_task_promise.waitNode);
+    gKernel.currentTask = TaskHdl();
     checkTaskCountInvariant();
 
     // Move the target task from READY to RUNNING
     TaskPromise& target_task_promise = hdl.promise();
     target_task_promise.state = TaskState::RUNNING;
-    target_task_promise.wait_node.detach();
-    --g_kernel.ready_count;
-    g_kernel.current_task_hdl = hdl;
+    target_task_promise.waitNode.detach();
+    --gKernel.readyCount;
+    gKernel.currentTask = hdl;
     checkTaskCountInvariant();
 
     return hdl;

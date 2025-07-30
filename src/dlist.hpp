@@ -9,6 +9,7 @@ struct DList {
     }
 
     void detach() {
+        if (detached()) return;
         this->next->prev = this->prev;
         this->prev->next = this->next;
         this->next = this;
@@ -37,19 +38,26 @@ struct DList {
         this->next = node;
     }
 
-    // write form me ... pop_front and pop_back
     DList* pop_front() {
         if (detached()) return nullptr;
-        DList* target = this->next;
+        DList* target = this->prev;
         target->detach();
         return target;
     }
 
     DList* pop_back() {
         if (detached()) return nullptr;
-        DList* target = this->prev;
+        DList* target = this->next;
         target->detach();
         return target;
+    }
+
+    DList& front() {
+        return *this->prev;
+    }
+
+    DList& back() {
+        return *this->next;        
     }
     
     bool detached() const {

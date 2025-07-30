@@ -1,6 +1,6 @@
 #include "task.hpp"
 
-struct Kernel g_kernel;
+struct Kernel gKernel;
 
 static void initKernel() noexcept;
 static void finiKernel() noexcept; 
@@ -9,9 +9,9 @@ struct KernelBootPromise;
 
 using KernelBootTaskHdl = std::coroutine_handle<KernelBootPromise>;
 
-struct ExecuteSchedulerTaskEffect {
+struct RunSchedulerTaskOp {
 
-    ExecuteSchedulerTaskEffect(TaskHdl schedulerHdl) : schedulerHdl(schedulerHdl) {};
+    RunSchedulerTaskOp(TaskHdl schedulerHdl) : schedulerHdl(schedulerHdl) {};
 
     bool await_ready() const noexcept {
         return schedulerHdl.done();
@@ -24,17 +24,17 @@ struct ExecuteSchedulerTaskEffect {
         
         // Check expected state post scheduler construction
         
-        assert(g_kernel.task_count == 1);
-        assert(g_kernel.ready_count == 1);
+        assert(gKernel.taskCount == 1);
+        assert(gKernel.readyCount == 1);
         assert(scheduler_promise.state == TaskState::READY);
-        assert(!scheduler_promise.wait_node.detached());
-        assert(g_kernel.current_task_hdl == TaskHdl());
+        assert(!scheduler_promise.waitNode.detached());
+        assert(gKernel.currentTask == TaskHdl());
 
         // Setup SchedulerTask for execution (from READY -> RUNNING)
-        g_kernel.current_task_hdl = schedulerHdl;
+        gKernel.currentTask = schedulerHdl;
         scheduler_promise.state = TaskState::RUNNING;
-        scheduler_promise.wait_node.detach();
-        --g_kernel.ready_count;
+        scheduler_promise.waitNode.detach();
+        --gKernel.readyCount;
     
         // Check expected state post task system bootstrap
         checkTaskCountInvariant();
@@ -60,6 +60,10 @@ struct SchedulerTask {
 
     bool done() const noexcept {
         return hdl.done();
+    }
+
+    RunSchedulerTaskOp run() const noexcept {
+        return RunSchedulerTaskOp{hdl};
     }
 
     TaskState state() const noexcept;
@@ -125,11 +129,11 @@ KernelBootTask mainKernelTask(std::function<Task()> user_main_task) noexcept {
     // Spawn the SchedulerTask
     std::print("mainKernelTask(std::function<Task): about to spawn the SchedulerTask\n"); 
     SchedulerTask scheduler_task = scheduler(user_main_task);
-    g_kernel.scheduler_task_hdl = scheduler_task.hdl;
+    gKernel.schedulerTask = scheduler_task.hdl;
     std::print("mainKernelTask(std::function<Task): did spawn SchedulerTask({0})\n", (void*)&scheduler_task.hdl.promise()); 
 
     std::print("mainKernelTask(std::function<Task): about to execute SchedulerTask({0})\n", (void*)&scheduler_task.hdl.promise());  
-    co_await ExecuteSchedulerTaskEffect(scheduler_task.hdl);
+    co_await scheduler_task.run();
     std::print("mainKernelTask(std::function<Task): did to execute SchedulerTask({0})\n", (void*)&scheduler_task.hdl.promise());  
     
     // The scheduler task never returns; it runs until completion
@@ -139,38 +143,39 @@ KernelBootTask mainKernelTask(std::function<Task()> user_main_task) noexcept {
     co_return;
 }
 
-int runMainTask(std::function<Task()> user_main_task) noexcept {
+int runMainTask(std::function<Task()> userMainTask) noexcept {
     std::setbuf(stdout, nullptr);
     std::setbuf(stderr, nullptr); 
 
     std::print("runMainTask(): started ...\n"); 
+
     initKernel();
 
-    
     std::print("runMainTask(): About to create the KernelBootTask\n");  
-    KernelBootTask kernel_boot_task = mainKernelTask(user_main_task);
-    std::print("runMainTask(): Did create the KernelBootTask({0})\n", (void*)&kernel_boot_task.hdl.promise());  
-    std::print("runMainTask(): About to run the KernelBootTask({0})\n", (void*)&kernel_boot_task.hdl.promise());      
-    kernel_boot_task.run();
-    std::print("runMainTask(): did run the KernelBootTask({0})\n", (void*)&kernel_boot_task.hdl.promise());       
+    KernelBootTask kernelBootTask = mainKernelTask(userMainTask);
+    std::print("runMainTask(): Did create the KernelBootTask({0})\n", (void*)&kernelBootTask.hdl.promise());  
+    std::print("runMainTask(): About to run the KernelBootTask({0})\n", (void*)&kernelBootTask.hdl.promise());      
+    kernelBootTask.run();
+    std::print("runMainTask(): did run the KernelBootTask({0})\n", (void*)&kernelBootTask.hdl.promise());       
         
     finiKernel();
+
     std::print("runMainTask(): terminted ...\n");  
     return 0; 
 }
 
 void initKernel() noexcept {
-    g_kernel.task_count = 0;
-    g_kernel.ready_count = 0;
-    g_kernel.waiting_count = 0;
-    g_kernel.io_waiting_count = 0;
-    g_kernel.zombie_count = 0;
-    g_kernel.interrupted = 0;
-    g_kernel.current_task_hdl   = TaskHdl();
-    g_kernel.scheduler_task_hdl = TaskHdl();
-    g_kernel.zombie_list.init();
-    g_kernel.ready_list.init();
-    g_kernel.task_list.init();
+    gKernel.taskCount = 0;
+    gKernel.readyCount = 0;
+    gKernel.waitingCount = 0;
+    gKernel.ioWaitingCount = 0;
+    gKernel.zombieCount = 0;
+    gKernel.interrupted = 0;
+    gKernel.currentTask.clear();
+    gKernel.schedulerTask.clear();
+    gKernel.zombieList.init();
+    gKernel.readyList.init();
+    gKernel.taskList.init();
     std::printf("Kernel::init(): initialized\n");
 
     // Check invariants
@@ -193,39 +198,44 @@ SchedulerTask scheduler(std::function<Task()> user_main_task) noexcept {
     std::fflush(stdout);
     assert(started == 1);
 
-    std::printf(">> SchedulerTask(%p): started\n", &g_kernel.current_task_hdl.promise());
-    std::printf(">> SchedulerTask(%p): about to spawn main task\n", &g_kernel.current_task_hdl.promise()); // g_kernel.current_task_promise 
+    std::printf(">> SchedulerTask(%p): started\n", &gKernel.currentTask.promise());
+    std::printf(">> SchedulerTask(%p): about to spawn main task\n", &gKernel.currentTask.promise()); // g_kernel.current_task_promise 
     Task main_task = user_main_task();
-    std::printf(">> SchedulerTask(%p): Main task is Task(%p)\n", &g_kernel.current_task_hdl.promise(), &main_task.hdl.promise());
+    std::printf(">> SchedulerTask(%p): Main task is Task(%p)\n", &gKernel.currentTask.promise(), &main_task.hdl.promise());
     assert(!main_task.hdl.done());
     assert(main_task.state() == TaskState::READY);
-    std::printf(">> SchedulerTask(%p): did spawn main task\n", &g_kernel.current_task_hdl.promise());
+    std::printf(">> SchedulerTask(%p): did spawn main task\n", &gKernel.currentTask.promise());
     
     debugTaskCount();
 
     while (true) {
-        std::print(">> SchedulerTask({}): begin scheduler loop\n", (void*)&g_kernel.current_task_hdl.promise());
+        std::print(">> SchedulerTask({}): begin scheduler loop\n", (void*)&gKernel.currentTask.promise());
 
         // If we have a ready task, resume it
-        std::print(">> SchedulerTask({}): ready count: {}\n", (void*)&g_kernel.current_task_hdl.promise(), g_kernel.ready_count);
-        if (g_kernel.ready_count > 0) {
-            std::print(">> SchedulerTask({}): ready count {} > 0\n", (void*)&g_kernel.current_task_hdl.promise(), g_kernel.ready_count);
+        std::print(">> SchedulerTask({}): ready count: {}\n", (void*)&gKernel.currentTask.promise(), gKernel.readyCount);
+        if (gKernel.readyCount > 0) {
+            std::print(">> SchedulerTask({}): ready count {} > 0\n", (void*)&gKernel.currentTask.promise(), gKernel.readyCount);
 
             // Pop the next ready task and get its handle
-            DList* next_ready_promise_node = g_kernel.ready_list.prev;
-            TaskPromise* next_ready_promise = waitListNodeToTask(next_ready_promise_node);
+            DList* next_ready_promise_node = gKernel.readyList.prev;
+            TaskPromise* next_ready_promise = waitListNodeToTaskPromise(next_ready_promise_node);
             TaskHdl next_ready_task_hdl = TaskHdl::from_promise(*next_ready_promise);
-            assert(next_ready_task_hdl != g_kernel.scheduler_task_hdl);
-            co_await ExecuteTaskEffect(next_ready_task_hdl);
+            assert(next_ready_task_hdl != gKernel.schedulerTask);
+            co_await ResumeTaskOp(next_ready_task_hdl);
             continue;
         }
-        std::print(">> SchedulerTask({}): ready count == 0\n", (void*)&g_kernel.current_task_hdl.promise());
-        DList* zombie_promise_node = g_kernel.zombie_list.pop_front();
-        TaskPromise* zombie_promise = waitListNodeToTask(zombie_promise_node);
-        TaskHdl zombie_hdl = TaskHdl::from_promise(*zombie_promise);
-        zombie_hdl.destroy();
+        std::print(">> SchedulerTask({}): ready count == 0\n", (void*)&gKernel.currentTask.promise());
         
-        if (g_kernel.zombie_count == 0 && g_kernel.ready_count== 0) break;
+        // Zombie killing
+        // TODO: kill zombies
+        //
+        // DList* zombie_promise_node = gKernel.zombieList.pop_front();
+        // TaskPromise* zombie_promise = waitListNodeToTask(zombie_promise_node);
+        // TaskHdl zombie_hdl = TaskHdl::from_promise(*zombie_promise);
+        // zombie_hdl.destroy();        
+        // if (gKernel.zombieCount == 0 && gKernel.readyCount== 0) break;
+
+        if (gKernel.readyCount== 0) break;
     }
     co_return;
 }

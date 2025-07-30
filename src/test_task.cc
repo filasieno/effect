@@ -1,31 +1,58 @@
 #include "task.hpp"
 #include <cassert>
+#include <print> 
 
-Task a_task() noexcept {
-	std::printf("-- A(%p): AAA!\n", &g_kernel.current_task_hdl.promise());
-	co_await suspend();
-	TaskHdl tt = co_await getCurrentTask();
-	std::printf("-- A(%p): Again AAA! Task is: %p\n", &g_kernel.current_task_hdl.promise(), &tt.promise());
+Condition readyToWrite;
+Condition readyToRead;
+int value = -1;
+int MAX = 10;
 
-}
+// Task readerTask() noexcept {
+// 	while (true) {
+// 		co_await readyToRead.wait();
+// 		std::print("Read: {}\n", value);
+// 		readyToWrite.signal();
+// 	    if (value == 0) break;
+// 	}
+// 	co_return;
+// }
 
-Task b_task() noexcept {
-	std::printf("-- B(%p): BBB!\n", &g_kernel.current_task_hdl.promise());
-	co_await suspend();
-	std::printf("-- B(%p): Again BBB!\n", &g_kernel.current_task_hdl.promise());
-}
+// Task writerTask() noexcept {
+// 	int i = 10;
+// 	while (true) {
+// 		co_await readyToWrite.wait();
+// 		std::print("Written: {}\n", i); 
+// 		readyToRead.signal();
+// 		--i;
+// 		if (i == 0) break;
+// 	}
+// }
 
-Task main_task() noexcept {
-	for (int i = 0; i < 10000; ++i) {
-		a_task();
-		b_task();
-	}
-	std::printf("-- Task(%p): Hello from Task!\n", &g_kernel.current_task_hdl.promise());
-	co_await suspend();
-	std::printf("-- Task(%p): Again Hello from Task!\n", &g_kernel.current_task_hdl.promise());
-
+Task aTask() noexcept { 
+	std::print("Hello from A\n");
 	co_return;
 }
+
+Task bTask() noexcept { 
+	std::print("Hello from B\n");
+	co_return;
+}
+
+
+Task main_task() noexcept {
+	Task a = aTask();
+	Task b = bTask();
+	co_await a;
+	co_await b;
+	// readyToWrite.reset(true);
+	// readyToRead.reset();
+	// Task reader = readerTask();
+	// Task writer = writerTask();
+	// co_await reader.join();
+	// co_await writer.join();
+	co_return;
+}
+
 
 int main() {
 	return runMainTask(main_task);

@@ -34,3 +34,28 @@ struct SuspendEffect
 - kernel.cc   : io
 - task.cc     : task + taskpromise
 - effects.cc
+
+--------------------------------------------------------------------------------
+
+Tasks :: Args -> int
+
+GetCurrentTaskOp :: () -> TaskHdl
+SuspendOp :: () -> TaskHdl
+WaitTaskOp :: () -> TaskHdl
+
+OpenFileOp :: 
+ReadFileOp :: 
+WriteFileOp :: 
+CloseOp :: 
+...
+BindOp
+AcceptOp
+ConnectOp
+RecvOp
+SendOp
+PollOp
+....
+
+
+
+
