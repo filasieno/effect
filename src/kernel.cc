@@ -176,7 +176,7 @@ void initKernel() noexcept {
     gKernel.zombieList.init();
     gKernel.readyList.init();
     gKernel.taskList.init();
-    std::printf("Kernel::init(): initialized\n");
+    std::print("Kernel::init(): initialized\n");
 
     // Check invariants
     checkTaskCountInvariant();
@@ -185,7 +185,7 @@ void initKernel() noexcept {
 void finiKernel() noexcept {
     // TODO: add checks to ensure all tasks are finalized
 
-    std::printf("Kernel::fini(): finalized\n");
+    std::print("Kernel::fini(): finalized\n");
     
     // Check invariants
     checkTaskCountInvariant();
@@ -198,13 +198,13 @@ SchedulerTask scheduler(std::function<Task()> user_main_task) noexcept {
     std::fflush(stdout);
     assert(started == 1);
 
-    std::printf(">> SchedulerTask(%p): started\n", &gKernel.currentTask.promise());
-    std::printf(">> SchedulerTask(%p): about to spawn main task\n", &gKernel.currentTask.promise()); // g_kernel.current_task_promise 
+    std::print(">> SchedulerTask({}): started\n", (void*)&gKernel.currentTask.promise());
+    std::print(">> SchedulerTask({}): about to spawn main task\n", (void*)&gKernel.currentTask.promise()); // g_kernel.current_task_promise 
     Task main_task = user_main_task();
-    std::printf(">> SchedulerTask(%p): Main task is Task(%p)\n", &gKernel.currentTask.promise(), &main_task.hdl.promise());
+    std::print(">> SchedulerTask({}): Main task is Task({})\n", (void*)&gKernel.currentTask.promise(), (void*)&main_task.hdl.promise());
     assert(!main_task.hdl.done());
     assert(main_task.state() == TaskState::READY);
-    std::printf(">> SchedulerTask(%p): did spawn main task\n", &gKernel.currentTask.promise());
+    std::print(">> SchedulerTask({}): did spawn main task\n", (void*)&gKernel.currentTask.promise());
     
     debugTaskCount();
 

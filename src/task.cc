@@ -5,14 +5,14 @@
 // -----------------------------------------------------------------------------
 
 void* TaskPromise::operator new(std::size_t n) noexcept {
-    printf("TaskPromise: About to allocate a Task of size: %zu\n", n);
+    std::print("TaskPromise: About to allocate a Task of size: {}\n", n);
     void* mem = std::malloc(n);
     if (!mem)
         return nullptr;
     unsigned long long frame_head = (unsigned long long)mem;
     unsigned long long frame_tail = frame_head + n;
     unsigned long long task_addr  = frame_tail - sizeof(TaskPromise) - 8;
-    printf("TaskPromise: Did allocate a Task(%p) of size: %zu\n", (void*)task_addr, n); 
+    std::print("TaskPromise: Did allocate a Task({}) of size: {}\n", (void*)task_addr, n); 
     return mem;
 }
 
@@ -20,10 +20,10 @@ void TaskPromise::operator delete(void* ptr, std::size_t sz) {
     unsigned long long frame_head = (unsigned long long)ptr;
     unsigned long long frame_tail = frame_head + sz;
     unsigned long long task_addr  = frame_tail - sizeof(TaskPromise) - 8;
-    printf("TaskPromise: About to free Task(%p) of size: %zu\n", (void*)task_addr, sz);  
+    std::print("TaskPromise: About to free Task({}) of size: {}\n", (void*)task_addr, sz);  
     
     std::free(ptr);
-    printf("TaskPromise: Did free Task(%p) of size: %zu\n", (void*)task_addr, sz);   
+    std::print("TaskPromise: Did free Task({}) of size: {}\n", (void*)task_addr, sz);   
 }
 
 TaskPromise::TaskPromise() {
@@ -31,7 +31,7 @@ TaskPromise::TaskPromise() {
     waitNode.init();
     waitingTaskNode.init();
     state = TaskState::CREATED;
-    std::printf("TaskPromise::TaskPromise(): Task(%p) initialized\n", this); 
+    std::print("TaskPromise::TaskPromise(): Task({}) initialized\n", (void*)this); 
     
     // Check post-conditions
     assert(taskList.detached());
@@ -45,7 +45,7 @@ TaskPromise::~TaskPromise() {
     taskList.detach();
     waitNode.detach();
     waitingTaskNode.detach();
-    std::printf("TaskPromise::TaskPromise(): Task(%p) finalized\n", this);
+    std::print("TaskPromise::TaskPromise(): Task({}) finalized\n", (void*)this);
 
     // todo: move await from destructor
     --gKernel.taskCount;
@@ -54,7 +54,7 @@ TaskPromise::~TaskPromise() {
 }
 
 TaskHdl TaskPromise::get_return_object() noexcept { 
-    std::printf("TaskPromise::TaskPromise(): Task(%p) returning TaskHdl\n", this);
+    std::print("TaskPromise::TaskPromise(): Task({}) returning TaskHdl\n", (void*)this);
     return TaskHdl::from_promise(*this);
 }
 
@@ -86,7 +86,7 @@ void TaskPromise::return_void() noexcept {
 void TaskPromise::InitialSuspend::await_suspend(TaskHdl hdl) const noexcept {
     TaskPromise& promise = hdl.promise();
 
-    std::printf("TaskPromise::InitialSuspend::await_suspend(TaskHdl hdl): initial suspend started(%p)\n", (void*)&promise);  
+    std::print("TaskPromise::InitialSuspend::await_suspend(TaskHdl hdl): initial suspend started({})\n", (void*)&promise);  
     
     // Check initial preconditions
     assert(promise.state == TaskState::CREATED);
@@ -106,7 +106,7 @@ void TaskPromise::InitialSuspend::await_suspend(TaskHdl hdl) const noexcept {
     assert(!promise.waitNode.detached()); 
     checkTaskCountInvariant();
 
-    std::printf("TaskPromise::InitialSuspend::await_suspend(TaskHdl hdl): newly spawned Task(%p) is %d\n", (void*)&promise, promise.state); 
+    std::print("TaskPromise::InitialSuspend::await_suspend(TaskHdl hdl): newly spawned Task({}) is {}\n", (void*)&promise, (int)promise.state); 
     debugTaskCount();
 }
 
@@ -152,15 +152,15 @@ TaskHdl TaskPromise::FinalSuspend::await_suspend(TaskHdl hdl) const noexcept {
 
 void debugTaskCount() noexcept {
     int running_count = gKernel.currentTask != TaskHdl() ? 1 : 0;
-    std::printf("----------------:--------\n"); 
-    std::printf("Task       count: %d\n", gKernel.taskCount);
-    std::printf("----------------:--------\n"); 
-    std::printf("Running    count: %d\n", running_count); 
-    std::printf("Ready      count: %d\n", gKernel.readyCount);
-    std::printf("Waiting    count: %d\n", gKernel.waitingCount);
-    std::printf("IO waiting count: %d\n", gKernel.ioWaitingCount);
-    std::printf("Zombie     count: %d\n", gKernel.zombieCount);
-    std::printf("----------------:--------\n"); 
+    std::print("----------------:--------\n"); 
+    std::print("Task       count: {}\n", gKernel.taskCount);
+    std::print("----------------:--------\n"); 
+    std::print("Running    count: {}\n", running_count); 
+    std::print("Ready      count: {}\n", gKernel.readyCount);
+    std::print("Waiting    count: {}\n", gKernel.waitingCount);
+    std::print("IO waiting count: {}\n", gKernel.ioWaitingCount);
+    std::print("Zombie     count: {}\n", gKernel.zombieCount);
+    std::print("----------------:--------\n"); 
 }
 
 void checkTaskCountInvariant() noexcept {

@@ -151,15 +151,15 @@ struct IOSystem {
         // params->flags = IORING_SETUP_SQPOLL | IORING_SETUP_IOPOLL;
         this->uring_fd = io_uring_setup(entries, params);
         if (this->uring_fd < 0) {
-            std::printf("io_uring_setup failed; error: %zu\n", -this->uring_fd);
+            std::print("io_uring_setup failed; error: {}\n", -this->uring_fd);
             return -1;
         }
         io_utils::uring_debug_params(*params);
-        std::printf("io_uring_setup done\n");
+        std::print("io_uring_setup done\n");
 
         // mmap SQ and CQ
         if (!(params->features & IORING_FEAT_SINGLE_MMAP)) {
-            std::printf("IORING_FEAT_SINGLE_MMAP not supported\n");
+            std::print("IORING_FEAT_SINGLE_MMAP not supported\n");
             ::close(this->uring_fd);
             return -1;
         }
@@ -203,8 +203,8 @@ struct IOSystem {
             return -1;
         }
         this->sqes = (struct io_uring_sqe*)this->sqe_buff;
-        std::printf("CQ initialized\n");
-        std::printf("IO ring initialized\n");
+        std::print("CQ initialized\n");
+        std::print("IO ring initialized\n");
         return 0;
     }
 
@@ -218,15 +218,15 @@ struct IOSystem {
         // Check if we have any completions
         U32 head = *this->cring_head;
         U32 tail = *this->cring_tail;
-        std::printf("Waiting for one completion: head=%u, tail=%u\n", head, tail);
+        std::print("Waiting for one completion: head={}, tail={}\n", head, tail);
         if (head == tail) {
-            std::printf("no cqe available, waiting...\n");
+            std::print("no cqe available, waiting...\n");
             int ret = io_uring_enter(this->uring_fd, 0, 1, IORING_ENTER_GETEVENTS, nullptr);
             if (ret < 0) {
-                std::printf("io_uring_enter failed\n");
+                std::print("io_uring_enter failed\n");
                 return -1; 
             }
-            std::printf("waiting done -> one cqe delivered\n");
+            std::print("waiting done -> one cqe delivered\n");
         }
 
         U32 mask = *this->cring_mask;
@@ -285,7 +285,7 @@ public:
         , head(*io->cring_head)
         , tail(*io->cring_tail) 
     {
-        std::printf("Completion range created with head: %u, tail: %u\n", head, tail);            
+        std::print("Completion range created with head: {}, tail: {}\n", head, tail);            
     }
     
     Iterator begin() { return Iterator(io, head, tail); }
@@ -300,20 +300,20 @@ CompletionRange io_get_completions(IOSystem* io) {
 }
 
 void debug_cqe(const struct io_uring_cqe& cqe, const IOSystem* io) {
-    std::printf("\nCQE Debug Info:\n");
-    std::printf("  Result: %d\n", cqe.res);
+    std::print("\nCQE Debug Info:\n");
+    std::print("  Result: {}\n", cqe.res);
     
     // First handle errors
     if (cqe.res < 0) {
         switch (-cqe.res) {
-            case EBADF:  std::printf("  Error: Bad file descriptor\n"); break;
-            case EINVAL: std::printf("  Error: Invalid argument\n"); break;
-            case EACCES: std::printf("  Error: Permission denied\n"); break;
-            case ENOENT: std::printf("  Error: No such file or directory\n"); break;
-            case EAGAIN: std::printf("  Error: Resource temporarily unavailable\n"); break;
-            default:     std::printf("  Error code: %d\n", -cqe.res); break;
+            case EBADF:  std::print("  Error: Bad file descriptor\n"); break;
+            case EINVAL: std::print("  Error: Invalid argument\n"); break;
+            case EACCES: std::print("  Error: Permission denied\n"); break;
+            case ENOENT: std::print("  Error: No such file or directory\n"); break;
+            case EAGAIN: std::print("  Error: Resource temporarily unavailable\n"); break;
+            default:     std::print("  Error code: {}\n", -cqe.res); break;
         }
-        std::printf("-------------------\n");
+        std::print("-------------------\n");
         return;
     }
 
@@ -327,8 +327,8 @@ void debug_cqe(const struct io_uring_cqe& cqe, const IOSystem* io) {
     
     // Validate the index
     if (sqe_index > mask) {
-        std::printf("  Error: Invalid SQE index\n");
-        std::printf("-------------------\n");
+        std::print("  Error: Invalid SQE index\n");
+        std::print("-------------------\n");
         return;
     }
 
@@ -336,93 +336,93 @@ void debug_cqe(const struct io_uring_cqe& cqe, const IOSystem* io) {
     const struct io_uring_sqe* sqe = &io->sqes[sqe_index];
     
     // Print operation info based on opcode
-    std::printf("  SQE Index: %u\n", sqe_index);
-    std::printf("  Operation: ");
+    std::print("  SQE Index: {}\n", sqe_index);
+    std::print("  Operation: ");
     
     switch (sqe->opcode) {
         case IORING_OP_OPENAT:
-            std::printf("OPEN\n");
-            std::printf("  Path: %s\n", (const char*)sqe->addr);
-            std::printf("  Flags: 0x%x\n", sqe->open_flags);
-            std::printf("  Mode: 0%o\n", sqe->len);
+            std::print("OPEN\n");
+            std::print("  Path: {}\n", (const char*)sqe->addr);
+            std::print("  Flags: {:#x}\n", sqe->open_flags);
+            std::print("  Mode: {:#o}\n", sqe->len);
             if (cqe.res >= 0) {
-                std::printf("  Assigned fd: %d\n", cqe.res);
+                std::print("  Assigned fd: {}\n", cqe.res);
             }
             break;
             
         case IORING_OP_READ:
-            std::printf("READ\n");
-            std::printf("  fd: %d\n", sqe->fd);
-            std::printf("  Buffer: %p\n", (void*)sqe->addr);
-            std::printf("  Length: %u\n", sqe->len);
-            std::printf("  Offset: %llu\n", sqe->off);
+            std::print("READ\n");
+            std::print("  fd: {}\n", sqe->fd);
+            std::print("  Buffer: {}\n", (void*)sqe->addr);
+            std::print("  Length: {}\n", sqe->len);
+            std::print("  Offset: {}\n", sqe->off);
             if (cqe.res >= 0) {
-                std::printf("  Bytes read: %d\n", cqe.res);
+                std::print("  Bytes read: {}\n", cqe.res);
             }
             break;
             
         case IORING_OP_WRITE:
-            std::printf("WRITE\n");
-            std::printf("  fd: %d\n", sqe->fd);
-            std::printf("  Buffer: %p\n", (void*)sqe->addr);
-            std::printf("  Length: %u\n", sqe->len);
-            std::printf("  Offset: %llu\n", sqe->off);
+            std::print("WRITE\n");
+            std::print("  fd: {}\n", sqe->fd);
+            std::print("  Buffer: {}\n", (void*)sqe->addr);
+            std::print("  Length: {}\n", sqe->len);
+            std::print("  Offset: {}\n", sqe->off);
             if (cqe.res >= 0) {
-                std::printf("  Bytes written: %d\n", cqe.res);
+                std::print("  Bytes written: {}\n", cqe.res);
             }
             break;
             
         case IORING_OP_CLOSE:
-            std::printf("CLOSE\n");
-            std::printf("  fd: %d\n", sqe->fd);
+            std::print("CLOSE\n");
+            std::print("  fd: {}\n", sqe->fd);
             if (cqe.res == 0) {
-                std::printf("  Status: Successfully closed\n");
+                std::print("  Status: Successfully closed\n");
             }
             break;
             
         default:
-            std::printf("UNKNOWN (%d)\n", sqe->opcode);
+            std::print("UNKNOWN ({})\n", sqe->opcode);
     }
 
     // Print CQE flags if any
     if (cqe.flags) {
-        std::printf("  CQE Flags: 0x%x\n", cqe.flags);
+        std::print("  CQE Flags: {:#x}\n", cqe.flags);
         if (cqe.flags & IORING_CQE_F_BUFFER) {
-            std::printf("    - Buffer selected\n");
+            std::print("    - Buffer selected\n");
         }
         if (cqe.flags & IORING_CQE_F_MORE) {
-            std::printf("    - More data available\n");
+            std::print("    - More data available\n");
         }
         if (cqe.flags & IORING_CQE_F_SOCK_NONEMPTY) {
-            std::printf("    - Socket non-empty\n");
+            std::print("    - Socket non-empty\n");
         }
     }
 
     // Print SQE flags if any
     if (sqe->flags) {
-        std::printf("  SQE Flags: 0x%x\n", sqe->flags);
+        std::print("  SQE Flags: {:#x}\n", sqe->flags);
         if (sqe->flags & IOSQE_FIXED_FILE) {
-            std::printf("    - Fixed file\n");
+            std::print("    - Fixed file\n");
         }
         if (sqe->flags & IOSQE_IO_DRAIN) {
-            std::printf("    - IO drain\n");
+            std::print("    - IO drain\n");
         }
         if (sqe->flags & IOSQE_IO_LINK) {
-            std::printf("    - IO link\n");
+            std::print("    - IO link\n");
         }
         if (sqe->flags & IOSQE_IO_HARDLINK) {
-            std::printf("    - IO hardlink\n");
+            std::print("    - IO hardlink\n");
         }
         if (sqe->flags & IOSQE_ASYNC) {
-            std::printf("    - Async\n");
+            std::print("    - Async\n");
         }
     }
 
     if (sqe->user_data) {
-        std::printf("  User data: 0x%llx\n", (unsigned long long)sqe->user_data);
+        std::print("  User data: {:#x}\n", (unsigned long long)sqe->user_data);
     }
     
-    std::printf("-------------------\n");
+    std::print("-------------------\n");
 }
 
 int main() {
@@ -435,16 +435,16 @@ int main() {
     // open
     res = io.open_file("test.txt", O_RDWR | O_CREAT | O_TRUNC | O_NONBLOCK, 0666);  
     if (res < 0) {
-        std::printf("Failed to submit file open operation\n");
+        std::print("Failed to submit file open operation\n");
         io.fini(); 
         return -1;
     }
-    std::printf("open file operation submitted\n");
+    std::print("open file operation submitted\n");
 
     // wait
     res = io.wait_one(&cqe);
     if (res < 0) {
-        std::printf("Failed to wait for completion\n");
+        std::print("Failed to wait for completion\n");
         io.fini();
         return -1;
     }
@@ -454,16 +454,16 @@ int main() {
     int fd = cqe->res; // Get the file descriptor from the completion event
     res = io.write_file(fd, "Hello World!", 12, 0);
     if (res < 0) {
-        std::printf("Failed to submit file write operation\n");
+        std::print("Failed to submit file write operation\n");
         io.fini();
         return -1;
     }
-    std::printf("write file operation submitted\n");
+    std::print("write file operation submitted\n");
 
     // wait
     res = io.wait_one(&cqe);
     if (res < 0) {
-        std::printf("Failed to wait for completion\n");
+        std::print("Failed to wait for completion\n");
         io.fini();
         return -1;
     }
@@ -472,15 +472,15 @@ int main() {
     // close
     res = io.close(fd);
     if (res < 0) {
-        std::printf("Failed to submit file close operation\n");
+        std::print("Failed to submit file close operation\n");
         io.fini();
         return -1;
     }
-    std::printf("close file operation submitted\n");
+    std::print("close file operation submitted\n");
 
     res = io.wait_one(&cqe);
     if (res < 0) {
-        std::printf("Failed to wait for completion\n");
+        std::print("Failed to wait for completion\n");
         io.fini();
         return -1;
     }

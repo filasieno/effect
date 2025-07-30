@@ -32,18 +32,14 @@ test_%: build/test_%
 	"$<" | cat -n
 	printf --  '\e[33m---------- Finished test:\e[0m %s\n' '$<'
 
-#build/precompiled.pch: src/precompiled.hpp | build/.
-#	$(COMPILE.cc) -x c++-header -MMD -MP -MF build/precompiled.d -o $@ -c $< 
-#
-#-include build/precompiled.d
+build/precompiled.pch: src/precompiled.hpp | build/.
+	$(COMPILE.cc) -x c++-header -MMD -MP -MF build/precompiled.d -o $@ -c $< 
 
-#.PRECIOUS: build/%.o
-#build/%.o: src/%.cc build/precompiled.pch | build/.
-#	$(COMPILE.cc) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $< 
+-include build/precompiled.d
 
 .PRECIOUS: build/%.o
-build/%.o: src/%.cc | build/.
-	$(COMPILE.cc) -MMD -MP -MF build/$*.d -o $@ -c $< 
+build/%.o: src/%.cc build/precompiled.pch | build/.
+	$(COMPILE.cc) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $< 
 
 -include $(patsubst src/%.cc,build/%.d,$(wildcard src/*.cc))
 

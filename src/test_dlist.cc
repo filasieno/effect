@@ -43,6 +43,6 @@ int main() {
   assert(d2.node.next == &d3.node);    
   assert(d1.node.prev == &d3.node);     
   
-  std::printf("done\n");
+  std::print("done\n");
   return 0;
 }

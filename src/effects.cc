@@ -15,8 +15,8 @@ TaskHdl SuspendOp::await_suspend(TaskHdl current_task_hdl) const noexcept {
         checkTaskCountInvariant();
     }
     
-    std::printf("SuspendEffect: suspending task(%p)\n", &gKernel.currentTask.promise());
-    std::printf("Task(%p): scheduleNextTask() suspending the current task\n", &current_promise); 
+    std::print("SuspendEffect: suspending task({})\n", (void*)&gKernel.currentTask.promise());
+    std::print("Task({}): scheduleNextTask() suspending the current task\n", (void*)&current_promise); 
 
     // Move the current task from RUNNINIG to READY
     current_promise.state = TaskState::READY;

@@ -45,7 +45,7 @@ struct TaskPromise {
         constexpr bool await_ready() const noexcept { return false; }
         TaskHdl        await_suspend(TaskHdl hdl) const noexcept;
         constexpr void await_resume() const noexcept {
-            std::printf("TaskPromise::FinalSuspend: illegal await_resume\n");
+            std::print("TaskPromise::FinalSuspend: illegal await_resume\n");
             assert(false);
         }
     };
@@ -317,19 +317,19 @@ inline constexpr auto suspend() noexcept-> SuspendOp { return {}; }
 
 inline constexpr void TaskPromise::InitialSuspend::await_resume() const noexcept {
     TaskPromise& current_task = gKernel.currentTask.promise();
-    std::printf("TaskPromise::InitialSuspend::await_resume(): started Task(%p); state: %d\n", &current_task, current_task.state); 
+    std::print("TaskPromise::InitialSuspend::await_resume(): started Task({}); state: {}\n", (void*)&current_task, (int)current_task.state); 
     std::fflush(stdout);
 }
 
 //  SuspendEffect
 
 inline constexpr bool SuspendOp::await_ready() const noexcept { 
-    std::printf("Suspend effect: is_ready? (always false)\n");
+    std::print("Suspend effect: is_ready? (always false)\n");
     return false; 
 }
 
 inline constexpr void SuspendOp::await_resume() const noexcept {
-    std::printf("SuspendEffect::await_resume(): resumed Task(%p)\n", &gKernel.currentTask.promise());
+    std::print("SuspendEffect::await_resume(): resumed Task({})\n", (void*)&gKernel.currentTask.promise());
 }
 
 // Task::AwaitTaskEffect
