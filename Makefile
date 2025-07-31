@@ -49,10 +49,11 @@ ANSI_RESET :=
 endif
 
 
-define trace
-printf -- '[%b%s%b] %b%s%b\n' '$(ANSI_HIWHITE)' "$$$$" '$(ANSI_RESET)' '$(ANSI_WHITE)' '$1' '$(ANSI_RESET)'
-endef
-
+ifeq ($(findstring --debug,$(MAKEFLAGS))$(findstring --trace,$(MAKEFLAGS)),)
+trace = printf -- '[$(ANSI_HIWHITE)%s$(ANSI_RESET)] $(ANSI_WHITE)%s$(ANSI_RESET)\n' "$$$$" '$1'
+else
+trace :=
+endif
 
 .PRECIOUS: %/.
 %/.:
@@ -65,9 +66,9 @@ run_%: build/%
 
 .NOTPARALLEL: test_%
 test_%: build/test_%
-	printf -- '%b---------- Running test:%b %s\n' '$(ANSI_YELLOW)' '$<' '$(ANSI_RESET)'
-	"$<" | cat -n
-	printf -- '%b---------- Finished test:%b %s\n' '$(ANSI_YELLOW)' '$<' '$(ANSI_RESET)'
+	printf -- '$(ANSI_YELLOW)---------- Running test:$(ANSI_RESET) %s\n' '$<'
+	"$<" |& cat -n
+	printf -- '$(ANSI_YELLOW)---------- Finished test:$(ANSI_RESET) %s\n' '$<'
 
 build/precompiled.pch: src/precompiled.hpp | build/.
 	$(call trace,CXX -o $@ -c $<)
@@ -79,14 +80,14 @@ build/precompiled.pch: src/precompiled.hpp | build/.
 .PRECIOUS: build/%.o
 build/%.o: src/%.cc build/precompiled.pch | build/.
 	$(call trace,CXX -o $@ -c $<)
-	$(COMPILE.cc) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $< 
+	$(COMPILE.cc) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $<
 
 -include $(patsubst src/%.cc,build/%.d,$(wildcard src/*.cc))
 
 .PRECIOUS: build/%
 build/%: build/%.o  | build/.
 	$(call trace,LINK -o $@ $^ $(LDLIBS))
-	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LDLIBS) 
+	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LDLIBS)
 
 
 .PHONY: clean
