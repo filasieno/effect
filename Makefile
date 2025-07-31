@@ -1,78 +1,119 @@
+#!/usr/bin/make
 
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 MAKEFLAGS += --warn-undefined-variables
 MAKEFLAGS += --no-builtin-rules
+MAKEFLAGS += --silent
+MAKEFLAGS += --output-sync=target
 .ONESHELL:
 .DELETE_ON_ERROR:
 
 TARGET_ARCH = -march=x86-64
 CXX = clang++
+
 CXXFLAGS = -Wall -Wextra
 CXXFLAGS += -std=c++2c -fno-exceptions -fno-rtti
+CXXFLAGS += -fdiagnostics-color=always
+
+CONFIG ?= debug
+ifeq ($(CONFIG),debug)
 CXXFLAGS += -g
+endif
+
 LDFLAGS =
 LDLIBS = -luring 
 CPPFLAGS = -I./src
 CC := $(CXX)
 
 .PHONY: all
-#all:: build/io build/task
 all:: build/test_dlist build/test_task
+
+COLOR ?= yes
+ifdef COLOR
+ESC := $(shell printf '\033')
+ANSI_RED := $(ESC)[0;31m
+ANSI_GREEN := $(ESC)[0;32m
+ANSI_YELLOW := $(ESC)[0;33m
+ANSI_WHITE := $(ESC)[0;37m
+ANSI_HIWHITE := $(ESC)[1;37m
+ANSI_RESET := $(ESC)[0m
+else
+ESC :=
+ANSI_RED :=
+ANSI_GREEN :=
+ANSI_YELLOW :=
+ANSI_WHITE :=
+ANSI_HIWHITE :=
+ANSI_RESET :=
+endif
+
+
+define trace
+printf -- '[%b%s%b] %b%s%b\n' '$(ANSI_HIWHITE)' "$$$$" '$(ANSI_RESET)' '$(ANSI_WHITE)' '$1' '$(ANSI_RESET)'
+endef
+
 
 .PRECIOUS: %/.
 %/.:
+	$(call trace,mkdir -p "$(@D)")
 	mkdir -p "$(@D)"
 
 run_%: build/%
+	$(call trace,"$<")
 	"$<"
 
+.NOTPARALLEL: test_%
 test_%: build/test_%
-	@printf -- '\e[33m---------- Running test:\e[0m %s\n' '$<'
+	printf -- '%b---------- Running test:%b %s\n' '$(ANSI_YELLOW)' '$<' '$(ANSI_RESET)'
 	"$<" | cat -n
-	printf --  '\e[33m---------- Finished test:\e[0m %s\n' '$<'
+	printf -- '%b---------- Finished test:%b %s\n' '$(ANSI_YELLOW)' '$<' '$(ANSI_RESET)'
 
 build/precompiled.pch: src/precompiled.hpp | build/.
-	$(COMPILE.cc) -x c++-header -MMD -MP -MF build/precompiled.d -o $@ -c $< 
+	$(call trace,CXX -o $@ -c $<)
+	$(COMPILE.cc) -x c++-header -MMD -MP -MF build/precompiled.d -o $@ -c $<
 
 -include build/precompiled.d
 
+
 .PRECIOUS: build/%.o
 build/%.o: src/%.cc build/precompiled.pch | build/.
+	$(call trace,CXX -o $@ -c $<)
 	$(COMPILE.cc) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $< 
 
 -include $(patsubst src/%.cc,build/%.d,$(wildcard src/*.cc))
 
 .PRECIOUS: build/%
 build/%: build/%.o  | build/.
-#	$(LINK.o) $(LDLIBS) -o $@ $^
-	$(CXX) $(LDFLAGS) $(TARGET_ARCH) $(LDLIBS) -o $@ $^
+	$(call trace,LINK -o $@ $^ $(LDLIBS))
+	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LDLIBS) 
 
 
 .PHONY: clean
 clean::
+	$(call trace,rm -rf build)
 	rm -rf build
 
 .PHONY: run
 run:: 
 
 .PHONY: test
-#test:: clean
+.NOTPARALLEL: test
 test::
 	reset
 
 .PHONY: watch
 watch: 
-	@printf -- '\e[33m---------- Watching for changes...\e[0m\n'
+	printf -- '%b---------- Watching for changes...%b\n' '$(ANSI_YELLOW)' '$(ANSI_RESET)'
 	inotifywait -qmr -e close_write,delete,move ./src | while read -r event; do
 		reset
-		printf -- '\e[33m---------- Detected change:\e[0m %s\n' "$$event"
+		printf -- '%b---------- Detected change:%b %s\n' '$(ANSI_YELLOW)' "$$event" '$(ANSI_RESET)'
 		while read -r -t 1.0 debounce_event; do :; done
 		declare -i exit_code=0
-		if ! make all; then
-			printf -- '\e[31m---------- Build failed\e[0m\n'
+		if ! $(MAKE) all; then
+			printf -- '%b---------- Build failed%b\n' '$(ANSI_RED)' '$(ANSI_RESET)'
 		else
-			printf -- '\e[32m---------- Build successful\e[0m\n'
+			printf -- '%b---------- Build successful%b\n' '$(ANSI_GREEN)' '$(ANSI_RESET)'
 		fi
 	done
 
