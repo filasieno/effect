@@ -6,6 +6,7 @@
 #include <functional>
 #include "defs.hpp"
 
+
 // -----------------------------------------------------------------------------
 // Basic definitions
 // -----------------------------------------------------------------------------
@@ -17,9 +18,11 @@ struct TaskPromise;
 struct SchedulerTaskPromise;
 struct SuspendOp;
 struct NopEffect;
+struct KernelBootPromise;
 
-using CoroHdl = std::coroutine_handle<>;
-using TaskHdl = std::coroutine_handle<TaskPromise>;
+using CoroHdl           = std::coroutine_handle<>;
+using TaskHdl           = std::coroutine_handle<TaskPromise>;
+using KernelBootTaskHdl = std::coroutine_handle<KernelBootPromise>;
 
 template <typename... Args>
 using TaskFn = std::function<Task(Args...)>;
@@ -240,7 +243,7 @@ struct Kernel {
     int   taskCount;
     int   readyCount;      // number of live tasks 
     int   waitingCount;    // task waiting for execution (On Internal Critical sections)
-    int   ioWaitingCount; // task waiting for IO URing
+    int   ioWaitingCount;  // task waiting for IO URing
     int   zombieCount;     // dead tasks
 
     int   interrupted;
@@ -249,9 +252,9 @@ struct Kernel {
     
     DList zombieList;
     DList readyList;
-    DList taskList;  // global task list
+    DList taskList;        // global task list
 
-    CoroHdl kernelTask;
+    KernelBootTaskHdl kernelTask;
 };
 
 extern struct Kernel gKernel;

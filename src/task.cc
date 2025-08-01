@@ -41,15 +41,21 @@ TaskPromise::TaskPromise() {
 }
 
 TaskPromise::~TaskPromise() {
+    std::print("TaskPromise::TaskPromise(): about to finalize Task({})\n", (void*)this); 
+    debugTaskCount();
     assert(state == TaskState::ZOMBIE);
-    taskList.detach();
-    waitNode.detach();
-    waitingTaskNode.detach();
-    std::print("TaskPromise::TaskPromise(): Task({}) finalized\n", (void*)this);
+    assert(!taskList.detached());
+    assert(!waitNode.detached());
 
-    // todo: move await from destructor
+    taskList.detach();
     --gKernel.taskCount;
+    
+    waitNode.detach();
     --gKernel.zombieCount;
+    // state now is invalid
+    
+    std::print("TaskPromise::TaskPromise(): did finalize Task({})\n", (void*)this); 
+    debugTaskCount();
     checkInvariants();
 }
 

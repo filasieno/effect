@@ -5,10 +5,6 @@ struct Kernel gKernel;
 static void initKernel() noexcept;
 static void finiKernel() noexcept; 
 
-struct KernelBootPromise;
-
-using KernelBootTaskHdl = std::coroutine_handle<KernelBootPromise>;
-
 struct RunSchedulerTaskOp {
 
     RunSchedulerTaskOp(TaskHdl schedulerHdl) : schedulerHdl(schedulerHdl) {};
@@ -20,7 +16,7 @@ struct RunSchedulerTaskOp {
     TaskHdl await_suspend(KernelBootTaskHdl currentTaskHdl) const noexcept {
         (void)currentTaskHdl;
         TaskPromise& schedulerPromise = schedulerHdl.promise();
-        std::print("ExecuteSchedulerTaskEffect::await_suspend: about to suspend KernelBootTaskHdl({0})\n", (void*)&currentTaskHdl.promise()); 
+        std::print("RunSchedulerTaskOp::await_suspend: about to suspend KernelBootTaskHdl({0})\n", (void*)&currentTaskHdl.promise()); 
         
         // Check expected state post scheduler construction
         
@@ -38,12 +34,12 @@ struct RunSchedulerTaskOp {
     
         // Check expected state post task system bootstrap
         checkInvariants();
-        std::print("ExecuteSchedulerTaskEffect::await_suspend: about to resume Task({0})\n", (void*)&schedulerHdl.promise());
+        std::print("RunSchedulerTaskOp::await_suspend: about to resume Task({0})\n", (void*)&schedulerHdl.promise());
         return schedulerHdl;
     }
 
     void await_resume() const noexcept {
-        std::print("ExecuteSchedulerTaskEffect: await_resume\n");
+        std::print("RunSchedulerTaskOp: await_resume\n");
     }
 
     TaskHdl schedulerHdl;
@@ -51,21 +47,21 @@ struct RunSchedulerTaskOp {
 
 struct TerminateSchedulerOp {
     constexpr bool await_ready() const noexcept { return false; }
-    CoroHdl await_suspend(TaskHdl hdl) const noexcept { 
+    KernelBootTaskHdl await_suspend(TaskHdl hdl) const noexcept { 
+        std::print(">> TerminateSchedulerOp: about to terminate the scheduler task\n");         
         assert(gKernel.currentTask == gKernel.schedulerTask);
         assert(gKernel.currentTask == hdl);
 
         TaskPromise& schedulerPromise = gKernel.schedulerTask.promise();
         assert(schedulerPromise.state == TaskState::RUNNING);
         assert(schedulerPromise.waitNode.detached()); 
-
-        std::print(">> TerminateSchedulerOp: terminating scheduler task\n");        
         
         schedulerPromise.state = TaskState::ZOMBIE;
+        gKernel.currentTask.clear();
         gKernel.zombieList.pushBack(&schedulerPromise.waitNode);
         ++gKernel.zombieCount;
-        gKernel.currentTask.clear();        
         
+        std::print(">> TerminateSchedulerOp: did terminate the scheduler task\n");         
         return gKernel.kernelTask;
     }
     constexpr void await_resume() const noexcept {}
@@ -75,15 +71,15 @@ struct SchedulerTask {
     using promise_type = TaskPromise;
     
     SchedulerTask(TaskHdl hdl) noexcept : hdl(hdl) {}
-    ~SchedulerTask() noexcept { hdl.destroy(); }
+    ~SchedulerTask() noexcept { 
+        hdl.destroy();
+    }
     bool done() const noexcept { return hdl.done(); }
     RunSchedulerTaskOp run() const noexcept { return RunSchedulerTaskOp{hdl}; }
     TaskState state() const noexcept;
 
     TaskHdl hdl;
 };
-
-static SchedulerTask scheduler(std::function<Task()> userMainTask) noexcept;
 
 struct KernelBootPromise {
 
@@ -100,17 +96,17 @@ struct KernelBootPromise {
     }
 
     std::suspend_always initial_suspend() noexcept { 
-        std::print("KernelBootPromise({0})::initial_suspend (std::suspend_always)\n", (void*)this);    
+        std::print("KernelBootPromise({0})::initial_suspend()\n", (void*)this);    
         return {}; 
     }
 
     std::suspend_never final_suspend() noexcept { 
-        std::print("KernelBootPromise({0})::final_suspend (std::suspend_never)\n", (void*)this);    
+        std::print("KernelBootPromise({0})::final_suspend()\n", (void*)this);    
         return {}; 
     }
 
     void return_void() noexcept {
-        std::print("KernelBootPromise({0})::return_void\n", (void*)this);    
+        std::print("KernelBootPromise({0})::return_void(): Kernel Task has returned\n", (void*)this);    
     }
 
     void unhandled_exception() noexcept { assert(false); }
@@ -122,29 +118,16 @@ struct KernelBootTask {
     using promise_type = KernelBootPromise;
     
     KernelBootTask(KernelBootTaskHdl hdl) noexcept : hdl(hdl) {}
-    ~KernelBootTask() noexcept { hdl.destroy();}
+    ~KernelBootTask() noexcept { 
+        // hdl.destroy();
+    }
     void run() { hdl.resume();}
 
     KernelBootTaskHdl hdl;
 };
 
-KernelBootTask mainKernelTask(std::function<Task()> userMainTask) noexcept {
-    
-    std::print("mainKernelTask(std::function<Task): started the main kernel task\n"); 
-    
-    // Spawn the SchedulerTask
-    std::print("mainKernelTask(std::function<Task): about to spawn the SchedulerTask\n"); 
-    SchedulerTask schedulerTask = scheduler(userMainTask);
-    gKernel.schedulerTask = schedulerTask.hdl;
-    std::print("mainKernelTask(std::function<Task): did spawn SchedulerTask({0})\n", (void*)&schedulerTask.hdl.promise()); 
-
-    std::print("mainKernelTask(std::function<Task): about to execute SchedulerTask({0})\n", (void*)&schedulerTask.hdl.promise());  
-    co_await schedulerTask.run();
-    std::print("mainKernelTask(std::function<Task): did to execute SchedulerTask({0})\n", (void*)&schedulerTask.hdl.promise());  
-    
-    std::print("mainKernelTask(std::function<Task): terminated the main kernel task\n"); 
-    co_return;
-}
+static KernelBootTask mainKernelTask(std::function<Task()> userMainTask) noexcept;
+static SchedulerTask  schedulerTask(std::function<Task()> userMainTask) noexcept;
 
 int runMainTask(std::function<Task()> userMainTask) noexcept {
     std::setbuf(stdout, nullptr);
@@ -168,30 +151,28 @@ int runMainTask(std::function<Task()> userMainTask) noexcept {
     return 0; 
 }
 
-void initKernel() noexcept {
-    gKernel.taskCount = 0;
-    gKernel.readyCount = 0;
-    gKernel.waitingCount = 0;
-    gKernel.ioWaitingCount = 0;
-    gKernel.zombieCount = 0;
-    gKernel.interrupted = 0;
-    gKernel.currentTask.clear();
-    gKernel.schedulerTask.clear();
-    gKernel.zombieList.init();
-    gKernel.readyList.init();
-    gKernel.taskList.init();
-    std::print("Kernel::init(): initialized\n");
-}
+KernelBootTask mainKernelTask(std::function<Task()> userMainTask) noexcept {
+    
+    std::print("mainKernelTask(std::function<Task): started the main kernel task\n"); 
+    
+    // Spawn the SchedulerTask
+    std::print("mainKernelTask(std::function<Task): about to spawn the SchedulerTask\n"); 
+    SchedulerTask task = schedulerTask(userMainTask);
+    gKernel.schedulerTask = task.hdl;
+    std::print("mainKernelTask(std::function<Task): did spawn SchedulerTask({0})\n", (void*)&task.hdl.promise()); 
 
-void finiKernel() noexcept {
-    // TODO: add checks to ensure all tasks are finalized
-
-    std::print("Kernel::fini(): finalized\n");
+    std::print("mainKernelTask(std::function<Task): about to execute SchedulerTask({0})\n", (void*)&task.hdl.promise());  
+    co_await task.run();
+    std::print("mainKernelTask(std::function<Task): did to execute SchedulerTask({0})\n", (void*)&task.hdl.promise());  
+    debugTaskCount();
+    
+    std::print("mainKernelTask(std::function<Task): terminated the main kernel task\n"); 
+    co_return;
 }
 
 static int started = 0;
 
-SchedulerTask scheduler(std::function<Task()> userMainTask) noexcept {    
+SchedulerTask schedulerTask(std::function<Task()> userMainTask) noexcept {    
     ++started;
     std::fflush(stdout);
     assert(started == 1);
@@ -213,8 +194,6 @@ SchedulerTask scheduler(std::function<Task()> userMainTask) noexcept {
         std::print(">> SchedulerTask({}): ready count: {}\n", (void*)&gKernel.currentTask.promise(), gKernel.readyCount);
         if (gKernel.readyCount > 0) {
             std::print(">> SchedulerTask({}): ready count {} > 0\n", (void*)&gKernel.currentTask.promise(), gKernel.readyCount);
-
-            // Pop the next ready task and get its handle
             DList* nextNode = gKernel.readyList.prev;
             TaskPromise& nextPromise = *waitListNodeToTaskPromise(nextNode);
             Task nextTask = TaskHdl::from_promise(nextPromise);
@@ -223,23 +202,50 @@ SchedulerTask scheduler(std::function<Task()> userMainTask) noexcept {
             assert(gKernel.currentTask.isValid());
             continue;
         }
-        std::print(">> SchedulerTask({}): ready count == 0\n", (void*)&gKernel.currentTask.promise());
+        std::print(">> SchedulerTask({}): ready count: 0; zombie count: {}\n", (void*)&gKernel.currentTask.promise(), gKernel.zombieCount);
         
         // Zombie killing
-        // if (gKernel.zombieCount > 0) {
+        // while (gKernel.zombieCount > 0) {
+        //     std::print(">> SchedulerTask({}): about to delete a zombie (remaining zombies: {})\n", (void*)&gKernel.currentTask.promise(), gKernel.zombieCount); 
         //     DList* zombieNode = gKernel.zombieList.popFront();
-        //     --gKernel.zombieCount;
         //     TaskPromise& zombiePromise = *waitListNodeToTaskPromise(zombieNode);
         //     TaskHdl zombieTaskHdl = TaskHdl::from_promise(zombiePromise);
         //     zombieTaskHdl.destroy();
+        //     --gKernel.zombieCount;
+        //     std::print(">> SchedulerTask({}): did delete a zombie\n", (void*)&gKernel.currentTask.promise()); 
         // }
         
-        if (gKernel.readyCount== 0) break;
+        if (gKernel.readyCount == 0) break;
     }
     std::print(">> SchedulerTask({}): scheduler task terminated\n", (void*)&gKernel.currentTask.promise());
-    co_await TerminateSchedulerOp{};
+    co_await TerminateSchedulerOp {};
+    
+    assert(false); // Unreachale
     co_return;
 }
+
+
+void initKernel() noexcept {
+    gKernel.taskCount = 0;
+    gKernel.readyCount = 0;
+    gKernel.waitingCount = 0;
+    gKernel.ioWaitingCount = 0;
+    gKernel.zombieCount = 0;
+    gKernel.interrupted = 0;
+    gKernel.currentTask.clear();
+    gKernel.schedulerTask.clear();
+    gKernel.zombieList.init();
+    gKernel.readyList.init();
+    gKernel.taskList.init();
+    std::print("Kernel::init(): initialized\n");
+}
+
+void finiKernel() noexcept {
+    // TODO: add checks to ensure all tasks are finalized
+
+    std::print("Kernel::fini(): finalized\n");
+}
+
 
 
 TaskState SchedulerTask::state() const noexcept {
