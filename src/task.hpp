@@ -29,12 +29,14 @@ using TaskFn = std::function<Task(Args...)>;
 
 enum class TaskState 
 {
+    INVALID = 0,
     CREATED,    // Task has been created (BUT NOT REGISTERED WITH THE RUNTINME)
     READY,      // Ready for execution
     RUNNING,    // Currently running
     IO_WAITING, // Waiting for IO 
     WAITING,    // Waiting for Critical Section
-    ZOMBIE      // Already dead
+    ZOMBIE,     // Already dead 
+    DELETING
 };
 
 

@@ -72,7 +72,19 @@ struct SchedulerTask {
     
     SchedulerTask(TaskHdl hdl) noexcept : hdl(hdl) {}
     ~SchedulerTask() noexcept { 
+        TaskPromise& schedulerPromise = hdl.promise();
+        
+        // Remove from Task list
+        schedulerPromise.taskList.detach();
+        --gKernel.taskCount;
+
+        // Remove from Zombie List
+        schedulerPromise.waitNode.detach();    
+        --gKernel.zombieCount;
+
+        schedulerPromise.state = TaskState::DELETING;
         hdl.destroy();
+
     }
     bool done() const noexcept { return hdl.done(); }
     RunSchedulerTaskOp run() const noexcept { return RunSchedulerTaskOp{hdl}; }
@@ -204,16 +216,31 @@ SchedulerTask schedulerTask(std::function<Task()> userMainTask) noexcept {
         }
         std::print(">> SchedulerTask({}): ready count: 0; zombie count: {}\n", (void*)&gKernel.currentTask.promise(), gKernel.zombieCount);
         
-        // Zombie killing
-        // while (gKernel.zombieCount > 0) {
-        //     std::print(">> SchedulerTask({}): about to delete a zombie (remaining zombies: {})\n", (void*)&gKernel.currentTask.promise(), gKernel.zombieCount); 
-        //     DList* zombieNode = gKernel.zombieList.popFront();
-        //     TaskPromise& zombiePromise = *waitListNodeToTaskPromise(zombieNode);
-        //     TaskHdl zombieTaskHdl = TaskHdl::from_promise(zombiePromise);
-        //     zombieTaskHdl.destroy();
-        //     --gKernel.zombieCount;
-        //     std::print(">> SchedulerTask({}): did delete a zombie\n", (void*)&gKernel.currentTask.promise()); 
-        // }
+        // Zombie bashing
+        while (gKernel.zombieCount > 0) {
+            std::print(">> SchedulerTask({}): about to delete a zombie (remaining zombies: {})\n", (void*)&gKernel.currentTask.promise(), gKernel.zombieCount); 
+            debugTaskCount();
+
+            DList* zombieNode = gKernel.zombieList.popFront();
+            TaskPromise& zombiePromise = *waitListNodeToTaskPromise(zombieNode);
+            assert(zombiePromise.state == TaskState::ZOMBIE);
+            
+            // Remove from zombie list
+            --gKernel.zombieCount;
+            zombiePromise.waitNode.detach();
+
+            // Remove from task list
+            zombiePromise.taskList.detach();
+            --gKernel.taskCount;
+
+            // Delete
+            zombiePromise.state = TaskState::DELETING;
+            TaskHdl zombieTaskHdl = TaskHdl::from_promise(zombiePromise);
+            zombieTaskHdl.destroy();
+
+            std::print(">> SchedulerTask({}): did delete a zombie\n", (void*)&gKernel.currentTask.promise()); 
+            debugTaskCount();
+        }
         
         if (gKernel.readyCount == 0) break;
     }
