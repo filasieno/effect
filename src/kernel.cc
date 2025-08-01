@@ -226,14 +226,14 @@ SchedulerTask scheduler(std::function<Task()> userMainTask) noexcept {
         std::print(">> SchedulerTask({}): ready count == 0\n", (void*)&gKernel.currentTask.promise());
         
         // Zombie killing
-        // TODO: kill zombies
-        //
-        // DList* zombie_promise_node = gKernel.zombieList.pop_front();
-        // TaskPromise* zombie_promise = waitListNodeToTask(zombie_promise_node);
-        // TaskHdl zombie_hdl = TaskHdl::from_promise(*zombie_promise);
-        // zombie_hdl.destroy();        
-        // if (gKernel.zombieCount == 0 && gKernel.readyCount== 0) break;
-
+        // if (gKernel.zombieCount > 0) {
+        //     DList* zombieNode = gKernel.zombieList.popFront();
+        //     --gKernel.zombieCount;
+        //     TaskPromise& zombiePromise = *waitListNodeToTaskPromise(zombieNode);
+        //     TaskHdl zombieTaskHdl = TaskHdl::from_promise(zombiePromise);
+        //     zombieTaskHdl.destroy();
+        // }
+        
         if (gKernel.readyCount== 0) break;
     }
     std::print(">> SchedulerTask({}): scheduler task terminated\n", (void*)&gKernel.currentTask.promise());
