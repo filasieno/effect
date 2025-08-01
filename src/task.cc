@@ -70,13 +70,13 @@ void TaskPromise::return_void() noexcept {
 
     std::print("TaskPromise::TaskPromise(): Task({}) waking up waiting tasks\n", (void*)this);
     do {
-        DList* next_waiting_task = waitingTaskNode.pop_front();
+        DList* next_waiting_task = waitingTaskNode.popFront();
         TaskPromise* next_waiting_task_promise = waitListNodeToTaskPromise(next_waiting_task);
         std::print("TaskPromise::TaskPromise(): Task({}) did wake up Task({})\n", (void*)this, (void*)next_waiting_task_promise);
         assert(next_waiting_task_promise->state == TaskState::WAITING);
         --gKernel.waitingCount;
         next_waiting_task_promise->state = TaskState::READY;
-        gKernel.readyList.push_back(&next_waiting_task_promise->waitNode);
+        gKernel.readyList.pushBack(&next_waiting_task_promise->waitNode);
         ++gKernel.readyCount;
     } while (!waitingTaskNode.detached());
 }
@@ -95,10 +95,10 @@ void TaskPromise::InitialSuspend::await_suspend(TaskHdl hdl) const noexcept {
 
     // Add task to the kernel
     ++gKernel.taskCount;    
-    gKernel.taskList.push_back(&promise.taskList);
+    gKernel.taskList.pushBack(&promise.taskList);
 
     ++gKernel.readyCount;
-    gKernel.readyList.push_back(&promise.waitNode);
+    gKernel.readyList.pushBack(&promise.waitNode);
     promise.state = TaskState::READY;
 
     // Check post-conditions
@@ -131,7 +131,7 @@ TaskHdl TaskPromise::FinalSuspend::await_suspend(TaskHdl hdl) const noexcept {
     // Move the current task from RUNNING to ZOMBIE
     current_task_promise.state = TaskState::ZOMBIE;
     ++gKernel.zombieCount;
-    gKernel.zombieList.push_back(&current_task_promise.waitNode);
+    gKernel.zombieList.pushBack(&current_task_promise.waitNode);
     gKernel.currentTask.clear();
     checkTaskCountInvariant();
 

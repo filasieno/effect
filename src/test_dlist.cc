@@ -1,5 +1,5 @@
 
-#include "dlist.hpp"
+#include "task.hpp"
 #include <cassert>
 #include <print>
 
@@ -28,7 +28,7 @@ int main() {
   d3.node.init();
   assert(d3.node.detached());
 
-  d1.node.push_back(&d2.node);
+  d1.node.pushBack(&d2.node);
   assert(!d1.node.detached());
   assert(!d2.node.detached());
   assert(d1.node.next == &d2.node);
@@ -36,7 +36,7 @@ int main() {
   assert(d2.node.prev == &d1.node); 
   assert(d2.node.next == &d1.node); 
 
-  d2.node.push_back(&d3.node);
+  d2.node.pushBack(&d3.node);
   assert(!d3.node.detached());
   assert(d3.node.prev == &d2.node);    
   assert(d3.node.next == &d1.node);  

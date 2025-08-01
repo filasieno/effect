@@ -1,10 +1,9 @@
 #pragma once
 
-
+#include <cassert>
 #include <coroutine>
 #include <print>
 #include <functional>
-#include "dlist.hpp"
 #include "defs.hpp"
 
 // -----------------------------------------------------------------------------
@@ -33,6 +32,94 @@ enum class TaskState
     IO_WAITING, // Waiting for IO 
     WAITING,    // Waiting for Critical Section
     ZOMBIE      // Already dead
+};
+
+
+// -----------------------------------------------------------------------------
+// Utils
+// -----------------------------------------------------------------------------
+
+struct DList {
+
+    void init() {
+        this->next = this;
+        this->prev = this;
+    }
+
+    void detach() {
+        assert(this->next != nullptr);
+        assert(this->prev != nullptr);
+        if (detached()) return;
+        this->next->prev = this->prev;
+        this->prev->next = this->next;
+        this->next = this;
+        this->prev = this;
+    }
+    
+    void pushFront(DList* node) {
+        assert(node != nullptr);
+        assert(this->next != nullptr);
+        assert(this->prev != nullptr);
+        assert(node->detached());
+    
+        node->prev = this->prev;
+        node->next = this;
+        
+        node->prev->next = node;
+        this->prev = node; 
+    }
+
+    void pushBack(DList* node) {
+        assert(node != nullptr);
+        assert(this->next != nullptr);
+        assert(this->prev != nullptr);
+        assert(node->detached());
+
+        node->next = this->next;
+        node->prev = this;
+        
+        node->next->prev = node;
+        this->next = node;
+    }
+
+    DList* popFront() {
+        assert(this->next != nullptr);
+        assert(this->prev != nullptr);
+        if (detached()) return nullptr;
+        DList* target = this->prev;
+        target->detach();
+        return target;
+    }
+
+    DList* popBack() {
+        assert(this->next != nullptr);
+        assert(this->prev != nullptr);
+        if (detached()) return nullptr;
+        DList* target = this->next;
+        target->detach();
+        return target;
+    }
+
+    DList& front() {
+        assert(this->next != nullptr);
+        assert(this->prev != nullptr);
+        return *this->prev;
+    }
+
+    DList& back() {
+        assert(this->next != nullptr);
+        assert(this->prev != nullptr);
+        return *this->next;        
+    }
+    
+    bool detached() const {
+        assert(this->next != nullptr);
+        assert(this->prev != nullptr);
+        return this->next == this && this->prev == this;
+    }
+
+    DList* next;
+    DList* prev;
 };
 
 // -----------------------------------------------------------------------------
@@ -216,7 +303,7 @@ struct Condition {
             // Move the current task from READY to WAITING into the condition
             currentTaskPromise.state = TaskState::WAITING;
             ++gKernel.waitingCount;
-            condition.waitNode.push_back(&currentTaskPromise.waitNode);
+            condition.waitNode.pushBack(&currentTaskPromise.waitNode);
             gKernel.currentTask.clear();
             checkTaskCountInvariant();
 
@@ -359,7 +446,7 @@ inline constexpr TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const
 
     currentTaskPromise.state = TaskState::WAITING;
     ++gKernel.waitingCount;
-    hdlTaskPromise.waitingTaskNode.push_back(&currentTaskPromise.waitNode);
+    hdlTaskPromise.waitingTaskNode.pushBack(&currentTaskPromise.waitNode);
     gKernel.currentTask.clear();
     checkTaskCountInvariant();
     

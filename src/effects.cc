@@ -21,7 +21,7 @@ TaskHdl SuspendOp::await_suspend(TaskHdl current_task_hdl) const noexcept {
     // Move the current task from RUNNINIG to READY
     current_promise.state = TaskState::READY;
     ++gKernel.readyCount;
-    gKernel.readyList.push_back(&current_promise.waitNode);
+    gKernel.readyList.pushBack(&current_promise.waitNode);
     gKernel.currentTask = TaskHdl();
     checkTaskCountInvariant();
     
@@ -50,7 +50,7 @@ TaskHdl ResumeTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept {
     // Suspend the current Task
     current_task_promise.state = TaskState::READY;
     ++gKernel.readyCount;
-    gKernel.readyList.push_back(&current_task_promise.waitNode);
+    gKernel.readyList.pushBack(&current_task_promise.waitNode);
     gKernel.currentTask = TaskHdl();
     checkTaskCountInvariant();
 
