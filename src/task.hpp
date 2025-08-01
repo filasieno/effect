@@ -128,6 +128,15 @@ struct DList {
 
 struct TaskPromise {
     
+    void* operator new(std::size_t n) noexcept;
+    void  operator delete(void* ptr, std::size_t sz);
+
+    struct InitialSuspend {
+        constexpr bool await_ready() const noexcept { return false; }
+        void           await_suspend(TaskHdl hdl) const noexcept;
+        constexpr void await_resume() const noexcept;
+    };
+
     struct FinalSuspend {
         constexpr bool await_ready() const noexcept { return false; }
         TaskHdl        await_suspend(TaskHdl hdl) const noexcept;
@@ -137,20 +146,10 @@ struct TaskPromise {
         }
     };
     
-    struct InitialSuspend {
-        constexpr bool await_ready() const noexcept { return false; }
-        void           await_suspend(TaskHdl hdl) const noexcept;
-        constexpr void await_resume() const noexcept;
-    };
-
-    void* operator new(std::size_t n) noexcept;
-    void  operator delete(void* ptr, std::size_t sz);
-
     TaskPromise();
     ~TaskPromise();
     
-    TaskHdl get_return_object() noexcept;
-
+    TaskHdl        get_return_object() noexcept;
     InitialSuspend initial_suspend() noexcept { return {}; }
     FinalSuspend   final_suspend() noexcept { return {}; }
     void           return_void() noexcept;
@@ -166,12 +165,8 @@ struct ResumeTaskOp {
 
     explicit ResumeTaskOp(TaskHdl hdl) : hdl(hdl) {};
 
-    constexpr bool await_ready() const noexcept {
-        return hdl.done();
-    }
-
-    TaskHdl await_suspend(TaskHdl currentTaskHdl) const noexcept;
-
+    constexpr bool await_ready() const noexcept { return hdl.done();}
+    TaskHdl        await_suspend(TaskHdl currentTaskHdl) const noexcept;
     constexpr void await_resume() const noexcept {}
 
     TaskHdl hdl;
@@ -218,7 +213,7 @@ struct Task {
     }
 
     auto operator co_await() const noexcept {
-        return JoinTaskOp{hdl};
+        return join();
     }
 
     JoinTaskOp join() const noexcept {
@@ -251,9 +246,12 @@ struct Kernel {
     int   interrupted;
     Task  currentTask;
     Task  schedulerTask;
+    
     DList zombieList;
     DList readyList;
     DList taskList;  // global task list
+
+    CoroHdl kernelTask;
 };
 
 extern struct Kernel gKernel;
@@ -268,7 +266,7 @@ int runMainTask(std::function<Task()> userMainTask) noexcept;
 // Debug & invariant Utilities
 // -----------------------------------------------------------------------------
 
-void checkTaskCountInvariant() noexcept;
+void checkInvariants() noexcept;
 void debugTaskCount() noexcept;
 
 // -----------------------------------------------------------------------------
@@ -298,14 +296,14 @@ struct Condition {
             
             assert(currentTaskPromise.waitNode.detached());
             assert(currentTaskPromise.state == TaskState::RUNNING);
-            checkTaskCountInvariant();
+            checkInvariants();
 
             // Move the current task from READY to WAITING into the condition
             currentTaskPromise.state = TaskState::WAITING;
             ++gKernel.waitingCount;
             condition.waitNode.pushBack(&currentTaskPromise.waitNode);
             gKernel.currentTask.clear();
-            checkTaskCountInvariant();
+            checkInvariants();
 
             // Move the target task from READY to RUNNING
             TaskPromise& schedulerPromise = gKernel.schedulerTask.promise();
@@ -313,7 +311,7 @@ struct Condition {
             schedulerPromise.waitNode.detach(); // remove from ready list
             --gKernel.readyCount;
             gKernel.currentTask = gKernel.schedulerTask;
-            checkTaskCountInvariant();
+            checkInvariants();
             return gKernel.schedulerTask;
         }
 
@@ -360,7 +358,7 @@ struct Condition {
 // Utilities
 // -----------------------------------------------------------------------------
 
-static TaskPromise* waitListNodeToTaskPromise(DList* node) noexcept;
+static TaskPromise* waitListNodeToTaskPromise(const DList* node) noexcept;
 
 // -----------------------------------------------------------------------------
 // Effects
@@ -395,7 +393,7 @@ inline auto getCurrentTask() noexcept {
 // Inline implementation 
 // ==============================================================================
 
-inline TaskPromise* waitListNodeToTaskPromise(DList* node) noexcept {
+inline TaskPromise* waitListNodeToTaskPromise(const DList* node) noexcept {
     unsigned long long promise_off = ((unsigned long long)node) - offsetof(TaskPromise, waitNode);
     return (TaskPromise*)promise_off;
 }
@@ -440,7 +438,7 @@ inline constexpr TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const
     assert(gKernel.currentTask == currentTaskHdl);
     assert(currentTaskPromise.waitNode.detached());
     assert(currentTaskPromise.state == TaskState::RUNNING);
-    checkTaskCountInvariant();
+    checkInvariants();
 
     // Move the current task from RUNNINIG to WAITING
 
@@ -448,7 +446,7 @@ inline constexpr TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const
     ++gKernel.waitingCount;
     hdlTaskPromise.waitingTaskNode.pushBack(&currentTaskPromise.waitNode);
     gKernel.currentTask.clear();
-    checkTaskCountInvariant();
+    checkInvariants();
     
 
     // if (hdlTaskPromise.state == TaskState::READY) {
@@ -462,7 +460,7 @@ inline constexpr TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const
     schedulerPromise.waitNode.detach(); 
     --gKernel.readyCount;
     gKernel.currentTask = gKernel.schedulerTask;
-    checkTaskCountInvariant();
+    checkInvariants();
 
     return gKernel.schedulerTask; 
 }

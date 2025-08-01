@@ -9,21 +9,21 @@ void* TaskPromise::operator new(std::size_t n) noexcept {
     void* mem = std::malloc(n);
     if (!mem)
         return nullptr;
-    unsigned long long frame_head = (unsigned long long)mem;
-    unsigned long long frame_tail = frame_head + n;
-    unsigned long long task_addr  = frame_tail - sizeof(TaskPromise) - 8;
-    std::print("TaskPromise: Did allocate a Task({}) of size: {}\n", (void*)task_addr, n); 
+    unsigned long long frameHead = (unsigned long long)mem;
+    unsigned long long frameTail = frameHead + n;
+    unsigned long long taskAddr  = frameTail - sizeof(TaskPromise) - 8;
+    std::print("TaskPromise: Did allocate a Task({}) of size: {}\n", (void*)taskAddr, n); 
     return mem;
 }
 
 void TaskPromise::operator delete(void* ptr, std::size_t sz) {
-    unsigned long long frame_head = (unsigned long long)ptr;
-    unsigned long long frame_tail = frame_head + sz;
-    unsigned long long task_addr  = frame_tail - sizeof(TaskPromise) - 8;
-    std::print("TaskPromise: About to free Task({}) of size: {}\n", (void*)task_addr, sz);  
+    unsigned long long frameHead = (unsigned long long)ptr;
+    unsigned long long frameTail = frameHead + sz;
+    unsigned long long taskAddr  = frameTail - sizeof(TaskPromise) - 8;
+    std::print("TaskPromise: About to free Task({}) of size: {}\n", (void*)taskAddr, sz);  
     
     std::free(ptr);
-    std::print("TaskPromise: Did free Task({}) of size: {}\n", (void*)task_addr, sz);   
+    std::print("TaskPromise: Did free Task({}) of size: {}\n", (void*)taskAddr, sz);   
 }
 
 TaskPromise::TaskPromise() {
@@ -37,7 +37,7 @@ TaskPromise::TaskPromise() {
     assert(taskList.detached());
     assert(waitNode.detached());
     assert(state == TaskState::CREATED);
-    checkTaskCountInvariant();
+    checkInvariants();
 }
 
 TaskPromise::~TaskPromise() {
@@ -50,7 +50,7 @@ TaskPromise::~TaskPromise() {
     // todo: move await from destructor
     --gKernel.taskCount;
     --gKernel.zombieCount;
-    checkTaskCountInvariant();
+    checkInvariants();
 }
 
 TaskHdl TaskPromise::get_return_object() noexcept { 
@@ -60,7 +60,7 @@ TaskHdl TaskPromise::get_return_object() noexcept {
 
 void TaskPromise::return_void() noexcept {
     std::print("TaskPromise::TaskPromise(): Task({}) returned void\n", (void*)this);
-    checkTaskCountInvariant();
+    checkInvariants();
     
     // Wake up all tasks waiting for this task
     if (waitingTaskNode.detached()) {
@@ -70,13 +70,13 @@ void TaskPromise::return_void() noexcept {
 
     std::print("TaskPromise::TaskPromise(): Task({}) waking up waiting tasks\n", (void*)this);
     do {
-        DList* next_waiting_task = waitingTaskNode.popFront();
-        TaskPromise* next_waiting_task_promise = waitListNodeToTaskPromise(next_waiting_task);
-        std::print("TaskPromise::TaskPromise(): Task({}) did wake up Task({})\n", (void*)this, (void*)next_waiting_task_promise);
-        assert(next_waiting_task_promise->state == TaskState::WAITING);
+        DList* next = waitingTaskNode.popFront();
+        TaskPromise& nextPromise = *waitListNodeToTaskPromise(next);
+        std::print("TaskPromise::TaskPromise(): Task({}) did wake up Task({})\n", (void*)this, (void*)&nextPromise);
+        assert(nextPromise.state == TaskState::WAITING);
         --gKernel.waitingCount;
-        next_waiting_task_promise->state = TaskState::READY;
-        gKernel.readyList.pushBack(&next_waiting_task_promise->waitNode);
+        nextPromise.state = TaskState::READY;
+        gKernel.readyList.pushBack(&nextPromise.waitNode);
         ++gKernel.readyCount;
     } while (!waitingTaskNode.detached());
 }
@@ -91,7 +91,7 @@ void TaskPromise::InitialSuspend::await_suspend(TaskHdl hdl) const noexcept {
     // Check initial preconditions
     assert(promise.state == TaskState::CREATED);
     assert(promise.waitNode.detached());
-    checkTaskCountInvariant();
+    checkInvariants();
 
     // Add task to the kernel
     ++gKernel.taskCount;    
@@ -104,7 +104,7 @@ void TaskPromise::InitialSuspend::await_suspend(TaskHdl hdl) const noexcept {
     // Check post-conditions
     assert(promise.state == TaskState::READY);
     assert(!promise.waitNode.detached()); 
-    checkTaskCountInvariant();
+    checkInvariants();
 
     std::print("TaskPromise::InitialSuspend::await_suspend(TaskHdl hdl): newly spawned Task({}) is {}\n", (void*)&promise, (int)promise.state); 
     debugTaskCount();
@@ -113,35 +113,28 @@ void TaskPromise::InitialSuspend::await_suspend(TaskHdl hdl) const noexcept {
 
 // TaskPromise::FinalSuspend -------------------------------------------------
 
-TaskHdl TaskPromise::FinalSuspend::await_suspend(TaskHdl hdl) const noexcept {
-    TaskPromise& currentTaskPromise = hdl.promise();                            
-    
+TaskHdl TaskPromise::FinalSuspend::await_suspend(TaskHdl currentTaskHdl) const noexcept {
     // Check preconditions
-    assert(gKernel.currentTask == hdl);
-    assert(currentTaskPromise.state == TaskState::RUNNING);
-    assert(currentTaskPromise.waitNode.detached());
-    checkTaskCountInvariant();
+    TaskPromise& currentPromise = currentTaskHdl.promise();                            
+    assert(gKernel.currentTask == currentTaskHdl);
+    assert(currentPromise.state == TaskState::RUNNING);
+    assert(currentPromise.waitNode.detached());
+    checkInvariants();
     
-     // Check the current Task
-    TaskPromise& current_task_promise = hdl.promise();
-    assert(current_task_promise.waitNode.detached());
-    assert(current_task_promise.state == TaskState::RUNNING); 
-    checkTaskCountInvariant();
-
     // Move the current task from RUNNING to ZOMBIE
-    current_task_promise.state = TaskState::ZOMBIE;
+    currentPromise.state = TaskState::ZOMBIE;
     ++gKernel.zombieCount;
-    gKernel.zombieList.pushBack(&current_task_promise.waitNode);
+    gKernel.zombieList.pushBack(&currentPromise.waitNode);
     gKernel.currentTask.clear();
-    checkTaskCountInvariant();
+    checkInvariants();
 
     // Move the SchedulerTask from READY to RUNNING
-    TaskPromise& scheduler_promise = gKernel.schedulerTask.promise();
-    scheduler_promise.state = TaskState::RUNNING;
-    scheduler_promise.waitNode.detach(); // remove from ready list
+    TaskPromise& schedulerPromise = gKernel.schedulerTask.promise();
+    schedulerPromise.state = TaskState::RUNNING;
+    schedulerPromise.waitNode.detach(); // remove from ready list
     --gKernel.readyCount;
     gKernel.currentTask = gKernel.schedulerTask;
-    checkTaskCountInvariant();
+    checkInvariants();
     
     return gKernel.schedulerTask;
 }
@@ -163,14 +156,28 @@ void debugTaskCount() noexcept {
     std::print("----------------:--------\n"); 
 }
 
+inline static void doCheckTaskCountInvariant() noexcept {
+    int running_count = gKernel.currentTask != TaskHdl() ? 1 : 0;
+    bool condition = gKernel.taskCount == running_count + gKernel.readyCount + gKernel.waitingCount + gKernel.ioWaitingCount + gKernel.zombieCount; // -1 for the running task
+    if (!condition) {
+        debugTaskCount();
+        std::abort();
+    }
+}
+
 void checkTaskCountInvariant() noexcept {
-    if (DEFINED_DEBUG) {
-        int running_count = gKernel.currentTask != TaskHdl() ? 1 : 0;
-        bool condition = gKernel.taskCount == running_count + gKernel.readyCount + gKernel.waitingCount + gKernel.ioWaitingCount + gKernel.zombieCount; // -1 for the running task
-        if (!condition) {
-            debugTaskCount();
-            std::abort();
-        }
+    if constexpr (DEFINED_DEBUG) {
+        doCheckTaskCountInvariant();
+    }
+}
+
+void checkInvariants() noexcept {
+    if constexpr (DEFINED_DEBUG) {
+        // check the Task invariants
+        doCheckTaskCountInvariant();
+
+        // Ensure that the current Task is valid
+        // if (gKernel.currentTask.isValid()) std::abort();
     }    
 }
 

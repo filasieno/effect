@@ -55,5 +55,7 @@ Task main_task() noexcept {
 
 
 int main() {
-	return runMainTask(main_task);
+	int res = runMainTask(main_task);
+	std::print("main_task returned {}\n", res);
+	return res;
 }
