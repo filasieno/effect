@@ -29,7 +29,40 @@ int MAX = 10;
 // }
 
 Task aTask() noexcept { 
-	std::print("Hello from A\n");
+	std::print("Hello from A: Step 1\n");
+	co_await suspend();
+
+	std::print("Hello from A: Step 2\n");
+	co_await suspend();
+
+	std::print("Hello from A: Step 3\n");
+	co_await suspend();
+
+	std::print("Hello from A: Step 4\n");
+	co_await suspend();
+
+	std::print("Hello from A: Step 5\n");
+	co_await suspend();
+
+	co_return;
+}
+
+Task aChild() noexcept { 
+	std::print("Hello from A Child: Step 1\n");
+	co_await suspend();
+
+	std::print("Hello from A Child: Step 2\n");
+	co_await suspend();
+
+	std::print("Hello from A Child: Step 3\n");
+	co_await suspend();
+
+	std::print("Hello from A Child: Step 4\n");
+	co_await suspend();
+
+	std::print("Hello from A Child: Step 5\n");
+	co_await suspend();
+
 	co_return;
 }
 

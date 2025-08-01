@@ -131,6 +131,17 @@ struct DList {
 // Task Promise
 // -----------------------------------------------------------------------------
 
+// struct Event {
+//     void signal() noexcept {
+
+//     }
+
+//     void wait() noexcept {
+        
+//     }
+//     DList node;
+// }
+
 struct TaskPromise {
     
     void* operator new(std::size_t n) noexcept;
@@ -163,7 +174,7 @@ struct TaskPromise {
     TaskState state;
     DList     waitNode;        // Used to enqueue tasks waiting for Critical Section
     DList     taskList;        // Global Task list
-    DList     waitingTaskNode; // The list of all tasks waiting for this task
+    DList     terminatedEvent; // The list of all tasks waiting for this task
 };
 
 struct ResumeTaskOp {
@@ -440,20 +451,20 @@ inline constexpr TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const
 
     // Check preconditions
 
-    assert(gKernel.currentTask == currentTaskHdl);
-    assert(currentTaskPromise.waitNode.detached());
     assert(currentTaskPromise.state == TaskState::RUNNING);
+    assert(currentTaskPromise.waitNode.detached());
+    assert(gKernel.currentTask == currentTaskHdl);
     checkInvariants();
 
     // Move the current task from RUNNINIG to WAITING
 
     currentTaskPromise.state = TaskState::WAITING;
     ++gKernel.waitingCount;
-    hdlTaskPromise.waitingTaskNode.pushBack(&currentTaskPromise.waitNode);
+    hdlTaskPromise.terminatedEvent.pushBack(&currentTaskPromise.waitNode);
     gKernel.currentTask.clear();
     checkInvariants();
-    
-
+    std::print("JoinTaskOp::await_suspend(): Task({}) is waiting on Task({}) termination\n", (void*)&currentTaskPromise, (void*)&hdlTaskPromise); 
+    debugTaskCount();
     // if (hdlTaskPromise.state == TaskState::READY) {
     //     // Just move to READY
     //     return hdlTaskPromise;
@@ -461,12 +472,14 @@ inline constexpr TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const
 
     // Move the target task from READY to RUNNING
     TaskPromise& schedulerPromise = gKernel.schedulerTask.promise();
+    assert(schedulerPromise.state == TaskState::READY);
     schedulerPromise.state = TaskState::RUNNING;
     schedulerPromise.waitNode.detach(); 
     --gKernel.readyCount;
     gKernel.currentTask = gKernel.schedulerTask;
     checkInvariants();
-
+    debugTaskCount();
+    
     return gKernel.schedulerTask; 
 }
 
