@@ -41,89 +41,59 @@ enum class TaskState
 // -----------------------------------------------------------------------------
 // Utils
 // -----------------------------------------------------------------------------
+namespace internal_ak {
 
-struct DList {
+    struct Link {
+        Link* next;
+        Link* prev;
+    };
 
-    void init() {
-        this->next = this;
-        this->prev = this;
+    inline void InitLink(Link* dlist) {
+        dlist->next = dlist;
+        dlist->prev = dlist;
     }
 
-    void detach() {
-        assert(this->next != nullptr);
-        assert(this->prev != nullptr);
-        if (detached()) return;
-        this->next->prev = this->prev;
-        this->prev->next = this->next;
-        this->next = this;
-        this->prev = this;
+    inline bool IsLinkDetached(const Link* dlist) {
+        assert(dlist->next != nullptr);
+        assert(dlist->prev != nullptr);
+        return dlist->next == dlist && dlist->prev == dlist;
     }
-    
-    void pushFront(DList* node) {
+
+    inline void DetachLink(Link* dlist) {
+        assert(dlist->next != nullptr);
+        assert(dlist->prev != nullptr);
+        if (IsLinkDetached(dlist)) return;
+        dlist->next->prev = dlist->prev;
+        dlist->prev->next = dlist->next;
+        dlist->next = dlist;
+        dlist->prev = dlist;
+    }
+
+    inline void EnqueueLink(Link* dlist, Link* node) {
         assert(node != nullptr);
-        assert(this->next != nullptr);
-        assert(this->prev != nullptr);
-        assert(node->detached());
-    
-        node->prev = this->prev;
-        node->next = this;
-        
-        node->prev->next = node;
-        this->prev = node; 
-    }
+        assert(dlist->next != nullptr);
+        assert(dlist->prev != nullptr);
+        assert(IsLinkDetached(node));
 
-    void pushBack(DList* node) {
-        assert(node != nullptr);
-        assert(this->next != nullptr);
-        assert(this->prev != nullptr);
-        assert(node->detached());
-
-        node->next = this->next;
-        node->prev = this;
+        node->next = dlist->next;
+        node->prev = dlist;
         
         node->next->prev = node;
-        this->next = node;
+        dlist->next = node;
     }
 
-    DList* popFront() {
-        assert(this->next != nullptr);
-        assert(this->prev != nullptr);
-        if (detached()) return nullptr;
-        DList* target = this->prev;
-        target->detach();
+    inline Link* DequeueLink(Link* dlist) {
+        assert(dlist->next != nullptr);
+        assert(dlist->prev != nullptr);
+        if (IsLinkDetached(dlist)) return nullptr;
+        Link* target = dlist->prev;
+        DetachLink(target);
         return target;
     }
 
-    DList* popBack() {
-        assert(this->next != nullptr);
-        assert(this->prev != nullptr);
-        if (detached()) return nullptr;
-        DList* target = this->next;
-        target->detach();
-        return target;
-    }
+}
 
-    DList& front() {
-        assert(this->next != nullptr);
-        assert(this->prev != nullptr);
-        return *this->prev;
-    }
 
-    DList& back() {
-        assert(this->next != nullptr);
-        assert(this->prev != nullptr);
-        return *this->next;        
-    }
-    
-    bool detached() const {
-        assert(this->next != nullptr);
-        assert(this->prev != nullptr);
-        return this->next == this && this->prev == this;
-    }
-
-    DList* next;
-    DList* prev;
-};
 
 // -----------------------------------------------------------------------------
 // Task Promise
@@ -131,6 +101,7 @@ struct DList {
 
 struct TaskPromise {
     
+
     void* operator new(std::size_t n) noexcept;
     void  operator delete(void* ptr, std::size_t sz);
 
@@ -158,10 +129,10 @@ struct TaskPromise {
     void           return_void() noexcept;
     void           unhandled_exception() noexcept { assert(false); }
 
-    TaskState state;
-    DList     waitNode;        // Used to enqueue tasks waiting for Critical Section
-    DList     taskList;        // Global Task list
-    DList     waitTaskNode; // The list of all tasks waiting for this task
+    TaskState            state;
+    internal_ak::Link waitNode;        // Used to enqueue tasks waiting for Critical Section
+    internal_ak::Link taskList;        // Global Task list
+    internal_ak::Link waitTaskNode; // The list of all tasks waiting for this task
 };
 
 struct ResumeTaskOp {
@@ -250,9 +221,9 @@ struct Kernel {
     Task  currentTask;
     Task  schedulerTask;
     
-    DList zombieList;
-    DList readyList;
-    DList taskList;        // global task list
+    internal_ak::Link zombieList;
+    internal_ak::Link readyList;
+    internal_ak::Link taskList;        // global task list
 
     KernelBootTaskHdl kernelTask;
 };
@@ -263,20 +234,23 @@ extern struct Kernel gKernel;
 // Kernel API 
 // -----------------------------------------------------------------------------
 
-int runMainTask(std::function<Task()> userMainTask) noexcept;
+int AkRun(std::function<Task()> userMainTask) noexcept;
 
 // -----------------------------------------------------------------------------
 // Debug & invariant Utilities
 // -----------------------------------------------------------------------------
 
-void checkInvariants() noexcept;
-void debugTaskCount() noexcept;
+namespace internal_ak {
+    void CheckInvariants() noexcept;
+    void DebugTaskCount() noexcept;
+}
 
 // -----------------------------------------------------------------------------
 // Task Wrappers
 // -----------------------------------------------------------------------------
 
 struct Condition {
+    
 
     struct WaitOp {
         
@@ -287,6 +261,8 @@ struct Condition {
         }
 
         constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) const noexcept {
+            using namespace internal_ak;
+
             TaskPromise& currentTaskPromise = gKernel.currentTask.promise();
 
             assert(gKernel.currentTask == currentTaskHdl);
@@ -295,24 +271,24 @@ struct Condition {
             
             // Check the current Task
             
-            assert(currentTaskPromise.waitNode.detached());
+            assert(IsLinkDetached(&currentTaskPromise.waitNode));
             assert(currentTaskPromise.state == TaskState::RUNNING);
-            checkInvariants();
+            CheckInvariants();
 
             // Move the current task from READY to WAITING into the condition
             currentTaskPromise.state = TaskState::WAITING;
             ++gKernel.waitingCount;
-            condition.waitNode.pushBack(&currentTaskPromise.waitNode);
+            EnqueueLink(&condition.waitNode, &currentTaskPromise.waitNode);
             gKernel.currentTask.clear();
-            checkInvariants();
+            CheckInvariants();
 
             // Move the target task from READY to RUNNING
             TaskPromise& schedulerPromise = gKernel.schedulerTask.promise();
             schedulerPromise.state = TaskState::RUNNING;
-            schedulerPromise.waitNode.detach(); // remove from ready list
+            DetachLink(&schedulerPromise.waitNode); // remove from ready list
             --gKernel.readyCount;
             gKernel.currentTask = gKernel.schedulerTask;
-            checkInvariants();
+            CheckInvariants();
             return gKernel.schedulerTask;
         }
 
@@ -322,7 +298,8 @@ struct Condition {
     };
 
     Condition(bool signaled = false) : signaled(signaled) {
-        waitNode.init();
+        using namespace internal_ak;
+        InitLink(&waitNode);
     }
 
     int signal() {
@@ -343,23 +320,25 @@ struct Condition {
     WaitOp wait() { return WaitOp(*this); }
     
     void reset(bool signaled = false) {
+        using namespace internal_ak;
         this->signaled = signaled;
         locking_task.clear();
-        waitNode.init();
+        InitLink(&waitNode);
     }
 
     // g_kernel.current_task_hdl = TaskHdl();
     // g_kernel.current_task.clear();
     bool  signaled = false;
     Task  locking_task;
-    DList waitNode;
+    internal_ak::Link waitNode;
 };
 
 // -----------------------------------------------------------------------------
 // Utilities
 // -----------------------------------------------------------------------------
-
-static TaskPromise* waitListNodeToTaskPromise(const DList* node) noexcept;
+namespace internal_ak {
+    static TaskPromise* waitListNodeToTaskPromise(const Link* node) noexcept;
+}
 
 // -----------------------------------------------------------------------------
 // Effects
@@ -392,10 +371,11 @@ inline auto getCurrentTask() noexcept {
 // ==============================================================================
 // Inline implementation 
 // ==============================================================================
-
-inline TaskPromise* waitListNodeToTaskPromise(const DList* node) noexcept {
-    unsigned long long promise_off = ((unsigned long long)node) - offsetof(TaskPromise, waitNode);
-    return (TaskPromise*)promise_off;
+namespace internal_ak {
+    inline TaskPromise* waitListNodeToTaskPromise(const Link* node) noexcept {
+        unsigned long long promise_off = ((unsigned long long)node) - offsetof(TaskPromise, waitNode);
+        return (TaskPromise*)promise_off;
+    }
 }
 
 inline constexpr auto suspend() noexcept-> SuspendOp { return {}; }
@@ -430,25 +410,27 @@ inline constexpr bool JoinTaskOp::await_ready() const noexcept
 
 inline constexpr TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept 
 { 
+    using namespace internal_ak;
+
     TaskPromise& currentTaskPromise = currentTaskHdl.promise();
     TaskPromise& hdlTaskPromise = hdl.promise();
 
     // Check preconditions
 
     assert(currentTaskPromise.state == TaskState::RUNNING);
-    assert(currentTaskPromise.waitNode.detached());
+    assert(IsLinkDetached(&currentTaskPromise.waitNode));
     assert(gKernel.currentTask == currentTaskHdl);
-    checkInvariants();
+    CheckInvariants();
 
     // Move the current task from RUNNINIG to WAITING
 
     currentTaskPromise.state = TaskState::WAITING;
     ++gKernel.waitingCount;
-    hdlTaskPromise.waitTaskNode.pushBack(&currentTaskPromise.waitNode);
+    EnqueueLink(&hdlTaskPromise.waitNode, &currentTaskPromise.waitNode);
     gKernel.currentTask.clear();
-    checkInvariants();
+    CheckInvariants();
     std::print("JoinTaskOp::await_suspend(): Task({}) is waiting on Task({}) termination\n", (void*)&currentTaskPromise, (void*)&hdlTaskPromise); 
-    debugTaskCount();
+    DebugTaskCount();
     // if (hdlTaskPromise.state == TaskState::READY) {
     //     // Just move to READY
     //     return hdlTaskPromise;
@@ -458,13 +440,80 @@ inline constexpr TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const
     TaskPromise& schedulerPromise = gKernel.schedulerTask.promise();
     assert(schedulerPromise.state == TaskState::READY);
     schedulerPromise.state = TaskState::RUNNING;
-    schedulerPromise.waitNode.detach(); 
+    DetachLink(&schedulerPromise.waitNode);
     --gKernel.readyCount;
     gKernel.currentTask = gKernel.schedulerTask;
-    checkInvariants();
-    debugTaskCount();
+    CheckInvariants();
+    DebugTaskCount();
 
     return gKernel.schedulerTask; 
 }
 
 inline constexpr void JoinTaskOp::await_resume() const noexcept {}
+
+
+inline TaskHdl SuspendOp::await_suspend(TaskHdl currentTask) const noexcept {
+    using namespace internal_ak;
+    assert(gKernel.currentTask.isValid());
+
+    TaskPromise& currentPromise = currentTask.promise();
+
+    if constexpr (DEFINED_DEBUG) {
+        assert(gKernel.currentTask == currentTask);  
+        assert(currentPromise.state == TaskState::RUNNING);
+        assert(IsLinkDetached(&currentPromise.waitNode));
+        CheckInvariants();
+    }
+    
+    std::print("SuspendEffect: suspending task({})\n", (void*)&gKernel.currentTask.promise());
+    std::print("Task({}): scheduleNextTask() suspending the current task\n", (void*)&currentPromise); 
+
+    // Move the current task from RUNNINIG to READY
+    currentPromise.state = TaskState::READY;
+    ++gKernel.readyCount;
+    EnqueueLink(&gKernel.readyList, &currentPromise.waitNode);
+    gKernel.currentTask.clear();
+    CheckInvariants();
+    
+    // Resume the SchedulerTask
+    TaskPromise& schedulerPromise = gKernel.schedulerTask.promise();
+    schedulerPromise.state = TaskState::RUNNING;
+    DetachLink(&schedulerPromise.waitNode); // remove from ready list
+    --gKernel.readyCount;
+    gKernel.currentTask = gKernel.schedulerTask;
+    CheckInvariants();
+
+    assert(gKernel.currentTask.isValid());
+    return TaskHdl::from_promise(schedulerPromise);
+}
+
+inline TaskHdl ResumeTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept {
+    using namespace internal_ak;
+    assert(gKernel.currentTask == currentTaskHdl);
+    
+    std::print("Task({0})::resume(): requested to resume Task({1})\n", (void*)&gKernel.currentTask.promise(), (void*)&hdl.promise());
+    
+    // Check the current Task
+    TaskPromise& currentPromise = gKernel.currentTask.promise(); 
+    assert(IsLinkDetached(&currentPromise.waitNode));
+    assert(currentPromise.state == TaskState::RUNNING); 
+    CheckInvariants();
+
+    // Suspend the current Task
+    currentPromise.state = TaskState::READY;
+    ++gKernel.readyCount;
+    EnqueueLink(&gKernel.readyList, &currentPromise.waitNode);
+    gKernel.currentTask = TaskHdl();
+    CheckInvariants();
+
+    // Move the target task from READY to RUNNING
+    TaskPromise& promise = hdl.promise();
+    promise.state = TaskState::RUNNING;
+    DetachLink(&promise.waitNode);
+    --gKernel.readyCount;
+    gKernel.currentTask = hdl;
+    CheckInvariants();
+
+    assert(gKernel.currentTask.isValid());
+    return hdl;
+}

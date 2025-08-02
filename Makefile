@@ -5,7 +5,7 @@ SHELL := /bin/bash
 MAKEFLAGS += --warn-undefined-variables
 MAKEFLAGS += --no-builtin-rules
 MAKEFLAGS += --silent
-MAKEFLAGS += --output-sync=target
+#MAKEFLAGS += --output-sync=target
 .ONESHELL:
 .DELETE_ON_ERROR:
 
@@ -138,5 +138,5 @@ build/task: build/main.o
 
 test:: test_dlist
 
-build/test_task: build/task.o build/effects.o build/kernel.o
+build/test_task: build/task.o build/kernel.o
 test:: test_task

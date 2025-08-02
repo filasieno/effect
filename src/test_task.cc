@@ -88,7 +88,7 @@ Task main_task() noexcept {
 
 
 int main() {
-	int res = runMainTask(main_task);
+	int res = AkRun(main_task);
 	std::print("main_task returned {}\n", res);
 	return res;
 }

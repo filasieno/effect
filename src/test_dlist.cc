@@ -3,10 +3,13 @@
 #include <cassert>
 #include <print>
 
+
 struct Data;
 
+using namespace internal_ak;
+
 struct Data {
-    DList node;
+    Link node;
     int  value;
 };
 
@@ -15,29 +18,28 @@ int main() {
   // You can add your test cases or logic here.
   Data d1;
   d1.value = 100;
-  d1.node.init();
-  assert(d1.node.detached());
+  InitLink(&d1.node);
+  assert(IsLinkDetached(&d1.node));
 
   Data d2;
   d2.value = 200;
-  d2.node.init();
-  assert(d2.node.detached());
+  InitLink(&d2.node);
+  assert(IsLinkDetached(&d2.node));
 
   Data d3;
   d3.value = 300;
-  d3.node.init();
-  assert(d3.node.detached());
+  InitLink(&d3.node);
+  assert(IsLinkDetached(&d3.node));
 
-  d1.node.pushBack(&d2.node);
-  assert(!d1.node.detached());
-  assert(!d2.node.detached());
+  EnqueueLink(&d1.node, &d2.node);
+  assert(!IsLinkDetached(&d1.node));
+  assert(!IsLinkDetached(&d2.node));
   assert(d1.node.next == &d2.node);
   assert(d1.node.prev == &d2.node);
   assert(d2.node.prev == &d1.node); 
   assert(d2.node.next == &d1.node); 
 
-  d2.node.pushBack(&d3.node);
-  assert(!d3.node.detached());
+  EnqueueLink(&d2.node, &d3.node);  
   assert(d3.node.prev == &d2.node);    
   assert(d3.node.next == &d1.node);  
   assert(d2.node.next == &d3.node);    

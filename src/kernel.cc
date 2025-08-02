@@ -14,6 +14,8 @@ struct RunSchedulerTaskOp {
     }
 
     TaskHdl await_suspend(KernelBootTaskHdl currentTaskHdl) const noexcept {
+        using namespace internal_ak;
+
         (void)currentTaskHdl;
         TaskPromise& schedulerPromise = schedulerHdl.promise();
         std::print("RunSchedulerTaskOp::await_suspend: about to suspend KernelBootTaskHdl({0})\n", (void*)&currentTaskHdl.promise()); 
@@ -23,17 +25,17 @@ struct RunSchedulerTaskOp {
         assert(gKernel.taskCount == 1);
         assert(gKernel.readyCount == 1);
         assert(schedulerPromise.state == TaskState::READY);
-        assert(!schedulerPromise.waitNode.detached());
+        assert(!IsLinkDetached(&schedulerPromise.waitNode));
         assert(gKernel.currentTask == TaskHdl());
 
         // Setup SchedulerTask for execution (from READY -> RUNNING)
         gKernel.currentTask = schedulerHdl;
         schedulerPromise.state = TaskState::RUNNING;
-        schedulerPromise.waitNode.detach();
+        DetachLink(&schedulerPromise.waitNode);
         --gKernel.readyCount;
     
         // Check expected state post task system bootstrap
-        checkInvariants();
+        CheckInvariants();
         std::print("RunSchedulerTaskOp::await_suspend: about to resume Task({0})\n", (void*)&schedulerHdl.promise());
         return schedulerHdl;
     }
@@ -48,17 +50,18 @@ struct RunSchedulerTaskOp {
 struct TerminateSchedulerOp {
     constexpr bool await_ready() const noexcept { return false; }
     KernelBootTaskHdl await_suspend(TaskHdl hdl) const noexcept { 
+        using namespace internal_ak;
         std::print(">> TerminateSchedulerOp: about to terminate the scheduler task\n");         
         assert(gKernel.currentTask == gKernel.schedulerTask);
         assert(gKernel.currentTask == hdl);
 
         TaskPromise& schedulerPromise = gKernel.schedulerTask.promise();
         assert(schedulerPromise.state == TaskState::RUNNING);
-        assert(schedulerPromise.waitNode.detached()); 
+        assert(IsLinkDetached(&schedulerPromise.waitNode));
         
         schedulerPromise.state = TaskState::ZOMBIE;
         gKernel.currentTask.clear();
-        gKernel.zombieList.pushBack(&schedulerPromise.waitNode);
+        EnqueueLink(&gKernel.zombieList, &schedulerPromise.waitNode);
         ++gKernel.zombieCount;
         
         std::print(">> TerminateSchedulerOp: did terminate the scheduler task\n");         
@@ -75,11 +78,11 @@ struct SchedulerTask {
         TaskPromise& schedulerPromise = hdl.promise();
         
         // Remove from Task list
-        schedulerPromise.taskList.detach();
+        DetachLink(&schedulerPromise.taskList);
         --gKernel.taskCount;
 
         // Remove from Zombie List
-        schedulerPromise.waitNode.detach();    
+        DetachLink(&schedulerPromise.waitNode);
         --gKernel.zombieCount;
 
         schedulerPromise.state = TaskState::DELETING;
@@ -98,6 +101,7 @@ struct KernelBootPromise {
     KernelBootPromise(std::function<Task()> userMainTask) : userMainTask(userMainTask){
         std::print("KernelBootPromise({0}): initialized\n", (void*)this);  
     }
+
     ~KernelBootPromise() {
         std::print("KernelBootPromise({0}): finalized\n", (void*)this);  
     }
@@ -141,7 +145,8 @@ struct KernelBootTask {
 static KernelBootTask mainKernelTask(std::function<Task()> userMainTask) noexcept;
 static SchedulerTask  schedulerTask(std::function<Task()> userMainTask) noexcept;
 
-int runMainTask(std::function<Task()> userMainTask) noexcept {
+int AkRun(std::function<Task()> userMainTask) noexcept {
+    using namespace internal_ak;
     std::setbuf(stdout, nullptr);
     std::setbuf(stderr, nullptr); 
 
@@ -164,7 +169,8 @@ int runMainTask(std::function<Task()> userMainTask) noexcept {
 }
 
 KernelBootTask mainKernelTask(std::function<Task()> userMainTask) noexcept {
-    
+    using namespace internal_ak;
+
     std::print("mainKernelTask(std::function<Task): started the main kernel task\n"); 
     
     // Spawn the SchedulerTask
@@ -176,7 +182,7 @@ KernelBootTask mainKernelTask(std::function<Task()> userMainTask) noexcept {
     std::print("mainKernelTask(std::function<Task): about to execute SchedulerTask({0})\n", (void*)&task.hdl.promise());  
     co_await task.run();
     std::print("mainKernelTask(std::function<Task): did to execute SchedulerTask({0})\n", (void*)&task.hdl.promise());  
-    debugTaskCount();
+    DebugTaskCount();
     
     std::print("mainKernelTask(std::function<Task): terminated the main kernel task\n"); 
     co_return;
@@ -184,7 +190,9 @@ KernelBootTask mainKernelTask(std::function<Task()> userMainTask) noexcept {
 
 static int started = 0;
 
-SchedulerTask schedulerTask(std::function<Task()> userMainTask) noexcept {    
+SchedulerTask schedulerTask(std::function<Task()> userMainTask) noexcept {   
+    using namespace internal_ak;
+
     ++started;
     std::fflush(stdout);
     assert(started == 1);
@@ -197,7 +205,7 @@ SchedulerTask schedulerTask(std::function<Task()> userMainTask) noexcept {
     assert(mainTask.state() == TaskState::READY);
     std::print(">> SchedulerTask({}): did spawn main task\n", (void*)&gKernel.currentTask.promise());
     
-    debugTaskCount();
+    DebugTaskCount();
 
     while (true) {
         std::print(">> SchedulerTask({}): begin scheduler loop\n", (void*)&gKernel.currentTask.promise());
@@ -206,7 +214,7 @@ SchedulerTask schedulerTask(std::function<Task()> userMainTask) noexcept {
         std::print(">> SchedulerTask({}): ready count: {}\n", (void*)&gKernel.currentTask.promise(), gKernel.readyCount);
         if (gKernel.readyCount > 0) {
             std::print(">> SchedulerTask({}): ready count {} > 0\n", (void*)&gKernel.currentTask.promise(), gKernel.readyCount);
-            DList* nextNode = gKernel.readyList.prev;
+            Link* nextNode = gKernel.readyList.prev;
             TaskPromise& nextPromise = *waitListNodeToTaskPromise(nextNode);
             Task nextTask = TaskHdl::from_promise(nextPromise);
             assert(nextTask != gKernel.schedulerTask);
@@ -219,18 +227,18 @@ SchedulerTask schedulerTask(std::function<Task()> userMainTask) noexcept {
         // Zombie bashing
         while (gKernel.zombieCount > 0) {
             std::print(">> SchedulerTask({}): about to delete a zombie (remaining zombies: {})\n", (void*)&gKernel.currentTask.promise(), gKernel.zombieCount); 
-            debugTaskCount();
+            DebugTaskCount();
 
-            DList* zombieNode = gKernel.zombieList.popFront();
+            Link* zombieNode = DequeueLink(&gKernel.zombieList);
             TaskPromise& zombiePromise = *waitListNodeToTaskPromise(zombieNode);
             assert(zombiePromise.state == TaskState::ZOMBIE);
             
             // Remove from zombie list
             --gKernel.zombieCount;
-            zombiePromise.waitNode.detach();
+            DetachLink(&zombiePromise.waitNode);
 
             // Remove from task list
-            zombiePromise.taskList.detach();
+            DetachLink(&zombiePromise.taskList);
             --gKernel.taskCount;
 
             // Delete
@@ -239,7 +247,7 @@ SchedulerTask schedulerTask(std::function<Task()> userMainTask) noexcept {
             zombieTaskHdl.destroy();
 
             std::print(">> SchedulerTask({}): did delete a zombie\n", (void*)&gKernel.currentTask.promise()); 
-            debugTaskCount();
+            DebugTaskCount();
         }
         
         if (gKernel.readyCount == 0) break;
@@ -253,6 +261,7 @@ SchedulerTask schedulerTask(std::function<Task()> userMainTask) noexcept {
 
 
 void initKernel() noexcept {
+    using namespace internal_ak;
     gKernel.taskCount = 0;
     gKernel.readyCount = 0;
     gKernel.waitingCount = 0;
@@ -261,9 +270,9 @@ void initKernel() noexcept {
     gKernel.interrupted = 0;
     gKernel.currentTask.clear();
     gKernel.schedulerTask.clear();
-    gKernel.zombieList.init();
-    gKernel.readyList.init();
-    gKernel.taskList.init();
+    InitLink(&gKernel.zombieList);
+    InitLink(&gKernel.readyList);
+    InitLink(&gKernel.taskList);
     std::print("Kernel::init(): initialized\n");
 }
 
