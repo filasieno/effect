@@ -42,3 +42,6 @@
 
 #build dir
 build
+
+#nix result folder
+# result
