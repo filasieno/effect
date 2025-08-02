@@ -221,22 +221,23 @@ namespace ak_internal {
 
 };
 
+/// \brief Marks a Task coroutine function
 struct DefineTask {
     using promise_type = TaskPromise;
 
-    DefineTask() = default;
     DefineTask(const TaskHdl& hdl) : hdl(hdl) {}
-    DefineTask& operator=(const DefineTask& hdl) = default;
-
-    bool          isValid() const noexcept { return hdl.address() != nullptr; }
-    TaskPromise&  promise() const noexcept { return hdl.promise(); }
-
-    operator      TaskHdl() const noexcept { return hdl; }
+    operator TaskHdl() const noexcept { return hdl; }
 
     TaskHdl hdl;
 };
 
+inline bool IsTaskHdlValid(TaskHdl hdl) {
+    return hdl.address() != nullptr;
+}
 
+inline TaskPromise* GetTaskPromise(TaskHdl hdl) {
+    return &hdl.promise();
+}
 
 // -----------------------------------------------------------------------------
 // Kernel s
