@@ -252,18 +252,13 @@ inline TaskPromise* GetTaskPromise(TaskHdl hdl) {
 int RunMain(std::function<DefineTask()> userMainTask) noexcept;
 
 // -----------------------------------------------------------------------------
-// Debug & invariant Utilities
-// -----------------------------------------------------------------------------
-
-namespace ak_internal {
-    void CheckInvariants() noexcept;
-    void DebugTaskCount() noexcept;
-}
-
-// -----------------------------------------------------------------------------
 // Utilities
 // -----------------------------------------------------------------------------
 namespace ak_internal {
+    
+    void CheckInvariants() noexcept;
+    
+    void DebugTaskCount() noexcept;
 
     inline static TaskPromise* waitListNodeToTaskPromise(const Link* link) noexcept {
         unsigned long long promise_off = ((unsigned long long)link) - offsetof(TaskPromise, waitLink);
@@ -339,107 +334,6 @@ inline auto ResumeTask(TaskHdl hdl) noexcept {
 
 // Task::AwaitTaskEffect
 // ----------------------------------------------------------------------------------------------------------------
-
-inline constexpr TaskHdl ak_internal::JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept
-{
-    using namespace ak_internal;
-
-    TaskPromise& currentTaskPromise = currentTaskHdl.promise();
-    TaskPromise& hdlTaskPromise = hdl.promise();
-
-    // Check preconditions
-
-    assert(currentTaskPromise.state == TaskState::RUNNING);
-    assert(IsLinkDetached(&currentTaskPromise.waitLink));
-    assert(gKernel.currentTaskHdl == currentTaskHdl);
-    CheckInvariants();
-
-    // Move the current task from RUNNINIG to WAITING
-
-    currentTaskPromise.state = TaskState::WAITING;
-    ++gKernel.waitingCount;
-    EnqueueLink(&hdlTaskPromise.awaitingTerminationList, &currentTaskPromise.waitLink);
-    ClearTaskHdl(&gKernel.currentTaskHdl);
-    CheckInvariants();
-    DebugTaskCount();
-    // if (hdlTaskPromise.state == TaskState::READY) {
-    //     // Just move to READY
-    //     return hdlTaskPromise;
-    // }
-
-    // Move the target task from READY to RUNNING
-    TaskPromise& schedulerPromise = gKernel.schedulerTaskHdl.promise();
-    assert(schedulerPromise.state == TaskState::READY);
-    schedulerPromise.state = TaskState::RUNNING;
-    DetachLink(&schedulerPromise.waitLink);
-    --gKernel.readyCount;
-    gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
-    CheckInvariants();
-    DebugTaskCount();
-
-    return gKernel.schedulerTaskHdl;
-}
-
-inline TaskHdl ak_internal::SuspendOp::await_suspend(TaskHdl currentTask) const noexcept {
-    using namespace ak_internal;
-    assert(gKernel.currentTaskHdl);
-
-    TaskPromise& currentPromise = currentTask.promise();
-
-    if constexpr (DEFINED_DEBUG) {
-        assert(gKernel.currentTaskHdl == currentTask);
-        assert(currentPromise.state == TaskState::RUNNING);
-        assert(IsLinkDetached(&currentPromise.waitLink));
-        CheckInvariants();
-    }
-
-    // Move the current task from RUNNINIG to READY
-    currentPromise.state = TaskState::READY;
-    ++gKernel.readyCount;
-    EnqueueLink(&gKernel.readyList, &currentPromise.waitLink);
-    ClearTaskHdl(&gKernel.currentTaskHdl);
-    CheckInvariants();
-
-    // Resume the SchedulerTask
-    TaskPromise& schedulerPromise = gKernel.schedulerTaskHdl.promise();
-    schedulerPromise.state = TaskState::RUNNING;
-    DetachLink(&schedulerPromise.waitLink); // remove from ready list
-    --gKernel.readyCount;
-    gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
-    CheckInvariants();
-
-    assert(gKernel.currentTaskHdl);
-    return TaskHdl::from_promise(schedulerPromise);
-}
-
-inline TaskHdl ak_internal::ResumeTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept {
-    using namespace ak_internal;
-    assert(gKernel.currentTaskHdl == currentTaskHdl);
-
-    // Check the current Task
-    TaskPromise& currentPromise = gKernel.currentTaskHdl.promise();
-    assert(IsLinkDetached(&currentPromise.waitLink));
-    assert(currentPromise.state == TaskState::RUNNING);
-    CheckInvariants();
-
-    // Suspend the current Task
-    currentPromise.state = TaskState::READY;
-    ++gKernel.readyCount;
-    EnqueueLink(&gKernel.readyList, &currentPromise.waitLink);
-    gKernel.currentTaskHdl = TaskHdl();
-    CheckInvariants();
-
-    // Move the target task from READY to RUNNING
-    TaskPromise& promise = hdl.promise();
-    promise.state = TaskState::RUNNING;
-    DetachLink(&promise.waitLink);
-    --gKernel.readyCount;
-    gKernel.currentTaskHdl = hdl;
-    CheckInvariants();
-
-    assert(gKernel.currentTaskHdl);
-    return hdl;
-}
 
 namespace ak_internal {
 
@@ -871,3 +765,108 @@ struct Condition {
 namespace ak_internal {
     struct Kernel gKernel;
 }
+
+
+
+
+inline constexpr TaskHdl ak_internal::JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept
+{
+    using namespace ak_internal;
+
+    TaskPromise& currentTaskPromise = currentTaskHdl.promise();
+    TaskPromise& hdlTaskPromise = hdl.promise();
+
+    // Check preconditions
+
+    assert(currentTaskPromise.state == TaskState::RUNNING);
+    assert(IsLinkDetached(&currentTaskPromise.waitLink));
+    assert(gKernel.currentTaskHdl == currentTaskHdl);
+    CheckInvariants();
+
+    // Move the current task from RUNNINIG to WAITING
+
+    currentTaskPromise.state = TaskState::WAITING;
+    ++gKernel.waitingCount;
+    EnqueueLink(&hdlTaskPromise.awaitingTerminationList, &currentTaskPromise.waitLink);
+    ClearTaskHdl(&gKernel.currentTaskHdl);
+    CheckInvariants();
+    DebugTaskCount();
+    // if (hdlTaskPromise.state == TaskState::READY) {
+    //     // Just move to READY
+    //     return hdlTaskPromise;
+    // }
+
+    // Move the target task from READY to RUNNING
+    TaskPromise& schedulerPromise = gKernel.schedulerTaskHdl.promise();
+    assert(schedulerPromise.state == TaskState::READY);
+    schedulerPromise.state = TaskState::RUNNING;
+    DetachLink(&schedulerPromise.waitLink);
+    --gKernel.readyCount;
+    gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
+    CheckInvariants();
+    DebugTaskCount();
+
+    return gKernel.schedulerTaskHdl;
+}
+
+inline TaskHdl ak_internal::SuspendOp::await_suspend(TaskHdl currentTask) const noexcept {
+    using namespace ak_internal;
+    assert(gKernel.currentTaskHdl);
+
+    TaskPromise& currentPromise = currentTask.promise();
+
+    if constexpr (DEFINED_DEBUG) {
+        assert(gKernel.currentTaskHdl == currentTask);
+        assert(currentPromise.state == TaskState::RUNNING);
+        assert(IsLinkDetached(&currentPromise.waitLink));
+        CheckInvariants();
+    }
+
+    // Move the current task from RUNNINIG to READY
+    currentPromise.state = TaskState::READY;
+    ++gKernel.readyCount;
+    EnqueueLink(&gKernel.readyList, &currentPromise.waitLink);
+    ClearTaskHdl(&gKernel.currentTaskHdl);
+    CheckInvariants();
+
+    // Resume the SchedulerTask
+    TaskPromise& schedulerPromise = gKernel.schedulerTaskHdl.promise();
+    schedulerPromise.state = TaskState::RUNNING;
+    DetachLink(&schedulerPromise.waitLink); // remove from ready list
+    --gKernel.readyCount;
+    gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
+    CheckInvariants();
+
+    assert(gKernel.currentTaskHdl);
+    return TaskHdl::from_promise(schedulerPromise);
+}
+
+inline TaskHdl ak_internal::ResumeTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept {
+    using namespace ak_internal;
+    assert(gKernel.currentTaskHdl == currentTaskHdl);
+
+    // Check the current Task
+    TaskPromise& currentPromise = gKernel.currentTaskHdl.promise();
+    assert(IsLinkDetached(&currentPromise.waitLink));
+    assert(currentPromise.state == TaskState::RUNNING);
+    CheckInvariants();
+
+    // Suspend the current Task
+    currentPromise.state = TaskState::READY;
+    ++gKernel.readyCount;
+    EnqueueLink(&gKernel.readyList, &currentPromise.waitLink);
+    gKernel.currentTaskHdl = TaskHdl();
+    CheckInvariants();
+
+    // Move the target task from READY to RUNNING
+    TaskPromise& promise = hdl.promise();
+    promise.state = TaskState::RUNNING;
+    DetachLink(&promise.waitLink);
+    --gKernel.readyCount;
+    gKernel.currentTaskHdl = hdl;
+    CheckInvariants();
+
+    assert(gKernel.currentTaskHdl);
+    return hdl;
+}
+
