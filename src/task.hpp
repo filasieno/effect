@@ -532,11 +532,11 @@ void DestroySchedulerTask(TaskHdl hdl) noexcept {
 struct KernelBootPromise {
     KernelBootPromise(std::function<DefineTask()> userMainTask) : userMainTask(userMainTask) {}
 
-    KernelBootTaskHdl   get_return_object() noexcept   { return KernelBootTaskHdl::from_promise(*this); }
-    std::suspend_always initial_suspend() noexcept     { return {}; }
-    std::suspend_never  final_suspend() noexcept       { return {}; }
-    constexpr void      return_void() noexcept         {}
-    constexpr void      unhandled_exception() noexcept { assert(false); }
+    KernelBootTaskHdl get_return_object() noexcept   { return KernelBootTaskHdl::from_promise(*this); }
+    constexpr auto    initial_suspend() noexcept     { return std::suspend_always {}; }
+    constexpr auto    final_suspend() noexcept       { return std::suspend_never  {}; }
+    constexpr void    return_void() noexcept         {}
+    constexpr void    unhandled_exception() noexcept { assert(false); }
 
     std::function<DefineTask()> userMainTask;
 };
