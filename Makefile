@@ -27,7 +27,7 @@ CPPFLAGS = -I./src
 CC := $(CXX)
 
 .PHONY: all
-all:: build/test_dlist build/test_task
+all:: build/test_dlist build/test_ak
 
 COLOR ?= yes
 ifdef COLOR
@@ -134,10 +134,8 @@ doxygen: | build/doc/.
 
 build/io: build/io.o
 
-build/task: build/main.o
-
 test:: test_dlist
 
-build/test_task: 
-test:: test_task
-	valgrind --leak-check=full --show-leak-kinds=all build/test_task
+build/test_ak: 
+test:: test_ak
+#	valgrind --leak-check=full --show-leak-kinds=all build/test_ak  <-- parte due volte 
