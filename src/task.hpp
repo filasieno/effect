@@ -18,9 +18,14 @@ struct SuspendOp;
 struct NopEffect;
 struct KernelTaskPromise;
 
-using CoroHdl           = std::coroutine_handle<>;
-using TaskHdl           = std::coroutine_handle<TaskPromise>;
-using KernelTaskHdl = std::coroutine_handle<KernelTaskPromise>;
+namespace ak_internal {
+    struct KernelTaskPromise;
+    using KernelTaskHdl = std::coroutine_handle<KernelTaskPromise>;
+}
+
+using CoroHdl       = std::coroutine_handle<>;
+using TaskHdl       = std::coroutine_handle<TaskPromise>;
+
 
 template <typename... Args>
 using TaskFn = std::function<DefineTask(Args...)>;
@@ -111,7 +116,7 @@ namespace ak_internal {
         ak_internal::Link readyList;
         ak_internal::Link taskList;        // global task list
 
-        KernelTaskHdl kernelTask;
+        ak_internal::KernelTaskHdl kernelTask;
     };
 
     extern struct Kernel gKernel;
@@ -438,6 +443,7 @@ inline TaskHdl ak_internal::ResumeTaskOp::await_suspend(TaskHdl currentTaskHdl) 
 
 namespace ak_internal {
 
+
     inline void InitKernel() noexcept {
         using namespace ak_internal;
         gKernel.taskCount = 0;
@@ -533,112 +539,107 @@ namespace ak_internal {
         hdl.destroy();
     }
 
-}
-
-struct KernelTaskPromise {
-    KernelTaskPromise(std::function<DefineTask()> mainProc) : mainProc(mainProc) {}
-    
-    void* operator new(std::size_t n) noexcept {
-        void* mem = std::malloc(n);
-        if (!mem) return nullptr;
-        return mem;
-    }
-
-    void  operator delete(void* ptr, std::size_t sz) {
-        (void)sz;
-        std::free(ptr);
-    }
-
-    KernelTaskHdl  get_return_object() noexcept   { return KernelTaskHdl::from_promise(*this); }
-
-    constexpr auto initial_suspend() noexcept     { return std::suspend_always {}; }
-    constexpr auto final_suspend() noexcept       { return std::suspend_never  {}; }
-    constexpr void return_void() noexcept         {}
-    constexpr void unhandled_exception() noexcept { assert(false); }
-
-    std::function<DefineTask()> mainProc;
-};
-
-struct DefineKernelTask {
-    using promise_type = KernelTaskPromise;
-
-    DefineKernelTask(const KernelTaskHdl& hdl) noexcept : hdl(hdl) {} 
-    operator KernelTaskHdl() const noexcept { return hdl; }
-
-    KernelTaskHdl hdl;
-};
-
-static DefineKernelTask KernelTaskProc(std::function<DefineTask()> userMainTask) noexcept;
-static DefineTask       SchedulerTaskProc(std::function<DefineTask()> userMainTask) noexcept;
-
-
-
-inline DefineKernelTask KernelTaskProc(std::function<DefineTask()> mainProc) noexcept {
-    using namespace ak_internal;
-
-    TaskHdl schedulerHdl = SchedulerTaskProc(mainProc);
-    gKernel.schedulerTaskHdl = schedulerHdl;
-
-    co_await RunSchedulerTask();
-    DestroySchedulerTask(schedulerHdl);
-    DebugTaskCount();
-
-    co_return;
-}
-
-inline DefineTask SchedulerTaskProc(std::function<DefineTask()> mainProc) noexcept {
-    using namespace ak_internal;
-
-    TaskHdl mainTask = mainProc();
-    assert(!mainTask.done());
-    assert(GetTaskState(mainTask) == TaskState::READY);
-
-    DebugTaskCount();
-
-    while (true) {
-
-        // If we have a ready task, resume it
-        if (gKernel.readyCount > 0) {
-            Link* nextNode = gKernel.readyList.prev;
-            TaskPromise* nextPromise = waitListNodeToTaskPromise(nextNode);
-            TaskHdl nextTask = TaskHdl::from_promise(*nextPromise);
-            assert(nextTask != gKernel.schedulerTaskHdl);
-            co_await ResumeTaskOp(nextTask);
-            assert(gKernel.currentTaskHdl);
-            continue;
+    struct KernelTaskPromise {
+        KernelTaskPromise(std::function<DefineTask()> mainProc) : mainProc(mainProc) {}
+        
+        void* operator new(std::size_t n) noexcept {
+            void* mem = std::malloc(n);
+            if (!mem) return nullptr;
+            return mem;
         }
 
-        // Zombie bashing
-        while (gKernel.zombieCount > 0) {
-            DebugTaskCount();
-
-            Link* zombieNode = DequeueLink(&gKernel.zombieList);
-            TaskPromise& zombiePromise = *waitListNodeToTaskPromise(zombieNode);
-            assert(zombiePromise.state == TaskState::ZOMBIE);
-
-            // Remove from zombie list
-            --gKernel.zombieCount;
-            DetachLink(&zombiePromise.waitLink);
-
-            // Remove from task list
-            DetachLink(&zombiePromise.taskListLink);
-            --gKernel.taskCount;
-
-            // Delete
-            zombiePromise.state = TaskState::DELETING;
-            TaskHdl zombieTaskHdl = TaskHdl::from_promise(zombiePromise);
-            zombieTaskHdl.destroy();
-
-            DebugTaskCount();
+        void  operator delete(void* ptr, std::size_t sz) {
+            (void)sz;
+            std::free(ptr);
         }
 
-        if (gKernel.readyCount == 0) break;
-    }
-    co_await TerminateSchedulerTask();
+        KernelTaskHdl  get_return_object() noexcept   { return KernelTaskHdl::from_promise(*this); }
 
-    assert(false); // Unreachale
-    co_return;
+        constexpr auto initial_suspend() noexcept     { return std::suspend_always {}; }
+        constexpr auto final_suspend() noexcept       { return std::suspend_never  {}; }
+        constexpr void return_void() noexcept         {}
+        constexpr void unhandled_exception() noexcept { assert(false); }
+
+        std::function<DefineTask()> mainProc;
+    };
+
+    struct DefineKernelTask {
+        using promise_type = KernelTaskPromise;
+
+        DefineKernelTask(const KernelTaskHdl& hdl) noexcept : hdl(hdl) {} 
+        operator KernelTaskHdl() const noexcept { return hdl; }
+
+        KernelTaskHdl hdl;
+    };
+
+    inline DefineTask SchedulerTaskProc(std::function<DefineTask()> mainProc) noexcept {
+        using namespace ak_internal;
+
+        TaskHdl mainTask = mainProc();
+        assert(!mainTask.done());
+        assert(GetTaskState(mainTask) == TaskState::READY);
+
+        DebugTaskCount();
+
+        while (true) {
+
+            // If we have a ready task, resume it
+            if (gKernel.readyCount > 0) {
+                Link* nextNode = gKernel.readyList.prev;
+                TaskPromise* nextPromise = waitListNodeToTaskPromise(nextNode);
+                TaskHdl nextTask = TaskHdl::from_promise(*nextPromise);
+                assert(nextTask != gKernel.schedulerTaskHdl);
+                co_await ResumeTaskOp(nextTask);
+                assert(gKernel.currentTaskHdl);
+                continue;
+            }
+
+            // Zombie bashing
+            while (gKernel.zombieCount > 0) {
+                DebugTaskCount();
+
+                Link* zombieNode = DequeueLink(&gKernel.zombieList);
+                TaskPromise& zombiePromise = *waitListNodeToTaskPromise(zombieNode);
+                assert(zombiePromise.state == TaskState::ZOMBIE);
+
+                // Remove from zombie list
+                --gKernel.zombieCount;
+                DetachLink(&zombiePromise.waitLink);
+
+                // Remove from task list
+                DetachLink(&zombiePromise.taskListLink);
+                --gKernel.taskCount;
+
+                // Delete
+                zombiePromise.state = TaskState::DELETING;
+                TaskHdl zombieTaskHdl = TaskHdl::from_promise(zombiePromise);
+                zombieTaskHdl.destroy();
+
+                DebugTaskCount();
+            }
+
+            if (gKernel.readyCount == 0) break;
+        }
+        co_await TerminateSchedulerTask();
+
+        assert(false); // Unreachale
+        co_return;
+    }
+
+    inline DefineKernelTask KernelTaskProc(std::function<DefineTask()> mainProc) noexcept {
+
+        TaskHdl schedulerHdl = SchedulerTaskProc(mainProc);
+        gKernel.schedulerTaskHdl = schedulerHdl;
+
+        co_await RunSchedulerTask();
+        DestroySchedulerTask(schedulerHdl);
+        DebugTaskCount();
+
+        co_return;
+    }
+
 }
+
 
 inline int RunMain(std::function<DefineTask()> mainProc) noexcept {
     using namespace ak_internal;
