@@ -2,10 +2,10 @@
 #include <cassert>
 #include <print> 
 
-Condition readyToWrite;
-Condition readyToRead;
-int value = -1;
-int MAX = 10;
+/// Condition readyToWrite;
+/// Condition readyToRead;
+// int value = -1;
+// int MAX = 10;
 
 // Task readerTask() noexcept {
 // 	while (true) {
