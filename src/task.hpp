@@ -21,7 +21,7 @@ struct KernelTaskPromise;
 
 using CoroHdl           = std::coroutine_handle<>;
 using TaskHdl           = std::coroutine_handle<TaskPromise>;
-using KernelBootTaskHdl = std::coroutine_handle<KernelTaskPromise>;
+using KernelTaskHdl = std::coroutine_handle<KernelTaskPromise>;
 
 template <typename... Args>
 using TaskFn = std::function<DefineTask(Args...)>;
@@ -115,7 +115,7 @@ struct Kernel {
     ak_internal::Link readyList;
     ak_internal::Link taskList;        // global task list
 
-    KernelBootTaskHdl kernelTask;
+    KernelTaskHdl kernelTask;
 };
 
 // -----------------------------------------------------------------------------
@@ -462,7 +462,7 @@ auto RunSchedulerTask() noexcept {
         constexpr bool await_ready() const noexcept  { return false; }
         constexpr void await_resume() const noexcept {}  
 
-        TaskHdl await_suspend(KernelBootTaskHdl currentTaskHdl) const noexcept {
+        TaskHdl await_suspend(KernelTaskHdl currentTaskHdl) const noexcept {
             using namespace ak_internal;
 
             (void)currentTaskHdl;
@@ -493,7 +493,7 @@ auto RunSchedulerTask() noexcept {
 
 struct TerminateSchedulerOp {
     constexpr bool await_ready() const noexcept { return false; }
-    KernelBootTaskHdl await_suspend(TaskHdl hdl) const noexcept {
+    KernelTaskHdl await_suspend(TaskHdl hdl) const noexcept {
         using namespace ak_internal;
 
         assert(gKernel.currentTaskHdl == gKernel.schedulerTaskHdl);
@@ -529,48 +529,59 @@ void DestroySchedulerTask(TaskHdl hdl) noexcept {
 }
 
 struct KernelTaskPromise {
-    KernelTaskPromise(std::function<DefineTask()> userMainTask) : userMainTask(userMainTask) {}
+    KernelTaskPromise(std::function<DefineTask()> mainProc) : mainProc(mainProc) {}
+    
+    void* operator new(std::size_t n) noexcept {
+        void* mem = std::malloc(n);
+        if (!mem) return nullptr;
+        return mem;
+    }
 
-    KernelBootTaskHdl get_return_object() noexcept   { return KernelBootTaskHdl::from_promise(*this); }
-    constexpr auto    initial_suspend() noexcept     { return std::suspend_always {}; }
-    constexpr auto    final_suspend() noexcept       { return std::suspend_never  {}; }
-    constexpr void    return_void() noexcept         {}
-    constexpr void    unhandled_exception() noexcept { assert(false); }
+    void  operator delete(void* ptr, std::size_t sz) {
+        (void)sz;
+        std::free(ptr);
+    }
 
-    std::function<DefineTask()> userMainTask;
+    KernelTaskHdl  get_return_object() noexcept   { return KernelTaskHdl::from_promise(*this); }
+
+    constexpr auto initial_suspend() noexcept     { return std::suspend_always {}; }
+    constexpr auto final_suspend() noexcept       { return std::suspend_never  {}; }
+    constexpr void return_void() noexcept         {}
+    constexpr void unhandled_exception() noexcept { assert(false); }
+
+    std::function<DefineTask()> mainProc;
 };
 
-struct KernelTask {
+struct DefineKernelTask {
     using promise_type = KernelTaskPromise;
 
-    KernelTask(KernelBootTaskHdl hdl) noexcept : hdl(hdl) {}
+    DefineKernelTask(const KernelTaskHdl& hdl) noexcept : hdl(hdl) {} 
+    operator KernelTaskHdl() const noexcept { return hdl; }
 
-    KernelBootTaskHdl hdl;
+    KernelTaskHdl hdl;
 };
 
-static KernelTask KernelTaskProc(std::function<DefineTask()> userMainTask) noexcept;
-static DefineTask SchedulerTaskProc(std::function<DefineTask()> userMainTask) noexcept;
+static DefineKernelTask KernelTaskProc(std::function<DefineTask()> userMainTask) noexcept;
+static DefineTask       SchedulerTaskProc(std::function<DefineTask()> userMainTask) noexcept;
 
-inline int RunMain(std::function<DefineTask()> userMainTask) noexcept {
+inline int RunMain(std::function<DefineTask()> mainProc) noexcept {
     using namespace ak_internal;
-    std::setbuf(stdout, nullptr);
-    std::setbuf(stderr, nullptr);
 
     InitKernel();
 
-    KernelTask kernelBootTask = KernelTaskProc(userMainTask);
-    gKernel.kernelTask = kernelBootTask.hdl;
-    kernelBootTask.hdl.resume();
+    KernelTaskHdl hdl = KernelTaskProc(mainProc);
+    gKernel.kernelTask = hdl;
+    hdl.resume();
 
     FiniKernel();
 
     return 0;
 }
 
-inline KernelTask KernelTaskProc(std::function<DefineTask()> userMainTask) noexcept {
+inline DefineKernelTask KernelTaskProc(std::function<DefineTask()> mainProc) noexcept {
     using namespace ak_internal;
 
-    TaskHdl schedulerHdl = SchedulerTaskProc(userMainTask);
+    TaskHdl schedulerHdl = SchedulerTaskProc(mainProc);
     gKernel.schedulerTaskHdl = schedulerHdl;
 
     co_await RunSchedulerTask();
@@ -580,16 +591,10 @@ inline KernelTask KernelTaskProc(std::function<DefineTask()> userMainTask) noexc
     co_return;
 }
 
-static int started = 0;
-
-inline DefineTask SchedulerTaskProc(std::function<DefineTask()> userMainTask) noexcept {
+inline DefineTask SchedulerTaskProc(std::function<DefineTask()> MainProc) noexcept {
     using namespace ak_internal;
 
-    ++started;
-    std::fflush(stdout);
-    assert(started == 1);
-
-    TaskHdl mainTask = userMainTask();
+    TaskHdl mainTask = MainProc();
     assert(!mainTask.done());
     assert(GetTaskState(mainTask) == TaskState::READY);
 
