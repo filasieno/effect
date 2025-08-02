@@ -545,10 +545,6 @@ struct KernelBootTask {
     using promise_type = KernelBootPromise;
 
     KernelBootTask(KernelBootTaskHdl hdl) noexcept : hdl(hdl) {}
-    ~KernelBootTask() noexcept {
-        // hdl.destroy();
-    }
-    void run() { hdl.resume();}
 
     KernelBootTaskHdl hdl;
 };
@@ -565,7 +561,7 @@ inline int RunMain(std::function<DefineTask()> userMainTask) noexcept {
 
     KernelBootTask kernelBootTask = mainKernelTask(userMainTask);
     gKernel.kernelTask = kernelBootTask.hdl;
-    kernelBootTask.run();
+    kernelBootTask.hdl.resume();
 
     finiKernel();
 
