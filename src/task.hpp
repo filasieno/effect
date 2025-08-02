@@ -10,7 +10,6 @@
 // Basic definitions
 // -----------------------------------------------------------------------------
 
-struct Kernel;
 struct DefineTask;
 struct TaskScheduler;
 struct TaskPromise;
@@ -42,8 +41,6 @@ enum class TaskState
 /// \defgroup Task Task API
 /// \brief Task API defines the API for creating and managing tasks.
 
-
-
 // -----------------------------------------------------------------------------
 // Utils
 // -----------------------------------------------------------------------------
@@ -54,69 +51,70 @@ namespace ak_internal {
         Link* prev;
     };
 
-    inline void InitLink(Link* dlist) {
-        dlist->next = dlist;
-        dlist->prev = dlist;
+    inline void InitLink(Link* link) {
+        link->next = link;
+        link->prev = link;
     }
 
-    inline bool IsLinkDetached(const Link* dlist) {
-        assert(dlist->next != nullptr);
-        assert(dlist->prev != nullptr);
-        return dlist->next == dlist && dlist->prev == dlist;
+    inline bool IsLinkDetached(const Link* link) {
+        assert(link != nullptr);
+        assert(link->next != nullptr);
+        assert(link->prev != nullptr);
+        return link->next == link && link->prev == link;
     }
 
-    inline void DetachLink(Link* dlist) {
-        assert(dlist->next != nullptr);
-        assert(dlist->prev != nullptr);
-        if (IsLinkDetached(dlist)) return;
-        dlist->next->prev = dlist->prev;
-        dlist->prev->next = dlist->next;
-        dlist->next = dlist;
-        dlist->prev = dlist;
+    inline void DetachLink(Link* link) {
+        assert(link != nullptr);
+        assert(link->next != nullptr);
+        assert(link->prev != nullptr);
+        if (IsLinkDetached(link)) return;
+        link->next->prev = link->prev;
+        link->prev->next = link->next;
+        link->next = link;
+        link->prev = link;
     }
 
-    inline void EnqueueLink(Link* dlist, Link* node) {
-        assert(node != nullptr);
-        assert(dlist->next != nullptr);
-        assert(dlist->prev != nullptr);
-        assert(IsLinkDetached(node));
+    inline void EnqueueLink(Link* queue, Link* link) {
+        assert(link != nullptr);
+        assert(queue->next != nullptr);
+        assert(queue->prev != nullptr);
+        assert(IsLinkDetached(link));
 
-        node->next = dlist->next;
-        node->prev = dlist;
+        link->next = queue->next;
+        link->prev = queue;
 
-        node->next->prev = node;
-        dlist->next = node;
+        link->next->prev = link;
+        queue->next = link;
     }
 
-    inline Link* DequeueLink(Link* dlist) {
-        assert(dlist->next != nullptr);
-        assert(dlist->prev != nullptr);
-        if (IsLinkDetached(dlist)) return nullptr;
-        Link* target = dlist->prev;
+    inline Link* DequeueLink(Link* queue) {
+        assert(queue->next != nullptr);
+        assert(queue->prev != nullptr);
+        if (IsLinkDetached(queue)) return nullptr;
+        Link* target = queue->prev;
         DetachLink(target);
         return target;
     }
 
+    struct Kernel {
+        int   taskCount;
+        int   readyCount;      // number of live tasks
+        int   waitingCount;    // task waiting for execution (On Internal Critical sections)
+        int   ioWaitingCount;  // task waiting for IO URing
+        int   zombieCount;     // dead tasks
+
+        int     interrupted;
+        TaskHdl currentTaskHdl;
+        TaskHdl schedulerTaskHdl;
+
+        ak_internal::Link zombieList;
+        ak_internal::Link readyList;
+        ak_internal::Link taskList;        // global task list
+
+        KernelTaskHdl kernelTask;
+    };
+
 }
-
-
-struct Kernel {
-    int   taskCount;
-    int   readyCount;      // number of live tasks
-    int   waitingCount;    // task waiting for execution (On Internal Critical sections)
-    int   ioWaitingCount;  // task waiting for IO URing
-    int   zombieCount;     // dead tasks
-
-    int     interrupted;
-    TaskHdl currentTaskHdl;
-    TaskHdl schedulerTaskHdl;
-
-    ak_internal::Link zombieList;
-    ak_internal::Link readyList;
-    ak_internal::Link taskList;        // global task list
-
-    KernelTaskHdl kernelTask;
-};
 
 // -----------------------------------------------------------------------------
 // Task Promise
@@ -243,8 +241,9 @@ inline TaskPromise* GetTaskPromise(TaskHdl hdl) {
 // Kernel s
 // -----------------------------------------------------------------------------
 
-
-extern struct Kernel gKernel;
+namespace ak_internal {
+    extern struct Kernel gKernel;
+}
 
 // -----------------------------------------------------------------------------
 // Kernel API
@@ -270,17 +269,11 @@ namespace ak_internal {
 // Utilities
 // -----------------------------------------------------------------------------
 namespace ak_internal {
-    static TaskPromise* waitListNodeToTaskPromise(const Link* node) noexcept {
-        unsigned long long promise_off = ((unsigned long long)node) - offsetof(TaskPromise, waitLink);
+
+    inline static TaskPromise* waitListNodeToTaskPromise(const Link* link) noexcept {
+        unsigned long long promise_off = ((unsigned long long)link) - offsetof(TaskPromise, waitLink);
         return (TaskPromise*)promise_off;
     }
-}
-
-// -----------------------------------------------------------------------------
-// Effects
-// -----------------------------------------------------------------------------
-
-namespace ak_internal {
 
     struct SuspendOp {
         constexpr bool await_ready() const noexcept { return false; }
@@ -514,6 +507,7 @@ struct TerminateSchedulerOp {
 };
 
 void DestroySchedulerTask(TaskHdl hdl) noexcept {
+    using namespace ak_internal;
     TaskPromise* promise = &hdl.promise();
 
     // Remove from Task list
@@ -875,7 +869,6 @@ struct Condition {
     ak_internal::Link waitNode;
 };
 
-struct Kernel gKernel;
-
-
-
+namespace ak_internal {
+    struct Kernel gKernel;
+}
