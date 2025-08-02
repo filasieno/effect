@@ -6,7 +6,7 @@
 
 struct Data;
 
-using namespace internal_ak;
+using namespace ak_internal;
 
 struct Data {
     Link node;

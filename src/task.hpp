@@ -11,7 +11,7 @@
 // -----------------------------------------------------------------------------
 
 struct Kernel;
-struct Task;
+struct DefineTask;
 struct TaskScheduler;
 struct TaskPromise;
 struct SchedulerTaskPromise;
@@ -24,24 +24,30 @@ using TaskHdl           = std::coroutine_handle<TaskPromise>;
 using KernelBootTaskHdl = std::coroutine_handle<KernelBootPromise>;
 
 template <typename... Args>
-using TaskFn = std::function<Task(Args...)>;
+using TaskFn = std::function<DefineTask(Args...)>;
 
-enum class TaskState 
+enum class TaskState
 {
     INVALID = 0,
     CREATED,    // Task has been created (BUT NOT REGISTERED WITH THE RUNTINME)
     READY,      // Ready for execution
     RUNNING,    // Currently running
-    IO_WAITING, // Waiting for IO 
+    IO_WAITING, // Waiting for IO
     WAITING,    // Waiting for Critical Section
-    ZOMBIE,     // Already dead 
+    ZOMBIE,     // Already dead
     DELETING
 };
+
+
+/// \defgroup Task Task API
+/// \brief Task API defines the API for creating and managing tasks.
+
+
 
 // -----------------------------------------------------------------------------
 // Utils
 // -----------------------------------------------------------------------------
-namespace internal_ak {
+namespace ak_internal {
 
     struct Link {
         Link* next;
@@ -77,7 +83,7 @@ namespace internal_ak {
 
         node->next = dlist->next;
         node->prev = dlist;
-        
+
         node->next->prev = node;
         dlist->next = node;
     }
@@ -96,7 +102,7 @@ namespace internal_ak {
 
 struct Kernel {
     int   taskCount;
-    int   readyCount;      // number of live tasks 
+    int   readyCount;      // number of live tasks
     int   waitingCount;    // task waiting for execution (On Internal Critical sections)
     int   ioWaitingCount;  // task waiting for IO URing
     int   zombieCount;     // dead tasks
@@ -104,10 +110,10 @@ struct Kernel {
     int     interrupted;
     TaskHdl currentTaskHdl;
     TaskHdl schedulerTaskHdl;
-    
-    internal_ak::Link zombieList;
-    internal_ak::Link readyList;
-    internal_ak::Link taskList;        // global task list
+
+    ak_internal::Link zombieList;
+    ak_internal::Link readyList;
+    ak_internal::Link taskList;        // global task list
 
     KernelBootTaskHdl kernelTask;
 };
@@ -116,120 +122,121 @@ struct Kernel {
 // Task Promise
 // -----------------------------------------------------------------------------
 
-namespace internal_ak {
-    
-    inline void ClearTaskHdl(TaskHdl*hdl) noexcept {
-        *hdl = TaskHdl{};
-    }
+inline void ClearTask(TaskHdl*hdl) noexcept {
+    *hdl = TaskHdl{};
+}
+
+namespace ak_internal {
 
     void DebugTaskCount() noexcept;
     void CheckInvariants() noexcept;
+
+    struct InitialSuspendTaskOp {
+        constexpr bool await_ready() const noexcept { return false; }
+        void           await_suspend(TaskHdl hdl) const noexcept;
+        constexpr void await_resume() const noexcept {}
+    };
+
+    struct FinalSuspendTaskOp {
+        constexpr bool await_ready() const noexcept { return false; }
+        TaskHdl        await_suspend(TaskHdl hdl) const noexcept;
+        constexpr void await_resume() const noexcept { assert(false); }
+    };
+
 }
 
 struct TaskPromise {
-    
+
     void* operator new(std::size_t n) noexcept {
         void* mem = std::malloc(n);
         if (!mem) return nullptr;
         return mem;
     }
-    
+
     void  operator delete(void* ptr, std::size_t sz) {
         (void)sz;
         std::free(ptr);
     }
 
-    struct InitialSuspend {
-        constexpr bool await_ready() const noexcept { return false; }
-        void           await_suspend(TaskHdl hdl) const noexcept;
-        constexpr void await_resume() const noexcept { }
-    };
-
-    struct FinalSuspend {
-        constexpr bool await_ready() const noexcept { return false; }
-        TaskHdl        await_suspend(TaskHdl hdl) const noexcept;
-        constexpr void await_resume() const noexcept {
-            assert(false);
-        }
-    };
-    
     TaskPromise() {
-        using namespace internal_ak;
+        using namespace ak_internal;
 
         InitLink(&taskListLink);
-        InitLink(&waitLink);    
+        InitLink(&waitLink);
         InitLink(&awaitingTerminationList);
         state = TaskState::CREATED;
-        
+
         // Check post-conditions
         assert(IsLinkDetached(&taskListLink));
         assert(IsLinkDetached(&waitLink));
         assert(state == TaskState::CREATED);
         CheckInvariants();
-
-        
     }
-    
+
     ~TaskPromise() {
-        using namespace internal_ak;
+        using namespace ak_internal;
         assert(state == TaskState::DELETING);
         assert(IsLinkDetached(&taskListLink));
         assert(IsLinkDetached(&waitLink));
         DebugTaskCount();
         CheckInvariants();
     }
-    
-    TaskHdl        get_return_object() noexcept   { return TaskHdl::from_promise(*this);}
-    InitialSuspend initial_suspend() noexcept     { return {}; }
-    FinalSuspend   final_suspend() noexcept       { return {}; }
+
+    TaskHdl        get_return_object() noexcept    { return TaskHdl::from_promise(*this);}
+    constexpr auto initial_suspend() noexcept      { return ak_internal::InitialSuspendTaskOp{}; }
+    constexpr auto final_suspend() noexcept        { return ak_internal::FinalSuspendTaskOp{}; }
     void           return_void() noexcept;
-    void           unhandled_exception() noexcept { assert(false); }
+    void           unhandled_exception() noexcept  { assert(false); }
 
     TaskState         state;
-    internal_ak::Link waitLink;                // Used to enqueue tasks waiting for Critical Section
-    internal_ak::Link taskListLink;            // Global Task list
-    internal_ak::Link awaitingTerminationList; // The list of all tasks waiting for this task
+    ak_internal::Link waitLink;                // Used to enqueue tasks waiting for Critical Section
+    ak_internal::Link taskListLink;            // Global Task list
+    ak_internal::Link awaitingTerminationList; // The list of all tasks waiting for this task
 };
 
-struct ResumeTaskOp {
 
-    explicit ResumeTaskOp(TaskHdl hdl) : hdl(hdl) {};
 
-    constexpr bool await_ready() const noexcept { return hdl.done();}
-    TaskHdl        await_suspend(TaskHdl currentTaskHdl) const noexcept;
-    constexpr void await_resume() const noexcept {}
+namespace ak_internal {
 
-    TaskHdl hdl;
+    struct ResumeTaskOp {
+
+        explicit ResumeTaskOp(TaskHdl hdl) : hdl(hdl) {};
+
+        constexpr bool await_ready() const noexcept { return hdl.done();}
+        TaskHdl        await_suspend(TaskHdl currentTaskHdl) const noexcept;
+        constexpr void await_resume() const noexcept {}
+
+        TaskHdl hdl;
+    };
+
+    struct JoinTaskOp {
+        explicit JoinTaskOp(TaskHdl hdl) : hdl(hdl) {};
+
+        constexpr bool await_ready() const noexcept { return hdl.done(); }
+        constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) const noexcept;
+        constexpr void await_resume() const noexcept {}
+
+        TaskHdl hdl;
+    };
+
 };
 
-struct JoinTaskOp {
-    explicit JoinTaskOp(TaskHdl hdl) : hdl(hdl) {};            
-    constexpr bool await_ready() const noexcept { return hdl.done(); }
-    constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) const noexcept;
-    constexpr void await_resume() const noexcept {}
-
-    TaskHdl hdl;
-};
-
-struct Task {
+struct DefineTask {
     using promise_type = TaskPromise;
 
-    Task() = default;
-    Task(const TaskHdl& hdl) : hdl(hdl) {}
-    Task& operator=(const Task& hdl) = default; 
-    
-    void          clear() noexcept { hdl = TaskHdl{}; }
+    DefineTask() = default;
+    DefineTask(const TaskHdl& hdl) : hdl(hdl) {}
+    DefineTask& operator=(const DefineTask& hdl) = default;
+
     bool          isValid() const noexcept { return hdl.address() != nullptr; }
-    bool          done() const noexcept { return hdl.done(); }
-    TaskState     state() const noexcept { return hdl.promise().state; }
     TaskPromise&  promise() const noexcept { return hdl.promise(); }
-    JoinTaskOp    join() const noexcept { return JoinTaskOp{hdl}; }
-    ResumeTaskOp  resume() const noexcept { return ResumeTaskOp{hdl}; }
+
     operator      TaskHdl() const noexcept { return hdl; }
-    auto operator co_await() const noexcept { return join(); }
 
     TaskHdl hdl;
 };
+
+
 
 // -----------------------------------------------------------------------------
 // Kernel s
@@ -239,16 +246,16 @@ struct Task {
 extern struct Kernel gKernel;
 
 // -----------------------------------------------------------------------------
-// Kernel API 
+// Kernel API
 // -----------------------------------------------------------------------------
 
-int AkRun(std::function<Task()> userMainTask) noexcept;
+int RunMain(std::function<DefineTask()> userMainTask) noexcept;
 
 // -----------------------------------------------------------------------------
 // Debug & invariant Utilities
 // -----------------------------------------------------------------------------
 
-namespace internal_ak {
+namespace ak_internal {
     void CheckInvariants() noexcept;
     void DebugTaskCount() noexcept;
 }
@@ -257,93 +264,11 @@ namespace internal_ak {
 // Task Wrappers
 // -----------------------------------------------------------------------------
 
-struct Condition {
-    
-
-    struct WaitOp {
-        
-        explicit WaitOp(Condition& condition) : condition(condition) {}
-        
-        constexpr bool await_ready() const noexcept {
-            return condition.locking_task.isValid();
-        }
-
-        constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) const noexcept {
-            using namespace internal_ak;
-
-            TaskPromise& currentTaskPromise = gKernel.currentTaskHdl.promise();
-
-            assert(gKernel.currentTaskHdl == currentTaskHdl);
-
-           
-            // Check the current Task
-            
-            assert(IsLinkDetached(&currentTaskPromise.waitLink));
-            assert(currentTaskPromise.state == TaskState::RUNNING);
-            CheckInvariants();
-
-            // Move the current task from READY to WAITING into the condition
-            currentTaskPromise.state = TaskState::WAITING;
-            ++gKernel.waitingCount;
-            EnqueueLink(&condition.waitNode, &currentTaskPromise.waitLink);
-            ClearTaskHdl(&gKernel.currentTaskHdl);
-            CheckInvariants();
-
-            // Move the target task from READY to RUNNING
-            TaskPromise& schedulerPromise = gKernel.schedulerTaskHdl.promise();
-            schedulerPromise.state = TaskState::RUNNING;
-            DetachLink(&schedulerPromise.waitLink); // remove from ready list
-            --gKernel.readyCount;
-            gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
-            CheckInvariants();
-            return gKernel.schedulerTaskHdl;
-        }
-
-        constexpr void await_resume() const noexcept {}
-
-        Condition& condition;
-    };
-
-    Condition(bool signaled = false) : signaled(signaled) {
-        using namespace internal_ak;
-        InitLink(&waitNode);
-    }
-
-    int signal() {
-        int signalled = 0;
-        // while (!wait_node.detached()) {
-        //     DList* next_waiting_task = wait_node.pop_front();
-        //     TaskPromise* next_waiting_task_promise = waitListNodeToTask(next_waiting_task);
-        //     assert(next_waiting_task_promise->state == TaskState::WAITING);
-        //     --g_kernel.waiting_count;
-        //     next_waiting_task_promise->state = TaskState::READY;
-        //     g_kernel.ready_list.push_back(&next_waiting_task_promise->wait_node);
-        //     --g_kernel.ready_count;
-        //     ++signalled;
-        // }
-        return signalled;
-    }
-    
-    WaitOp wait() { return WaitOp(*this); }
-    
-    void reset(bool signaled = false) {
-        using namespace internal_ak;
-        this->signaled = signaled;
-        locking_task.clear();
-        InitLink(&waitNode);
-    }
-
-    // g_kernel.current_task_hdl = TaskHdl();
-    // g_kernel.current_task.clear();
-    bool  signaled = false;
-    Task  locking_task;
-    internal_ak::Link waitNode;
-};
 
 // -----------------------------------------------------------------------------
 // Utilities
 // -----------------------------------------------------------------------------
-namespace internal_ak {
+namespace ak_internal {
     static TaskPromise* waitListNodeToTaskPromise(const Link* node) noexcept {
         unsigned long long promise_off = ((unsigned long long)node) - offsetof(TaskPromise, waitLink);
         return (TaskPromise*)promise_off;
@@ -354,39 +279,75 @@ namespace internal_ak {
 // Effects
 // -----------------------------------------------------------------------------
 
-struct SuspendOp {
-    constexpr bool await_ready() const noexcept { return false; }
-    TaskHdl        await_suspend(TaskHdl hdl) const noexcept;
-    constexpr void await_resume() const noexcept {};
-};
-
-inline constexpr auto suspend() noexcept -> SuspendOp { return {}; }
-
-
 namespace ak_internal {
 
-    struct GetCurrentTaskOp {
-        constexpr bool    await_ready() const noexcept        { return false; } 
-        constexpr TaskHdl await_suspend(TaskHdl hdl) noexcept { this->hdl = hdl; return hdl; }
-        constexpr Task    await_resume() const noexcept       { return hdl; }
-        
-        TaskHdl hdl;
+    struct SuspendOp {
+        constexpr bool await_ready() const noexcept { return false; }
+        TaskHdl        await_suspend(TaskHdl hdl) const noexcept;
+        constexpr void await_resume() const noexcept {};
     };
 
+    struct GetCurrentTaskOp {
+        constexpr bool    await_ready() const noexcept        { return false; }
+        constexpr TaskHdl await_suspend(TaskHdl hdl) noexcept { this->hdl = hdl; return hdl; }
+        constexpr TaskHdl await_resume() const noexcept       { return hdl; }
+
+        TaskHdl hdl;
+    };
 }
 
-inline auto getCurrentTask() noexcept {
+inline auto GetCurrentTask() noexcept {
     return ak_internal::GetCurrentTaskOp{};
 }
 
+inline constexpr auto SuspendTask() noexcept { return ak_internal::SuspendOp{}; }
 
+/// \brief Suspends the current Task until the target Task completes.
+/// \param hdl a handle to the target Task.
+/// \return an awaitable object that returns void
+/// \ingroup Task
+inline auto JoinTask(TaskHdl hdl) noexcept {
+	return ak_internal::JoinTaskOp{hdl};
+}
+
+/// \brief Alias for AkJoinTask
+/// \param hdl a handle to the target Task.
+/// \return an awaitable object that returns void
+/// \ingroup Task
+inline auto operator co_await(TaskHdl hdl) noexcept {
+	return JoinTask(hdl);
+}
+
+/// \brief Resturns the current TaskState.
+/// \param hdl a handle to the target Task.
+/// \return the current TaskState
+/// \ingroup Task
+inline TaskState GetTaskState(TaskHdl hdl) noexcept {
+	return hdl.promise().state;
+}
+
+/// \brief Returns true if the target Task is done.
+/// \param hdl a handle to the target Task
+/// \return true if the target Task is done
+/// \ingroup Task
+inline bool IsTaskDone(TaskHdl hdl) noexcept {
+	return hdl.done();
+}
+
+/// \brief Resumes a Task that is in TaskState::READY
+/// \param hdl a handle to the target Task
+/// \return true if the target Task is done
+/// \ingroup Task
+inline auto ResumeTask(TaskHdl hdl) noexcept {
+	return ak_internal::ResumeTaskOp{hdl};
+}
 
 // Task::AwaitTaskEffect
 // ----------------------------------------------------------------------------------------------------------------
 
-inline constexpr TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept 
-{ 
-    using namespace internal_ak;
+inline constexpr TaskHdl ak_internal::JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept
+{
+    using namespace ak_internal;
 
     TaskPromise& currentTaskPromise = currentTaskHdl.promise();
     TaskPromise& hdlTaskPromise = hdl.promise();
@@ -403,7 +364,7 @@ inline constexpr TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const
     currentTaskPromise.state = TaskState::WAITING;
     ++gKernel.waitingCount;
     EnqueueLink(&hdlTaskPromise.waitLink, &currentTaskPromise.waitLink);
-    ClearTaskHdl(&gKernel.currentTaskHdl);
+    ClearTask(&gKernel.currentTaskHdl);
     CheckInvariants();
     DebugTaskCount();
     // if (hdlTaskPromise.state == TaskState::READY) {
@@ -421,17 +382,17 @@ inline constexpr TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const
     CheckInvariants();
     DebugTaskCount();
 
-    return gKernel.schedulerTaskHdl; 
+    return gKernel.schedulerTaskHdl;
 }
 
-inline TaskHdl SuspendOp::await_suspend(TaskHdl currentTask) const noexcept {
-    using namespace internal_ak;
+inline TaskHdl ak_internal::SuspendOp::await_suspend(TaskHdl currentTask) const noexcept {
+    using namespace ak_internal;
     assert(gKernel.currentTaskHdl);
 
     TaskPromise& currentPromise = currentTask.promise();
 
     if constexpr (DEFINED_DEBUG) {
-        assert(gKernel.currentTaskHdl == currentTask);  
+        assert(gKernel.currentTaskHdl == currentTask);
         assert(currentPromise.state == TaskState::RUNNING);
         assert(IsLinkDetached(&currentPromise.waitLink));
         CheckInvariants();
@@ -441,9 +402,9 @@ inline TaskHdl SuspendOp::await_suspend(TaskHdl currentTask) const noexcept {
     currentPromise.state = TaskState::READY;
     ++gKernel.readyCount;
     EnqueueLink(&gKernel.readyList, &currentPromise.waitLink);
-    ClearTaskHdl(&gKernel.currentTaskHdl);
+    ClearTask(&gKernel.currentTaskHdl);
     CheckInvariants();
-    
+
     // Resume the SchedulerTask
     TaskPromise& schedulerPromise = gKernel.schedulerTaskHdl.promise();
     schedulerPromise.state = TaskState::RUNNING;
@@ -456,14 +417,14 @@ inline TaskHdl SuspendOp::await_suspend(TaskHdl currentTask) const noexcept {
     return TaskHdl::from_promise(schedulerPromise);
 }
 
-inline TaskHdl ResumeTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept {
-    using namespace internal_ak;
+inline TaskHdl ak_internal::ResumeTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept {
+    using namespace ak_internal;
     assert(gKernel.currentTaskHdl == currentTaskHdl);
-    
+
     // Check the current Task
-    TaskPromise& currentPromise = gKernel.currentTaskHdl.promise(); 
+    TaskPromise& currentPromise = gKernel.currentTaskHdl.promise();
     assert(IsLinkDetached(&currentPromise.waitLink));
-    assert(currentPromise.state == TaskState::RUNNING); 
+    assert(currentPromise.state == TaskState::RUNNING);
     CheckInvariants();
 
     // Suspend the current Task
@@ -486,7 +447,7 @@ inline TaskHdl ResumeTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcep
 }
 
 static void initKernel() noexcept;
-static void finiKernel() noexcept; 
+static void finiKernel() noexcept;
 
 struct RunSchedulerTaskOp {
 
@@ -497,13 +458,13 @@ struct RunSchedulerTaskOp {
     }
 
     TaskHdl await_suspend(KernelBootTaskHdl currentTaskHdl) const noexcept {
-        using namespace internal_ak;
+        using namespace ak_internal;
 
         (void)currentTaskHdl;
         TaskPromise& schedulerPromise = schedulerHdl.promise();
-        
+
         // Check expected state post scheduler construction
-        
+
         assert(gKernel.taskCount == 1);
         assert(gKernel.readyCount == 1);
         assert(schedulerPromise.state == TaskState::READY);
@@ -515,7 +476,7 @@ struct RunSchedulerTaskOp {
         schedulerPromise.state = TaskState::RUNNING;
         DetachLink(&schedulerPromise.waitLink);
         --gKernel.readyCount;
-    
+
         // Check expected state post task system bootstrap
         CheckInvariants();
         return schedulerHdl;
@@ -528,8 +489,8 @@ struct RunSchedulerTaskOp {
 
 struct TerminateSchedulerOp {
     constexpr bool await_ready() const noexcept { return false; }
-    KernelBootTaskHdl await_suspend(TaskHdl hdl) const noexcept { 
-        using namespace internal_ak;
+    KernelBootTaskHdl await_suspend(TaskHdl hdl) const noexcept {
+        using namespace ak_internal;
 
         assert(gKernel.currentTaskHdl == gKernel.schedulerTaskHdl);
         assert(gKernel.currentTaskHdl == hdl);
@@ -537,12 +498,12 @@ struct TerminateSchedulerOp {
         TaskPromise& schedulerPromise = gKernel.schedulerTaskHdl.promise();
         assert(schedulerPromise.state == TaskState::RUNNING);
         assert(IsLinkDetached(&schedulerPromise.waitLink));
-        
+
         schedulerPromise.state = TaskState::ZOMBIE;
-        ClearTaskHdl(&gKernel.currentTaskHdl);
+        ClearTask(&gKernel.currentTaskHdl);
         EnqueueLink(&gKernel.zombieList, &schedulerPromise.waitLink);
         ++gKernel.zombieCount;
-        
+
         return gKernel.kernelTask;
     }
     constexpr void await_resume() const noexcept {}
@@ -550,11 +511,11 @@ struct TerminateSchedulerOp {
 
 struct SchedulerTask {
     using promise_type = TaskPromise;
-    
+
     SchedulerTask(TaskHdl hdl) noexcept : hdl(hdl) {}
-    ~SchedulerTask() noexcept { 
+    ~SchedulerTask() noexcept {
         TaskPromise& schedulerPromise = hdl.promise();
-        
+
         // Remove from Task list
         DetachLink(&schedulerPromise.taskListLink);
         --gKernel.taskCount;
@@ -576,22 +537,22 @@ struct SchedulerTask {
 };
 
 struct KernelBootPromise {
-    KernelBootPromise(std::function<Task()> userMainTask) : userMainTask(userMainTask) {}
-    
+    KernelBootPromise(std::function<DefineTask()> userMainTask) : userMainTask(userMainTask) {}
+
     KernelBootTaskHdl   get_return_object() noexcept   { return KernelBootTaskHdl::from_promise(*this); }
     std::suspend_always initial_suspend() noexcept     { return {}; }
     std::suspend_never  final_suspend() noexcept       { return {}; }
     constexpr void      return_void() noexcept         {}
-    constexpr void      unhandled_exception() noexcept { assert(false); } 
+    constexpr void      unhandled_exception() noexcept { assert(false); }
 
-    std::function<Task()> userMainTask;
+    std::function<DefineTask()> userMainTask;
 };
 
 struct KernelBootTask {
     using promise_type = KernelBootPromise;
-    
+
     KernelBootTask(KernelBootTaskHdl hdl) noexcept : hdl(hdl) {}
-    ~KernelBootTask() noexcept { 
+    ~KernelBootTask() noexcept {
         // hdl.destroy();
     }
     void run() { hdl.resume();}
@@ -599,13 +560,13 @@ struct KernelBootTask {
     KernelBootTaskHdl hdl;
 };
 
-static KernelBootTask mainKernelTask(std::function<Task()> userMainTask) noexcept;
-static SchedulerTask  schedulerTask(std::function<Task()> userMainTask) noexcept;
+static KernelBootTask mainKernelTask(std::function<DefineTask()> userMainTask) noexcept;
+static SchedulerTask  schedulerTask(std::function<DefineTask()> userMainTask) noexcept;
 
-inline int AkRun(std::function<Task()> userMainTask) noexcept {
-    using namespace internal_ak;
+inline int RunMain(std::function<DefineTask()> userMainTask) noexcept {
+    using namespace ak_internal;
     std::setbuf(stdout, nullptr);
-    std::setbuf(stderr, nullptr); 
+    std::setbuf(stderr, nullptr);
 
     initKernel();
 
@@ -615,34 +576,34 @@ inline int AkRun(std::function<Task()> userMainTask) noexcept {
 
     finiKernel();
 
-    return 0; 
+    return 0;
 }
 
-inline KernelBootTask mainKernelTask(std::function<Task()> userMainTask) noexcept {
-    using namespace internal_ak;
+inline KernelBootTask mainKernelTask(std::function<DefineTask()> userMainTask) noexcept {
+    using namespace ak_internal;
 
     SchedulerTask task = schedulerTask(userMainTask);
     gKernel.schedulerTaskHdl = task.hdl;
 
     co_await task.run();
     DebugTaskCount();
-    
+
     co_return;
 }
 
 static int started = 0;
 
-inline SchedulerTask schedulerTask(std::function<Task()> userMainTask) noexcept {   
-    using namespace internal_ak;
+inline SchedulerTask schedulerTask(std::function<DefineTask()> userMainTask) noexcept {
+    using namespace ak_internal;
 
     ++started;
     std::fflush(stdout);
     assert(started == 1);
 
-    Task mainTask = userMainTask();
-    assert(!mainTask.hdl.done());
-    assert(mainTask.state() == TaskState::READY);
-    
+    TaskHdl mainTask = userMainTask();
+    assert(!mainTask.done());
+    assert(GetTaskState(mainTask) == TaskState::READY);
+
     DebugTaskCount();
 
     while (true) {
@@ -657,7 +618,7 @@ inline SchedulerTask schedulerTask(std::function<Task()> userMainTask) noexcept 
             assert(gKernel.currentTaskHdl);
             continue;
         }
-        
+
         // Zombie bashing
         while (gKernel.zombieCount > 0) {
             DebugTaskCount();
@@ -665,7 +626,7 @@ inline SchedulerTask schedulerTask(std::function<Task()> userMainTask) noexcept 
             Link* zombieNode = DequeueLink(&gKernel.zombieList);
             TaskPromise& zombiePromise = *waitListNodeToTaskPromise(zombieNode);
             assert(zombiePromise.state == TaskState::ZOMBIE);
-            
+
             // Remove from zombie list
             --gKernel.zombieCount;
             DetachLink(&zombiePromise.waitLink);
@@ -681,26 +642,26 @@ inline SchedulerTask schedulerTask(std::function<Task()> userMainTask) noexcept 
 
             DebugTaskCount();
         }
-        
+
         if (gKernel.readyCount == 0) break;
     }
     co_await TerminateSchedulerOp {};
-    
+
     assert(false); // Unreachale
     co_return;
 }
 
 
 inline void initKernel() noexcept {
-    using namespace internal_ak;
+    using namespace ak_internal;
     gKernel.taskCount = 0;
     gKernel.readyCount = 0;
     gKernel.waitingCount = 0;
     gKernel.ioWaitingCount = 0;
     gKernel.zombieCount = 0;
     gKernel.interrupted = 0;
-    ClearTaskHdl(&gKernel.currentTaskHdl);
-    ClearTaskHdl(&gKernel.schedulerTaskHdl);
+    ClearTask(&gKernel.currentTaskHdl);
+    ClearTask(&gKernel.schedulerTaskHdl);
     InitLink(&gKernel.zombieList);
     InitLink(&gKernel.readyList);
     InitLink(&gKernel.taskList);
@@ -713,9 +674,9 @@ inline void finiKernel() noexcept { }
 // -----------------------------------------------------------------------------
 
 inline void TaskPromise::return_void() noexcept {
-    using namespace internal_ak;
+    using namespace ak_internal;
     CheckInvariants();
-    
+
     // Wake up all tasks waiting for this task
     if (IsLinkDetached(&awaitingTerminationList)) {
         return;
@@ -737,17 +698,17 @@ inline void TaskPromise::return_void() noexcept {
 
 // TaskPromise::InitialSuspend -------------------------------------------------
 
-inline void TaskPromise::InitialSuspend::await_suspend(TaskHdl hdl) const noexcept {
-    using namespace internal_ak;
+inline void ak_internal::InitialSuspendTaskOp::await_suspend(TaskHdl hdl) const noexcept {
+    using namespace ak_internal;
     TaskPromise& promise = hdl.promise();
-    
+
     // Check initial preconditions
     assert(promise.state == TaskState::CREATED);
     assert(IsLinkDetached(&promise.waitLink));
     CheckInvariants();
 
     // Add task to the kernel
-    ++gKernel.taskCount;    
+    ++gKernel.taskCount;
     EnqueueLink(&gKernel.taskList, &promise.taskListLink);
 
     ++gKernel.readyCount;
@@ -758,55 +719,55 @@ inline void TaskPromise::InitialSuspend::await_suspend(TaskHdl hdl) const noexce
     assert(promise.state == TaskState::READY);
     assert(!IsLinkDetached(&promise.waitLink));
     CheckInvariants();
-    internal_ak::DebugTaskCount();
+    ak_internal::DebugTaskCount();
 }
 
 
 // TaskPromise::FinalSuspend -------------------------------------------------
 
-inline TaskHdl TaskPromise::FinalSuspend::await_suspend(TaskHdl currentTaskHdl) const noexcept {
-    using namespace internal_ak;
+inline TaskHdl ak_internal::FinalSuspendTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept {
+    using namespace ak_internal;
     // Check preconditions
-    TaskPromise& currentPromise = currentTaskHdl.promise();                            
+    TaskPromise& currentPromise = currentTaskHdl.promise();
     assert(gKernel.currentTaskHdl == currentTaskHdl);
     assert(currentPromise.state == TaskState::RUNNING);
     assert(IsLinkDetached(&currentPromise.waitLink));
-    internal_ak::CheckInvariants();
-    
+    ak_internal::CheckInvariants();
+
     // Move the current task from RUNNING to ZOMBIE
     currentPromise.state = TaskState::ZOMBIE;
     ++gKernel.zombieCount;
     EnqueueLink(&gKernel.zombieList, &currentPromise.waitLink);
-    ClearTaskHdl(&gKernel.currentTaskHdl);
-    internal_ak::CheckInvariants();
+    ClearTask(&gKernel.currentTaskHdl);
+    ak_internal::CheckInvariants();
 
     // Move the SchedulerTask from READY to RUNNING
     TaskPromise& schedulerPromise = gKernel.schedulerTaskHdl.promise();
-    schedulerPromise.state = TaskState::RUNNING;    
+    schedulerPromise.state = TaskState::RUNNING;
     DetachLink(&schedulerPromise.waitLink); // remove from ready list
     --gKernel.readyCount;
     gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
-    internal_ak::CheckInvariants();
-    
+    ak_internal::CheckInvariants();
+
     return gKernel.schedulerTaskHdl;
 }
 
 // -----------------------------------------------------------------------------
 // Debug utilities
 // -----------------------------------------------------------------------------
-namespace internal_ak {
+namespace ak_internal {
 
     inline void DebugTaskCount() noexcept {
         int running_count = gKernel.currentTaskHdl != TaskHdl() ? 1 : 0;
-        std::print("----------------:--------\n"); 
+        std::print("----------------:--------\n");
         std::print("Task       count: {}\n", gKernel.taskCount);
-        std::print("----------------:--------\n"); 
-        std::print("Running    count: {}\n", running_count); 
+        std::print("----------------:--------\n");
+        std::print("Running    count: {}\n", running_count);
         std::print("Ready      count: {}\n", gKernel.readyCount);
         std::print("Waiting    count: {}\n", gKernel.waitingCount);
         std::print("IO waiting count: {}\n", gKernel.ioWaitingCount);
         std::print("Zombie     count: {}\n", gKernel.zombieCount);
-        std::print("----------------:--------\n"); 
+        std::print("----------------:--------\n");
     }
 
     inline static void DoCheckTaskCountInvariant() noexcept {
@@ -831,10 +792,94 @@ namespace internal_ak {
 
             // Ensure that the current Task is valid
             // if (gKernel.currentTask.isValid()) std::abort();
-        }    
+        }
     }
 
 }
+
+
+struct Condition {
+
+
+    struct WaitOp {
+
+        explicit WaitOp(Condition& condition) : condition(condition) {}
+
+        constexpr bool await_ready() const noexcept {
+            return IsTaskDone(condition.lockingTask);
+        }
+
+        constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) const noexcept {
+            using namespace ak_internal;
+
+            TaskPromise& currentTaskPromise = gKernel.currentTaskHdl.promise();
+
+            assert(gKernel.currentTaskHdl == currentTaskHdl);
+
+
+            // Check the current Task
+
+            assert(IsLinkDetached(&currentTaskPromise.waitLink));
+            assert(currentTaskPromise.state == TaskState::RUNNING);
+            ak_internal::CheckInvariants();
+
+            // Move the current task from READY to WAITING into the condition
+            currentTaskPromise.state = TaskState::WAITING;
+            ++gKernel.waitingCount;
+            EnqueueLink(&condition.waitNode, &currentTaskPromise.waitLink);
+            ClearTask(&gKernel.currentTaskHdl);
+            ak_internal::CheckInvariants();
+
+            // Move the target task from READY to RUNNING
+            TaskPromise& schedulerPromise = gKernel.schedulerTaskHdl.promise();
+            schedulerPromise.state = TaskState::RUNNING;
+            DetachLink(&schedulerPromise.waitLink); // remove from ready list
+            --gKernel.readyCount;
+            gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
+            ak_internal::CheckInvariants();
+            return gKernel.schedulerTaskHdl;
+        }
+
+        constexpr void await_resume() const noexcept {}
+
+        Condition& condition;
+    };
+
+    Condition(bool signaled = false) : signaled(signaled) {
+        using namespace ak_internal;
+        InitLink(&waitNode);
+    }
+
+    int signal() {
+        int signalled = 0;
+        // while (!wait_node.detached()) {
+        //     DList* next_waiting_task = wait_node.pop_front();
+        //     TaskPromise* next_waiting_task_promise = waitListNodeToTask(next_waiting_task);
+        //     assert(next_waiting_task_promise->state == TaskState::WAITING);
+        //     --g_kernel.waiting_count;
+        //     next_waiting_task_promise->state = TaskState::READY;
+        //     g_kernel.ready_list.push_back(&next_waiting_task_promise->wait_node);
+        //     --g_kernel.ready_count;
+        //     ++signalled;
+        // }
+        return signalled;
+    }
+
+    WaitOp wait() { return WaitOp(*this); }
+
+    void reset(bool signaled = false) {
+        using namespace ak_internal;
+        this->signaled = signaled;
+        ClearTask(&lockingTask);
+        InitLink(&waitNode);
+    }
+
+    // g_kernel.current_task_hdl = TaskHdl();
+    // g_kernel.current_task.clear();
+    bool              signaled = false;
+    TaskHdl           lockingTask;
+    ak_internal::Link waitNode;
+};
 
 struct Kernel gKernel;
 

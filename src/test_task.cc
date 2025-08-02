@@ -28,55 +28,56 @@ int MAX = 10;
 // 	}
 // }
 
-Task aTask() noexcept { 
+DefineTask aTask() noexcept { 
 	std::print("Hello from A: Step 1\n");
-	co_await suspend();
+	co_await SuspendTask();
 
 	std::print("Hello from A: Step 2\n");
-	co_await suspend();
+	co_await SuspendTask();
 
 	std::print("Hello from A: Step 3\n");
-	co_await suspend();
+	co_await SuspendTask();
 
 	std::print("Hello from A: Step 4\n");
-	co_await suspend();
+	co_await SuspendTask();
 
 	std::print("Hello from A: Step 5\n");
-	co_await suspend();
+	co_await SuspendTask();
 
 	co_return;
 }
 
-Task aChild() noexcept { 
+DefineTask aChild() noexcept { 
 	std::print("Hello from A Child: Step 1\n");
-	co_await suspend();
+	co_await SuspendTask();
 
 	std::print("Hello from A Child: Step 2\n");
-	co_await suspend();
+	co_await SuspendTask();
 
 	std::print("Hello from A Child: Step 3\n");
-	co_await suspend();
+	co_await SuspendTask();
 
 	std::print("Hello from A Child: Step 4\n");
-	co_await suspend();
+	co_await SuspendTask();
 
 	std::print("Hello from A Child: Step 5\n");
-	co_await suspend();
+	co_await SuspendTask();
 
 	co_return;
 }
 
-Task bTask() noexcept { 
+DefineTask bTask() noexcept { 
 	std::print("Hello from B\n");
 	co_return;
 }
 
 
-Task main_task() noexcept {
-	Task a = aTask();
-	Task b = bTask();
+
+DefineTask main_task() noexcept {
+	TaskHdl a = aTask();
+	auto b = bTask();
 	co_await a;
-	co_await b;
+	co_await JoinTask(b);
 	// readyToWrite.reset(true);
 	// readyToRead.reset();
 	// Task reader = readerTask();
@@ -88,7 +89,7 @@ Task main_task() noexcept {
 
 
 int main() {
-	int res = AkRun(main_task);
+	int res = RunMain(main_task);
 	std::print("main_task returned {}\n", res);
 	return res;
 }
