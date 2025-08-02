@@ -510,32 +510,24 @@ struct TerminateSchedulerOp {
     constexpr void await_resume() const noexcept {}
 };
 
-struct SchedulerTask {
-    using promise_type = TaskPromise;
+RunSchedulerTaskOp RunSchedulerTask(TaskHdl hdl) noexcept {
+    return RunSchedulerTaskOp{hdl};
+}
 
-    SchedulerTask(TaskHdl hdl) noexcept : hdl(hdl) {}
-    ~SchedulerTask() noexcept {
-        TaskPromise& schedulerPromise = hdl.promise();
+void DestroySchedulerTask(TaskHdl hdl) noexcept {
+    TaskPromise* promise = &hdl.promise();
 
-        // Remove from Task list
-        DetachLink(&schedulerPromise.taskListLink);
-        --gKernel.taskCount;
+    // Remove from Task list
+    DetachLink(&promise->taskListLink);
+    --gKernel.taskCount;
 
-        // Remove from Zombie List
-        DetachLink(&schedulerPromise.waitLink);
-        --gKernel.zombieCount;
+    // Remove from Zombie List
+    DetachLink(&promise->waitLink);
+    --gKernel.zombieCount;
 
-        schedulerPromise.state = TaskState::DELETING;
-        hdl.destroy();
-
-    }
-
-    bool               done() const noexcept  { return hdl.done(); }
-    RunSchedulerTaskOp run() const noexcept   { return RunSchedulerTaskOp{hdl}; }
-    TaskState          state() const noexcept { return hdl.promise().state; }
-
-    TaskHdl hdl;
-};
+    promise->state = TaskState::DELETING; //TODO: double check
+    hdl.destroy();
+}
 
 struct KernelBootPromise {
     KernelBootPromise(std::function<DefineTask()> userMainTask) : userMainTask(userMainTask) {}
@@ -562,7 +554,7 @@ struct KernelBootTask {
 };
 
 static KernelBootTask mainKernelTask(std::function<DefineTask()> userMainTask) noexcept;
-static SchedulerTask  schedulerTask(std::function<DefineTask()> userMainTask) noexcept;
+static DefineTask     schedulerTask(std::function<DefineTask()> userMainTask) noexcept;
 
 inline int RunMain(std::function<DefineTask()> userMainTask) noexcept {
     using namespace ak_internal;
@@ -583,10 +575,10 @@ inline int RunMain(std::function<DefineTask()> userMainTask) noexcept {
 inline KernelBootTask mainKernelTask(std::function<DefineTask()> userMainTask) noexcept {
     using namespace ak_internal;
 
-    SchedulerTask task = schedulerTask(userMainTask);
-    gKernel.schedulerTaskHdl = task.hdl;
+    TaskHdl schedulerHdl = schedulerTask(userMainTask);
+    gKernel.schedulerTaskHdl = schedulerHdl;
 
-    co_await task.run();
+    co_await RunSchedulerTask(schedulerHdl);
     DebugTaskCount();
 
     co_return;
@@ -594,7 +586,7 @@ inline KernelBootTask mainKernelTask(std::function<DefineTask()> userMainTask) n
 
 static int started = 0;
 
-inline SchedulerTask schedulerTask(std::function<DefineTask()> userMainTask) noexcept {
+inline DefineTask schedulerTask(std::function<DefineTask()> userMainTask) noexcept {
     using namespace ak_internal;
 
     ++started;
