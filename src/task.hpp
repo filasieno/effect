@@ -364,7 +364,7 @@ inline constexpr TaskHdl ak_internal::JoinTaskOp::await_suspend(TaskHdl currentT
 
     currentTaskPromise.state = TaskState::WAITING;
     ++gKernel.waitingCount;
-    EnqueueLink(&hdlTaskPromise.waitLink, &currentTaskPromise.waitLink);
+    EnqueueLink(&hdlTaskPromise.awaitingTerminationList, &currentTaskPromise.waitLink);
     ClearTask(&gKernel.currentTaskHdl);
     CheckInvariants();
     DebugTaskCount();
@@ -579,6 +579,7 @@ inline KernelBootTask mainKernelTask(std::function<DefineTask()> userMainTask) n
     gKernel.schedulerTaskHdl = schedulerHdl;
 
     co_await RunSchedulerTask(schedulerHdl);
+    DestroySchedulerTask(schedulerHdl);
     DebugTaskCount();
 
     co_return;
