@@ -13,7 +13,6 @@ namespace ak_internal {
 #endif
 }
 
-
 // -----------------------------------------------------------------------------
 
 /// \defgroup Task Task API
@@ -42,9 +41,11 @@ struct DefineTask;
 struct TaskPromise;
 
 /// \brief Coroutine handle for a Task
+/// \ingroup Task
 using TaskHdl = std::coroutine_handle<TaskPromise>;
 
 /// \brief Defines a Task function
+/// \ingroup Task
 template <typename... Args>
 using TaskFn = std::function<DefineTask(Args...)>;
 
@@ -139,7 +140,6 @@ namespace ak_internal {
     };
 
     struct ResumeTaskOp {
-
         explicit ResumeTaskOp(TaskHdl hdl) : hdl(hdl) {};
 
         constexpr bool await_ready() const noexcept { return hdl.done();}
@@ -159,10 +159,6 @@ namespace ak_internal {
         TaskHdl hdl;
     };
 
-    void CheckInvariants() noexcept;
-    
-    void DebugTaskCount() noexcept;
-
     struct SuspendOp {
         constexpr bool await_ready() const noexcept { return false; }
         TaskHdl        await_suspend(TaskHdl hdl) const noexcept;
@@ -176,6 +172,10 @@ namespace ak_internal {
 
         TaskHdl hdl;
     };
+
+    void CheckInvariants() noexcept;
+    
+    void DebugTaskCount() noexcept;
     
 }
 
@@ -747,7 +747,6 @@ inline void TaskPromise::return_void() noexcept {
 namespace ak_internal {
     struct Kernel gKernel;
 }
-
 
 // TODO: Add IO Ring
 // TODO: Add Concurrency Tools
