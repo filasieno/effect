@@ -4,7 +4,15 @@
 #include <coroutine>
 #include <print>
 #include <functional>
-#include "defs.hpp"
+
+namespace ak_internal {
+#ifdef NDEBUG
+    constexpr bool IS_DEBUG_MODE = false;
+#else
+    constexpr bool IS_DEBUG_MODE = true;
+#endif
+}
+
 
 // -----------------------------------------------------------------------------
 
@@ -581,13 +589,13 @@ namespace ak_internal
     }
 
     inline void CheckTaskCountInvariant() noexcept {
-        if constexpr (DEFINED_DEBUG) {
+        if constexpr (IS_DEBUG_MODE) {
             DoCheckTaskCountInvariant();
         }
     }
 
     inline void CheckInvariants() noexcept {
-        if constexpr (DEFINED_DEBUG) {
+        if constexpr (IS_DEBUG_MODE) {
             // check the Task invariants
             DoCheckTaskCountInvariant();
 
@@ -639,7 +647,7 @@ namespace ak_internal
 
         TaskPromise& currentPromise = currentTask.promise();
 
-        if constexpr (DEFINED_DEBUG) {
+        if constexpr (IS_DEBUG_MODE) {
             assert(gKernel.currentTaskHdl == currentTask);
             assert(currentPromise.state == TaskState::RUNNING);
             assert(IsLinkDetached(&currentPromise.waitLink));
