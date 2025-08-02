@@ -29,7 +29,7 @@ void TaskPromise::operator delete(void* ptr, std::size_t sz) {
 TaskPromise::TaskPromise() {
     taskList.init();
     waitNode.init();
-    terminatedEvent.init();
+    waitTaskNode.init();
     state = TaskState::CREATED;
     std::print("TaskPromise::TaskPromise(): Task({}) initialized\n", (void*)this); 
     
@@ -61,14 +61,14 @@ void TaskPromise::return_void() noexcept {
     checkInvariants();
     
     // Wake up all tasks waiting for this task
-    if (terminatedEvent.detached()) {
+    if (waitTaskNode.detached()) {
         std::print("TaskPromise::TaskPromise(): Task({}) there are no waiting tasks\n", (void*)this);
         return;
     }
 
     std::print("TaskPromise::TaskPromise(): Task({}) waking up waiting tasks\n", (void*)this);
     do {
-        DList* next = terminatedEvent.popFront();
+        DList* next = waitTaskNode.popFront();
         TaskPromise& nextPromise = *waitListNodeToTaskPromise(next);
 
         std::print("TaskPromise::TaskPromise(): Task({}) about to wake up Task({})\n", (void*)this, (void*)&nextPromise); 
@@ -83,7 +83,7 @@ void TaskPromise::return_void() noexcept {
         std::print("TaskPromise::TaskPromise(): Task({}) did wake up Task({})\n", (void*)this, (void*)&nextPromise);
         debugTaskCount();
 
-    } while (!terminatedEvent.detached());
+    } while (!waitTaskNode.detached());
 }
 
 // TaskPromise::InitialSuspend -------------------------------------------------

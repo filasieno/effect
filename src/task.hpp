@@ -6,7 +6,6 @@
 #include <functional>
 #include "defs.hpp"
 
-
 // -----------------------------------------------------------------------------
 // Basic definitions
 // -----------------------------------------------------------------------------
@@ -38,7 +37,6 @@ enum class TaskState
     ZOMBIE,     // Already dead 
     DELETING
 };
-
 
 // -----------------------------------------------------------------------------
 // Utils
@@ -131,17 +129,6 @@ struct DList {
 // Task Promise
 // -----------------------------------------------------------------------------
 
-// struct Event {
-//     void signal() noexcept {
-
-//     }
-
-//     void wait() noexcept {
-        
-//     }
-//     DList node;
-// }
-
 struct TaskPromise {
     
     void* operator new(std::size_t n) noexcept;
@@ -174,7 +161,7 @@ struct TaskPromise {
     TaskState state;
     DList     waitNode;        // Used to enqueue tasks waiting for Critical Section
     DList     taskList;        // Global Task list
-    DList     terminatedEvent; // The list of all tasks waiting for this task
+    DList     waitTaskNode; // The list of all tasks waiting for this task
 };
 
 struct ResumeTaskOp {
@@ -289,8 +276,6 @@ void debugTaskCount() noexcept;
 // Task Wrappers
 // -----------------------------------------------------------------------------
 
-
-
 struct Condition {
 
     struct WaitOp {
@@ -400,7 +385,6 @@ namespace effect_internal {
 
 }
 
-
 inline auto getCurrentTask() noexcept {
     return effect_internal::GetCurrentTaskOp{};
 }
@@ -460,7 +444,7 @@ inline constexpr TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const
 
     currentTaskPromise.state = TaskState::WAITING;
     ++gKernel.waitingCount;
-    hdlTaskPromise.terminatedEvent.pushBack(&currentTaskPromise.waitNode);
+    hdlTaskPromise.waitTaskNode.pushBack(&currentTaskPromise.waitNode);
     gKernel.currentTask.clear();
     checkInvariants();
     std::print("JoinTaskOp::await_suspend(): Task({}) is waiting on Task({}) termination\n", (void*)&currentTaskPromise, (void*)&hdlTaskPromise); 
@@ -479,9 +463,8 @@ inline constexpr TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const
     gKernel.currentTask = gKernel.schedulerTask;
     checkInvariants();
     debugTaskCount();
-    
+
     return gKernel.schedulerTask; 
 }
 
 inline constexpr void JoinTaskOp::await_resume() const noexcept {}
-
