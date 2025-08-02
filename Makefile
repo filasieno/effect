@@ -136,6 +136,5 @@ build/io: build/io.o
 
 test:: test_dlist
 
-build/test_ak: 
-test:: test_ak
-#	valgrind --leak-check=full --show-leak-kinds=all build/test_ak  <-- parte due volte 
+test:: build/test_ak
+	valgrind --leak-check=full --show-leak-kinds=all build/test_ak
