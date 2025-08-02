@@ -140,3 +140,4 @@ test:: test_dlist
 
 build/test_task: 
 test:: test_task
+	valgrind --leak-check=full --show-leak-kinds=all build/test_task
