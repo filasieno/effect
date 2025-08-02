@@ -5,7 +5,7 @@ SHELL := /bin/bash
 MAKEFLAGS += --warn-undefined-variables
 MAKEFLAGS += --no-builtin-rules
 MAKEFLAGS += --silent
-#MAKEFLAGS += --output-sync=target
+MAKEFLAGS += --output-sync=target
 .ONESHELL:
 .DELETE_ON_ERROR:
 
