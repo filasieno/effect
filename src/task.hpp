@@ -17,11 +17,11 @@ struct TaskPromise;
 struct SchedulerTaskPromise;
 struct SuspendOp;
 struct NopEffect;
-struct KernelBootPromise;
+struct KernelTaskPromise;
 
 using CoroHdl           = std::coroutine_handle<>;
 using TaskHdl           = std::coroutine_handle<TaskPromise>;
-using KernelBootTaskHdl = std::coroutine_handle<KernelBootPromise>;
+using KernelBootTaskHdl = std::coroutine_handle<KernelTaskPromise>;
 
 template <typename... Args>
 using TaskFn = std::function<DefineTask(Args...)>;
@@ -297,15 +297,21 @@ namespace ak_internal {
     };
 }
 
-inline auto GetCurrentTask() noexcept {
+/// \brief Get the current Task
+/// \return [Async] TaskHdl
+/// \ingroup Task
+inline constexpr auto GetCurrentTask() noexcept {
     return ak_internal::GetCurrentTaskOp{};
 }
 
+/// \brief Suspends the current Task and resumes the Scheduler.
+/// \return [Async] void
+/// \ingroup Task
 inline constexpr auto SuspendTask() noexcept { return ak_internal::SuspendOp{}; }
 
 /// \brief Suspends the current Task until the target Task completes.
 /// \param hdl a handle to the target Task.
-/// \return an awaitable object that returns void
+/// \return [Async] void
 /// \ingroup Task
 inline auto JoinTask(TaskHdl hdl) noexcept {
 	return ak_internal::JoinTaskOp{hdl};
@@ -313,7 +319,7 @@ inline auto JoinTask(TaskHdl hdl) noexcept {
 
 /// \brief Alias for AkJoinTask
 /// \param hdl a handle to the target Task.
-/// \return an awaitable object that returns void
+/// \return [Async] void
 /// \ingroup Task
 inline auto operator co_await(TaskHdl hdl) noexcept {
 	return JoinTask(hdl);
@@ -329,7 +335,7 @@ inline TaskState GetTaskState(TaskHdl hdl) noexcept {
 
 /// \brief Returns true if the target Task is done.
 /// \param hdl a handle to the target Task
-/// \return true if the target Task is done
+/// \return `true` if the target Task is done
 /// \ingroup Task
 inline bool IsTaskDone(TaskHdl hdl) noexcept {
 	return hdl.done();
@@ -447,46 +453,43 @@ inline TaskHdl ak_internal::ResumeTaskOp::await_suspend(TaskHdl currentTaskHdl) 
     return hdl;
 }
 
-static void initKernel() noexcept;
-static void finiKernel() noexcept;
+static void InitKernel() noexcept;
+static void FiniKernel() noexcept;
 
-struct RunSchedulerTaskOp {
+auto RunSchedulerTask() noexcept {
+    struct RunSchedulerTaskOp {
 
-    RunSchedulerTaskOp(TaskHdl schedulerHdl) : schedulerHdl(schedulerHdl) {};
+        constexpr bool await_ready() const noexcept  { return false; }
+        constexpr void await_resume() const noexcept {}  
 
-    bool await_ready() const noexcept {
-        return schedulerHdl.done();
-    }
+        TaskHdl await_suspend(KernelBootTaskHdl currentTaskHdl) const noexcept {
+            using namespace ak_internal;
 
-    TaskHdl await_suspend(KernelBootTaskHdl currentTaskHdl) const noexcept {
-        using namespace ak_internal;
+            (void)currentTaskHdl;
+            TaskPromise& schedulerPromise = gKernel.schedulerTaskHdl.promise();
 
-        (void)currentTaskHdl;
-        TaskPromise& schedulerPromise = schedulerHdl.promise();
+            // Check expected state post scheduler construction
 
-        // Check expected state post scheduler construction
+            assert(gKernel.taskCount == 1);
+            assert(gKernel.readyCount == 1);
+            assert(schedulerPromise.state == TaskState::READY);
+            assert(!IsLinkDetached(&schedulerPromise.waitLink));
+            assert(gKernel.currentTaskHdl == TaskHdl());
 
-        assert(gKernel.taskCount == 1);
-        assert(gKernel.readyCount == 1);
-        assert(schedulerPromise.state == TaskState::READY);
-        assert(!IsLinkDetached(&schedulerPromise.waitLink));
-        assert(gKernel.currentTaskHdl == TaskHdl());
+            // Setup SchedulerTask for execution (from READY -> RUNNING)
+            gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
+            schedulerPromise.state = TaskState::RUNNING;
+            DetachLink(&schedulerPromise.waitLink);
+            --gKernel.readyCount;
 
-        // Setup SchedulerTask for execution (from READY -> RUNNING)
-        gKernel.currentTaskHdl = schedulerHdl;
-        schedulerPromise.state = TaskState::RUNNING;
-        DetachLink(&schedulerPromise.waitLink);
-        --gKernel.readyCount;
+            // Check expected state post task system bootstrap
+            CheckInvariants();
+            return gKernel.schedulerTaskHdl;
+        }
+    };
 
-        // Check expected state post task system bootstrap
-        CheckInvariants();
-        return schedulerHdl;
-    }
-
-    void await_resume() const noexcept {}
-
-    TaskHdl schedulerHdl;
-};
+    return RunSchedulerTaskOp{};
+}
 
 struct TerminateSchedulerOp {
     constexpr bool await_ready() const noexcept { return false; }
@@ -510,10 +513,6 @@ struct TerminateSchedulerOp {
     constexpr void await_resume() const noexcept {}
 };
 
-RunSchedulerTaskOp RunSchedulerTask(TaskHdl hdl) noexcept {
-    return RunSchedulerTaskOp{hdl};
-}
-
 void DestroySchedulerTask(TaskHdl hdl) noexcept {
     TaskPromise* promise = &hdl.promise();
 
@@ -529,8 +528,8 @@ void DestroySchedulerTask(TaskHdl hdl) noexcept {
     hdl.destroy();
 }
 
-struct KernelBootPromise {
-    KernelBootPromise(std::function<DefineTask()> userMainTask) : userMainTask(userMainTask) {}
+struct KernelTaskPromise {
+    KernelTaskPromise(std::function<DefineTask()> userMainTask) : userMainTask(userMainTask) {}
 
     KernelBootTaskHdl get_return_object() noexcept   { return KernelBootTaskHdl::from_promise(*this); }
     constexpr auto    initial_suspend() noexcept     { return std::suspend_always {}; }
@@ -541,40 +540,40 @@ struct KernelBootPromise {
     std::function<DefineTask()> userMainTask;
 };
 
-struct KernelBootTask {
-    using promise_type = KernelBootPromise;
+struct KernelTask {
+    using promise_type = KernelTaskPromise;
 
-    KernelBootTask(KernelBootTaskHdl hdl) noexcept : hdl(hdl) {}
+    KernelTask(KernelBootTaskHdl hdl) noexcept : hdl(hdl) {}
 
     KernelBootTaskHdl hdl;
 };
 
-static KernelBootTask mainKernelTask(std::function<DefineTask()> userMainTask) noexcept;
-static DefineTask     schedulerTask(std::function<DefineTask()> userMainTask) noexcept;
+static KernelTask KernelTaskProc(std::function<DefineTask()> userMainTask) noexcept;
+static DefineTask SchedulerTaskProc(std::function<DefineTask()> userMainTask) noexcept;
 
 inline int RunMain(std::function<DefineTask()> userMainTask) noexcept {
     using namespace ak_internal;
     std::setbuf(stdout, nullptr);
     std::setbuf(stderr, nullptr);
 
-    initKernel();
+    InitKernel();
 
-    KernelBootTask kernelBootTask = mainKernelTask(userMainTask);
+    KernelTask kernelBootTask = KernelTaskProc(userMainTask);
     gKernel.kernelTask = kernelBootTask.hdl;
     kernelBootTask.hdl.resume();
 
-    finiKernel();
+    FiniKernel();
 
     return 0;
 }
 
-inline KernelBootTask mainKernelTask(std::function<DefineTask()> userMainTask) noexcept {
+inline KernelTask KernelTaskProc(std::function<DefineTask()> userMainTask) noexcept {
     using namespace ak_internal;
 
-    TaskHdl schedulerHdl = schedulerTask(userMainTask);
+    TaskHdl schedulerHdl = SchedulerTaskProc(userMainTask);
     gKernel.schedulerTaskHdl = schedulerHdl;
 
-    co_await RunSchedulerTask(schedulerHdl);
+    co_await RunSchedulerTask();
     DestroySchedulerTask(schedulerHdl);
     DebugTaskCount();
 
@@ -583,7 +582,7 @@ inline KernelBootTask mainKernelTask(std::function<DefineTask()> userMainTask) n
 
 static int started = 0;
 
-inline DefineTask schedulerTask(std::function<DefineTask()> userMainTask) noexcept {
+inline DefineTask SchedulerTaskProc(std::function<DefineTask()> userMainTask) noexcept {
     using namespace ak_internal;
 
     ++started;
@@ -642,7 +641,7 @@ inline DefineTask schedulerTask(std::function<DefineTask()> userMainTask) noexce
 }
 
 
-inline void initKernel() noexcept {
+inline void InitKernel() noexcept {
     using namespace ak_internal;
     gKernel.taskCount = 0;
     gKernel.readyCount = 0;
@@ -657,7 +656,7 @@ inline void initKernel() noexcept {
     InitLink(&gKernel.taskList);
 }
 
-inline void finiKernel() noexcept { }
+inline void FiniKernel() noexcept { }
 
 // -----------------------------------------------------------------------------
 // TaskPromise
