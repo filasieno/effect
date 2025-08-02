@@ -138,5 +138,5 @@ build/task: build/main.o
 
 test:: test_dlist
 
-build/test_task: build/task.o build/kernel.o
+build/test_task: 
 test:: test_task
