@@ -28,54 +28,34 @@
 // 	}
 // }
 
-DefineTask aTask() noexcept { 
-	std::print("Hello from A: Step 1\n");
+DefineTask aTask(const char* name) noexcept { 
+	std::print("Hello from {}: Step 1\n", name);
 	co_await SuspendTask();
 
-	std::print("Hello from A: Step 2\n");
+	std::print("Hello from {}: Step 2\n", name);
 	co_await SuspendTask();
 
-	std::print("Hello from A: Step 3\n");
+	std::print("Hello from {}: Step 3\n", name);
 	co_await SuspendTask();
 
-	std::print("Hello from A: Step 4\n");
+	std::print("Hello from {}: Step 4\n", name);
 	co_await SuspendTask();
 
-	std::print("Hello from A: Step 5\n");
-	co_await SuspendTask();
-
-	co_return;
-}
-
-DefineTask aChild() noexcept { 
-	std::print("Hello from A Child: Step 1\n");
-	co_await SuspendTask();
-
-	std::print("Hello from A Child: Step 2\n");
-	co_await SuspendTask();
-
-	std::print("Hello from A Child: Step 3\n");
-	co_await SuspendTask();
-
-	std::print("Hello from A Child: Step 4\n");
-	co_await SuspendTask();
-
-	std::print("Hello from A Child: Step 5\n");
+	std::print("Hello from {}: Step 5\n", name);
 	co_await SuspendTask();
 
 	co_return;
 }
 
-DefineTask bTask() noexcept { 
-	std::print("Hello from B\n");
+DefineTask bTask(const char* name) noexcept { 
+	std::print("Hello from {}\n", name);
 	co_return;
 }
 
-
-
-DefineTask main_task() noexcept {
-	TaskHdl a = aTask();
-	auto b = bTask();
+DefineTask main_task(const char* name) noexcept {
+	std::print("Hello from '{}'\n", name);
+	TaskHdl a = aTask("A-TASK");
+	auto b = bTask("B-TASK");
 	co_await a;
 	co_await JoinTask(b);
 	// readyToWrite.reset(true);
@@ -89,7 +69,7 @@ DefineTask main_task() noexcept {
 
 
 int main() {
-	int res = RunMain(main_task);
-	std::print("main_task returned {}\n", res);
+	int res = RunMain(main_task, "main");
+	std::print("main_task returned: {}\n", res);
 	return res;
 }

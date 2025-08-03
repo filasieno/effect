@@ -196,7 +196,8 @@ struct TaskContext {
         std::free(ptr);
     }
 
-    TaskContext() {
+    template <typename... Args>
+    TaskContext(Args&&... ) {
         using namespace ak_internal;
 
         InitLink(&taskListLink);
@@ -405,7 +406,9 @@ namespace ak_internal
     }
 
     struct KernelTaskPromise {
-        KernelTaskPromise(std::function<DefineTask()> mainProc) : mainProc(mainProc) {}
+        
+        template <typename... Args>
+        KernelTaskPromise(DefineTask(*)(Args ...) noexcept, Args... ) noexcept {}
         
         void* operator new(std::size_t n) noexcept {
             void* mem = std::malloc(n);
@@ -419,13 +422,10 @@ namespace ak_internal
         }
 
         KernelTaskHdl  get_return_object() noexcept   { return KernelTaskHdl::from_promise(*this); }
-
         constexpr auto initial_suspend() noexcept     { return std::suspend_always {}; }
         constexpr auto final_suspend() noexcept       { return std::suspend_never  {}; }
-        constexpr void return_void() noexcept         {}
+        constexpr void return_void() noexcept         { }
         constexpr void unhandled_exception() noexcept { assert(false); }
-
-        std::function<DefineTask()> mainProc;
     };
 
     struct DefineKernelTask {
@@ -437,10 +437,11 @@ namespace ak_internal
         KernelTaskHdl hdl;
     };
 
-    inline DefineTask SchedulerTaskProc(std::function<DefineTask()> mainProc) noexcept {
+    template <typename... Args>
+    inline DefineTask SchedulerTaskProc(DefineTask(*mainProc)(Args ...) noexcept, Args... args) noexcept {
         using namespace ak_internal;
 
-        TaskHdl mainTask = mainProc();
+        TaskHdl mainTask = mainProc(args...);
         assert(!mainTask.done());
         assert(GetTaskState(mainTask) == TaskState::READY);
 
@@ -491,9 +492,10 @@ namespace ak_internal
         co_return;
     }
 
-    inline DefineKernelTask KernelTaskProc(std::function<DefineTask()> mainProc) noexcept {
+    template <typename... Args>
+    inline DefineKernelTask KernelTaskProc(DefineTask(*mainProc)(Args ...) noexcept, Args ... args) noexcept {
 
-        TaskHdl schedulerHdl = SchedulerTaskProc(mainProc);
+        TaskHdl schedulerHdl = SchedulerTaskProc(mainProc,  std::forward<Args>(args) ... );
         gKernel.schedulerTaskHdl = schedulerHdl;
 
         co_await RunSchedulerTask();
@@ -710,12 +712,13 @@ namespace ak_internal
 /// \param UserProc the user's main task
 /// \return 0 on success
 /// \ingroup Kernel
-inline int RunMain(std::function<DefineTask()> mainProc) noexcept {
+template <typename... Args>
+inline int RunMain(DefineTask(*mainProc)(Args ...) noexcept , Args... args) noexcept {  
     using namespace ak_internal;
 
     InitKernel();
 
-    KernelTaskHdl hdl = KernelTaskProc(mainProc);
+    KernelTaskHdl hdl = KernelTaskProc(mainProc, std::forward<Args>(args) ...);
     gKernel.kernelTask = hdl;
     hdl.resume();
 
@@ -726,6 +729,7 @@ inline int RunMain(std::function<DefineTask()> mainProc) noexcept {
 
 inline void TaskContext::return_void() noexcept {
     using namespace ak_internal;
+    
     CheckInvariants();
 
     // Wake up all tasks waiting for this task
