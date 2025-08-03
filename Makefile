@@ -8,6 +8,7 @@ MAKEFLAGS += --silent
 MAKEFLAGS += --output-sync=target
 .ONESHELL:
 .DELETE_ON_ERROR:
+.SUFFIXES:
 
 .PHONY: all
 all::
@@ -122,11 +123,9 @@ LDFLAGS += -fprofile-instr-generate
 export LLVM_PROFILE_FILE = build/$@.profraw
 
 
-build/test_%.profraw: test_%
-
 build/coverage.profdata:
-	llvm-profdata merge -output=$@ $^
-	for i in $^; do echo "-object $${i%.profraw}"; done > $@.binaries
+	llvm-profdata merge -output=$@ build/*.profraw
+	for i in build/*.profraw; do echo "-object $${i%.profraw}"; done > $@.binaries
 
 .PHONY: coverage-html
 coverage-html: build/coverage.profdata
@@ -208,11 +207,6 @@ all:: build/test_dlist build/test_ak
 
 build/io: build/io.o
 
-build/coverage.profdata: build/test_dlist.profraw
 test:: test_dlist
-
-build/coverage.profdata: build/test_ak.profraw
 test:: test_ak
-
-build/coverage.profdata: build/test_event.profraw
 test:: test_event
