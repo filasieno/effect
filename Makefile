@@ -9,6 +9,11 @@ MAKEFLAGS += --output-sync=target
 .ONESHELL:
 .DELETE_ON_ERROR:
 
+.PHONY: all
+all::
+
+include .config.mk
+
 TARGET_ARCH = -march=x86-64
 CXX = clang++
 
@@ -26,11 +31,9 @@ LDLIBS = -luring
 CPPFLAGS = -I./src
 CC := $(CXX)
 
-.PHONY: all
-all:: build/test_dlist build/test_ak
 
 COLOR ?= yes
-ifdef COLOR
+ifeq ($(COLOR),yes)
 ESC := $(shell printf '\033')
 ANSI_RED := $(ESC)[0;31m
 ANSI_GREEN := $(ESC)[0;32m
@@ -64,10 +67,16 @@ run_%: build/%
 	$(call trace,"$<")
 	"$<"
 
+RUN_TESTS_WITH_VALGRIND ?= no
+
 .NOTPARALLEL: test_%
 test_%: build/test_%
 	printf -- '$(ANSI_YELLOW)---------- Running test:$(ANSI_RESET) %s\n' '$<'
+ifeq ($(RUN_TESTS_WITH_VALGRIND),yes)	
+	valgrind --leak-check=full --show-leak-kinds=all  --track-origins=yes --show-reachable=yes --error-exitcode=1 -- "$<"
+else
 	"$<" |& cat -n
+endif
 	printf -- '$(ANSI_YELLOW)---------- Finished test:$(ANSI_RESET) %s\n' '$<'
 
 build/precompiled.pch: src/precompiled.hpp | build/.
@@ -95,6 +104,7 @@ clean::
 	$(call trace,rm -rf build)
 	rm -rf build
 
+
 .PHONY: run
 run:: 
 
@@ -102,6 +112,69 @@ run::
 .NOTPARALLEL: test
 test::
 	reset
+
+ifeq ($(CONFIG),coverage) # coverage support
+
+CXXFLAGS += -g -O0
+CXXFLAGS += -fprofile-instr-generate -fcoverage-mapping
+LDFLAGS += -fprofile-instr-generate
+
+export LLVM_PROFILE_FILE = build/$@.profraw
+
+
+build/test_%.profraw: test_%
+
+build/coverage.profdata:
+	llvm-profdata merge -output=$@ $^
+	for i in $^; do echo "-object $${i%.profraw}"; done > $@.binaries
+
+.PHONY: coverage-html
+coverage-html: build/coverage.profdata
+	$(call trace,Generating HTML coverage report)
+	llvm-cov show -instr-profile=$< -use-color -format html -output-dir=build/coverage \
+		-Xdemangler c++filt -Xdemangler -n \
+		-show-instantiations \
+		-show-regions -show-line-counts -show-branches=count -show-mcdc -show-expansions \
+		-check-binary-ids\
+		$$(cat $<.binaries) -sources src/*.hpp src/*.cc
+
+
+.PHONY: coverage-term
+coverage-term: build/coverage.profdata
+	$(call trace,Generating coverage report for terminal)
+	llvm-cov report -instr-profile=$< -use-color $$(cat $<.binaries) -sources src/*.hpp src/*.cc
+	
+build/lcov.info: build/coverage.profdata
+	$(call trace,Generating lcov info file)
+	llvm-cov export -instr-profile=$< -format=lcov $$(cat $<.binaries) -sources src/*.hpp src/*.cc > $@
+
+
+.PHONY: coverage
+coverage:: coverage-term coverage-html build/lcov.info
+	
+
+endif # coverage support
+
+define CONFIG_TEMPLATE
+# Configuration for the project: [debug], coverage, release
+CONFIG = $(CONFIG)
+
+# Enable or disable color output: [yes], no
+COLOR = $(COLOR)
+
+# Run tests with Valgrind: yes, [no]
+RUN_TESTS_WITH_VALGRIND = $(RUN_TESTS_WITH_VALGRIND)
+endef
+
+.PHONY: config
+config:: .config.mk
+.config.mk:
+	cat <<-'EOF' > $@
+	$(CONFIG_TEMPLATE)
+	EOF
+
+
+
 
 .PHONY: watch
 watch: 
@@ -129,13 +202,17 @@ build/%.pdf: src/%.md | build/.
 doxygen: | build/doc/.
 	doxygen Doxyfile
 
-
 #----------------------------------------
+
+all:: build/test_dlist build/test_ak
 
 build/io: build/io.o
 
+build/coverage.profdata: build/test_dlist.profraw
 test:: test_dlist
 
-test:: build/test_ak build/test_event
-	valgrind --leak-check=full --show-leak-kinds=all build/test_event
-	valgrind --leak-check=full --show-leak-kinds=all build/test_ak
+build/coverage.profdata: build/test_ak.profraw
+test:: test_ak
+
+build/coverage.profdata: build/test_event.profraw
+test:: test_event
