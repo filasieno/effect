@@ -52,7 +52,7 @@ DefineTask bTask(const char* name) noexcept {
 	co_return;
 }
 
-DefineTask main_task(const char* name) noexcept {
+DefineTask MainTask(const char* name) noexcept {
 	std::print("Hello from '{}'\n", name);
 	TaskHdl a = aTask("A-TASK");
 	auto b = bTask("B-TASK");
@@ -69,7 +69,7 @@ DefineTask main_task(const char* name) noexcept {
 
 
 int main() {
-	int res = RunMain(main_task, "main");
+	int res = RunMain(MainTask, "main");
 	std::print("main_task returned: {}\n", res);
 	return res;
 }

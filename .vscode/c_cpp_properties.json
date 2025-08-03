@@ -2,8 +2,8 @@
     "env": {
       "myIncludePath": [
         "${workspaceFolder}/src",
-        "/nix/store/g429sj5xghma1gyx64msx4sarz1prmv2-libcxx-20.1.6/share/libc++/v1",
-        "/nix/store/iaqj5jbbj9cywyy472d4jlprgz5viv64-liburing-2.11-dev/include"
+        "/nix/store/qg056x5dz2kcvqj77qqdz1s90mqv3bhn-libcxx-20.1.6/share/libc++/v1",
+        "/nix/store/qqjsw1fzand71ajx326r84zgi485mqb8-liburing-2.11-dev/include"
       ],
       "myDefines": ["DEBUG", "MY_FEATURE=1"]
     },
@@ -11,7 +11,7 @@
       {
         "name": "Linux",
         "intelliSenseMode": "linux-clang-x64",
-        "compilerPath": "/nix/store/285dkjl80a92ds4idky6hidy7w5ihc0k-clang-wrapper-20.1.6/bin/clang++",
+        "compilerPath": "/nix/store/ybx56vja0ci0am4w6cvaln0z5ygxbmyy-clang-wrapper-20.1.6/bin/clang++",
         "cStandard": "c17",
         "cppStandard": "c++23",
         "includePath": ["${myIncludePath}"],
