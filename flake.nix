@@ -78,6 +78,7 @@
               doxygen
               valgrind 
               graphviz
+              ragel
             ];
             
             buildInputs = with pkgs; [

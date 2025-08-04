@@ -8,10 +8,11 @@
 
 namespace ak_internal {
 #ifdef NDEBUG
-    constexpr bool IS_DEBUG_MODE = false;
+    constexpr bool IS_DEBUG_MODE    = false;
 #else
-    constexpr bool IS_DEBUG_MODE = true;
+    constexpr bool IS_DEBUG_MODE    = true;   
 #endif
+    constexpr bool TRACE_DEBUG_CODE = false;
 }
 
 // -----------------------------------------------------------------------------
@@ -19,7 +20,7 @@ namespace ak_internal {
 /// \defgroup Task Task API
 /// \brief Task API defines the API for creating and managing tasks.
 
-/// \defgroup Kernel API
+/// \defgroup Kernel Kernel API
 /// \brief Kernel API defines system level APIs.
 
 // -----------------------------------------------------------------------------
@@ -45,14 +46,14 @@ enum class TaskState
 const char* ToString(TaskState state) noexcept 
 {
     switch (state) {
-        case TaskState::INVALID: return "INVALID";
-        case TaskState::CREATED: return "CREATED";
-        case TaskState::READY:   return "READY";
-        case TaskState::RUNNING: return "RUNNING";
+        case TaskState::INVALID:    return "INVALID";
+        case TaskState::CREATED:    return "CREATED";
+        case TaskState::READY:      return "READY";
+        case TaskState::RUNNING:    return "RUNNING";
         case TaskState::IO_WAITING: return "IO_WAITING";
-        case TaskState::WAITING: return "WAITING";
-        case TaskState::ZOMBIE: return "ZOMBIE";
-        case TaskState::DELETING: return "DELETING";
+        case TaskState::WAITING:    return "WAITING";
+        case TaskState::ZOMBIE:     return "ZOMBIE";
+        case TaskState::DELETING:   return "DELETING";
         default: return nullptr;
     }
 }
@@ -615,7 +616,8 @@ namespace ak_internal
                     
                     // Complete operation
                     ctx->ioResult = cqe->res;
-                    completed++;
+                    --ctx->enqueuedIO;
+                    ++completed;
                 }
                 // Mark all as seen
                 io_uring_cq_advance(&gKernel.ioRing, completed);
@@ -719,16 +721,18 @@ namespace ak_internal
     }
 
     inline void DebugTaskCount() noexcept {
-        int running_count = gKernel.currentTaskHdl != TaskHdl() ? 1 : 0;
-        std::print("----------------:--------\n");
-        std::print("Task       count: {}\n", gKernel.taskCount);
-        std::print("----------------:--------\n");
-        std::print("Running    count: {}\n", running_count);
-        std::print("Ready      count: {}\n", gKernel.readyCount);
-        std::print("Waiting    count: {}\n", gKernel.waitingCount);
-        std::print("IO waiting count: {}\n", gKernel.ioWaitingCount);
-        std::print("Zombie     count: {}\n", gKernel.zombieCount);
-        std::print("----------------:--------\n");
+        if constexpr (TRACE_DEBUG_CODE) {
+            int running_count = gKernel.currentTaskHdl != TaskHdl() ? 1 : 0;
+            std::print("----------------:--------\n");
+            std::print("Task       count: {}\n", gKernel.taskCount);
+            std::print("----------------:--------\n");
+            std::print("Running    count: {}\n", running_count);
+            std::print("Ready      count: {}\n", gKernel.readyCount);
+            std::print("Waiting    count: {}\n", gKernel.waitingCount);
+            std::print("IO waiting count: {}\n", gKernel.ioWaitingCount);
+            std::print("Zombie     count: {}\n", gKernel.zombieCount);
+            std::print("----------------:--------\n");
+        }
     }
 
     inline static void DoCheckTaskCountInvariant() noexcept {
