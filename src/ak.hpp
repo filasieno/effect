@@ -704,7 +704,6 @@ namespace ak_internal
     inline TaskHdl FinalSuspendTaskOp::await_suspend(TaskHdl hdl) const noexcept {
         // Check preconditions
         TaskContext* ctx = &hdl.promise();
-        std::print("Final Suspend task state: {}\n", ToString(ctx->state));
         assert(gKernel.currentTaskHdl == hdl);
         assert(ctx->state == TaskState::RUNNING);
         assert(IsLinkDetached(&ctx->waitLink));

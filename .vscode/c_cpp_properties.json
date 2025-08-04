@@ -1,23 +1,23 @@
 {
-    "env": {
-      "myIncludePath": [
-        "${workspaceFolder}/src",
-        "/nix/store/qg056x5dz2kcvqj77qqdz1s90mqv3bhn-libcxx-20.1.6/share/libc++/v1",
-        "/nix/store/qqjsw1fzand71ajx326r84zgi485mqb8-liburing-2.11-dev/include"
-      ],
-      "myDefines": ["DEBUG", "MY_FEATURE=1"]
-    },
-    "configurations": [
-      {
-        "name": "Linux",
-        "intelliSenseMode": "linux-clang-x64",
-        "compilerPath": "/nix/store/ybx56vja0ci0am4w6cvaln0z5ygxbmyy-clang-wrapper-20.1.6/bin/clang++",
-        "cStandard": "c17",
-        "cppStandard": "c++23",
-        "includePath": ["${myIncludePath}"],
-        "defines": ["${myDefines}"]
-      }
+  "env": {
+    "myIncludePath": [
+      "${workspaceFolder}/src",
+      "/nix/store/qg056x5dz2kcvqj77qqdz1s90mqv3bhn-libcxx-20.1.6/share/libc++/v1",
+      "/nix/store/qqjsw1fzand71ajx326r84zgi485mqb8-liburing-2.11-dev/include"
     ],
-    "version": 4,
-    "enableConfigurationSquiggles": true
-  }
+    "myDefines": ["DEBUG", "MY_FEATURE=1"]
+  },
+  "configurations": [
+    {
+      "name": "Linux",
+      "intelliSenseMode": "linux-clang-x64",
+      "compilerPath": "/nix/store/ybx56vja0ci0am4w6cvaln0z5ygxbmyy-clang-wrapper-20.1.6/bin/clang++",
+      "cStandard": "c17",
+      "cppStandard": "c++23",
+      "includePath": ["${myIncludePath}"],
+      "defines": ["${myDefines}"]
+    }
+  ],
+  "version": 4,
+  "enableConfigurationSquiggles": true
+}

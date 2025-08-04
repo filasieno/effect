@@ -1,5 +1,5 @@
 {
-  description = "Effect library";
+  description = "ak library";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
@@ -28,8 +28,8 @@
   {
 
     packages.x86_64-linux = {
-      effect = pkgs.stdenv.mkDerivation {
-        name = "effect";
+      libak = pkgs.stdenv.mkDerivation {
+        name = "libak";
         version = "0.0.1";
         srcs = [./.];
 
@@ -48,16 +48,54 @@
         ];
 
         buildPhase = ''
-          make
+          make doxygen
+        '';
+
+        checkPhase = ''
+          make test
+        '';
+
+        installPhase = ''
+          mkdir -p $out/share/doc/api
+          mkdir -p $out/include
+          cp ./src/ak.hpp $out/include/ak.hpp
+          cp -R ./build/doc $out/share/doc/api
+        ''; 
+      };
+
+      echo = pkgs.stdenv.mkDerivation {
+        name = "libak-examples-echo";
+        version = "0.0.1";
+        srcs = [./examples/echo];
+
+        nativeBuildInputs = with pkgs; [
+          clang 
+          clang-tools          
+          liburing.dev
+          doxygen
+          valgrind 
+          graphviz
+        ];          
+
+        buildInputs = with pkgs; [
+          self.packages.x86_64-linux.libak
+        ];
+
+        buildPhase = ''
+          make doxygen
+        '';
+
+        checkPhase = ''
+          
         '';
 
         installPhase = ''
           mkdir -p $out
-          cp ./build/test_dlist $out/test_dlist
-          cp ./build/test_task  $out/test_task
+          touch $out/empty.txt
         ''; 
       };
-      default = self.packages.x86_64-linux.effect;
+
+      default = self.packages.x86_64-linux.libak;
     };
 
     devShells.x86_64-linux =
