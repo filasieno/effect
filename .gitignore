@@ -41,9 +41,9 @@
 #*.dwo
 
 # build artifacts
-/build
+build
 /.config.mk
 
 #nix result folder
-/result
+result
 

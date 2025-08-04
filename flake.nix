@@ -90,8 +90,8 @@
         '';
 
         installPhase = ''
-          mkdir -p $out
-          touch $out/empty.txt
+          mkdir -p $out/bin
+          cp ./build/echo $out/bin/echo
         ''; 
       };
 

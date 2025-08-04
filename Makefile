@@ -203,9 +203,7 @@ doxygen: | build/doc/.
 
 #----------------------------------------
 
-all:: build/test_dlist build/test_ak
-
-build/io: build/io.o
+all:: build/test_dlist build/test_ak doxygen
 
 test:: test_dlist
 test:: test_ak
