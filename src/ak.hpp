@@ -4,6 +4,7 @@
 #include <coroutine>
 #include <print>
 #include <functional>
+#include "liburing.h"
 
 namespace ak_internal {
 #ifdef NDEBUG
@@ -22,6 +23,10 @@ namespace ak_internal {
 /// \brief Kernel API defines system level APIs.
 
 // -----------------------------------------------------------------------------
+
+using U64  = __u64;  
+using U32  = __u32; 
+using Size = __SIZE_TYPE__; 
 
 /// \brief Idenfies the state of a task
 /// \ingroup Task
@@ -121,23 +126,25 @@ namespace ak_internal {
     }
 
     struct Kernel {
-        int   taskCount;
-        int   readyCount;      // number of live tasks
-        int   waitingCount;    // task waiting for execution (On Internal Critical sections)
-        int   ioWaitingCount;  // task waiting for IO URing
-        int   zombieCount;     // dead tasks
-
-        int     interrupted;
+        // Hot scheduling data (first cache line)
         TaskHdl currentTaskHdl;
         TaskHdl schedulerTaskHdl;
+        Link    readyList;
+        Link    taskList;
+        Link    zombieList;
 
-        Link zombieList;
-        Link readyList;
-        Link taskList;        // global task list
-
-        KernelTaskHdl kernelTask;
+        // Counters (second cache line)  
+        alignas(64) int taskCount;
+        int readyCount;
+        int waitingCount;
+        int ioWaitingCount;
+        int zombieCount;
+        int interrupted;
+        
+        // Cold data
+        alignas(64) KernelTaskHdl kernelTask;
     };
-
+    
     extern struct Kernel gKernel;
 
     void DebugTaskCount() noexcept;
@@ -452,6 +459,67 @@ namespace ak_internal
         KernelTaskHdl hdl;
     };
 
+    /// \brief Schedules the next task
+    /// 
+    /// Used in Operations to schedule the next task.
+    /// Assumes that the current task has been already suspended (moved to READY, WAITING, IO_WAITING, ...)
+    ///
+    /// \return the next Task to be resumed
+    /// \internal
+    TaskHdl ScheduleNextTask() noexcept {
+        using namespace ak_internal;
+
+        // If we have a ready task, resume it
+        while (true) {
+            if (gKernel.readyCount > 0) {
+                Link* link = DequeueLink(&gKernel.readyList);
+                TaskContext* ctx = GetLinkedTaskContext(link);
+                TaskHdl task = TaskHdl::from_promise(*ctx);
+                assert(ctx->state == TaskState::READY);
+                ctx->state = TaskState::RUNNING;
+                --gKernel.readyCount;
+                gKernel.currentTaskHdl = task;
+                CheckInvariants();
+                return task;
+            }
+
+            if (gKernel.ioWaitingCount > 0) {
+                std::print("Unimplemented IO Waiting"); 
+                std::abort();
+            }
+
+            // Zombie bashing
+            while (gKernel.zombieCount > 0) {
+                DebugTaskCount();
+
+                Link* zombieNode = DequeueLink(&gKernel.zombieList);
+                TaskContext& zombiePromise = *GetLinkedTaskContext(zombieNode);
+                assert(zombiePromise.state == TaskState::ZOMBIE);
+
+                // Remove from zombie list
+                --gKernel.zombieCount;
+                DetachLink(&zombiePromise.waitLink);
+
+                // Remove from task list
+                DetachLink(&zombiePromise.taskListLink);
+                --gKernel.taskCount;
+
+                // Delete
+                zombiePromise.state = TaskState::DELETING;
+                TaskHdl zombieTaskHdl = TaskHdl::from_promise(zombiePromise);
+                zombieTaskHdl.destroy();
+
+                DebugTaskCount();
+            }
+
+            if (gKernel.readyCount == 0) {
+                std::abort();
+            }
+        }
+        // unreachable
+        std::abort();
+    }
+
     template <typename... Args>
     inline DefineTask SchedulerTaskProc(DefineTask(*mainProc)(Args ...) noexcept, Args... args) noexcept {
         using namespace ak_internal;
@@ -459,8 +527,6 @@ namespace ak_internal
         TaskHdl mainTask = mainProc(args...);
         assert(!mainTask.done());
         assert(GetTaskState(mainTask) == TaskState::READY);
-
-        DebugTaskCount();
 
         while (true) {
 
@@ -560,31 +626,23 @@ namespace ak_internal
         ak_internal::DebugTaskCount();
     }
 
-    inline TaskHdl FinalSuspendTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept {
+    inline TaskHdl FinalSuspendTaskOp::await_suspend(TaskHdl hdl) const noexcept {
         // Check preconditions
-        TaskContext* currentPromise = &currentTaskHdl.promise();
-        std::print("Final Suspend task state: {}\n", ToString(currentPromise->state));
-        assert(gKernel.currentTaskHdl == currentTaskHdl);
-        assert(currentPromise->state == TaskState::RUNNING);
-        assert(IsLinkDetached(&currentPromise->waitLink));
+        TaskContext* ctx = &hdl.promise();
+        std::print("Final Suspend task state: {}\n", ToString(ctx->state));
+        assert(gKernel.currentTaskHdl == hdl);
+        assert(ctx->state == TaskState::RUNNING);
+        assert(IsLinkDetached(&ctx->waitLink));
         CheckInvariants();
 
         // Move the current task from RUNNING to ZOMBIE
-        currentPromise->state = TaskState::ZOMBIE;
+        ctx->state = TaskState::ZOMBIE;
         ++gKernel.zombieCount;
-        EnqueueLink(&gKernel.zombieList, &currentPromise->waitLink);
+        EnqueueLink(&gKernel.zombieList, &ctx->waitLink);
         ClearTaskHdl(&gKernel.currentTaskHdl);
         CheckInvariants();
 
-        // Move the SchedulerTask from READY to RUNNING
-        TaskContext& schedulerPromise = gKernel.schedulerTaskHdl.promise();
-        schedulerPromise.state = TaskState::RUNNING;
-        DetachLink(&schedulerPromise.waitLink); // remove from ready list
-        --gKernel.readyCount;
-        gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
-        CheckInvariants();
-
-        return gKernel.schedulerTaskHdl;
+        return ScheduleNextTask();
     }
 
     inline void DebugTaskCount() noexcept {
@@ -719,16 +777,7 @@ namespace ak_internal
         ClearTaskHdl(&gKernel.currentTaskHdl);
         CheckInvariants();
 
-        // Resume the SchedulerTask
-        TaskContext* schedulerPromise = &gKernel.schedulerTaskHdl.promise();
-        schedulerPromise->state = TaskState::RUNNING;
-        DetachLink(&schedulerPromise->waitLink); // remove from ready list
-        --gKernel.readyCount;
-        gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
-        CheckInvariants();
-
-        assert(gKernel.currentTaskHdl);
-        return TaskHdl::from_promise(*schedulerPromise);
+        return ScheduleNextTask();
     }
 
     inline TaskHdl ResumeTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept {
@@ -904,16 +953,7 @@ auto WaitEvent(Event* event) {
             ClearTaskHdl(&gKernel.currentTaskHdl);
             CheckInvariants();
 
-            // Move state ScheduleTasl from READY to RUNNING  
-            TaskContext* schedCtx = &gKernel.schedulerTaskHdl.promise();
-            assert(schedCtx->state == TaskState::READY);
-            schedCtx->state = TaskState::RUNNING;
-            DetachLink(&schedCtx->waitLink); // remove from ready list
-            --gKernel.readyCount;
-            gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
-            CheckInvariants();
-
-            return gKernel.schedulerTaskHdl;
+            return ScheduleNextTask();
         }
 
         constexpr void await_resume() const noexcept { }
@@ -923,3 +963,33 @@ auto WaitEvent(Event* event) {
 
     return WaitOp{event};
 }
+
+// -----------------------------------------------------------------------------
+// IO Operators
+// -----------------------------------------------------------------------------
+
+// namespace ak_internal {
+    
+//     struct IOOp {
+//         io_uring_op type;
+//         TaskHdl     hdl;
+
+//         constexpr bool await_ready() const noexcept { return false; }
+//         constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) const noexcept;
+//         constexpr void await_resume() const noexcept {}
+//     };
+
+// }
+
+// ak_internal::IOOp Write(int fd, const void* buff, Size buffSize, Size offset) noexcept {
+//     ak_internal::IOOp op { IORING_OP_WRITE, ak_internal::gKernel.currentTaskHdl };
+
+
+//     return op;
+// }
+
+// ak_internal::IOOp Read(int fd, void* buff, Size buffSize, Size offset) noexcept {
+//     ak_internal::IOOp op { IORING_OP_WRITE, ak_internal::gKernel.currentTaskHdl };
+    
+//     return op;
+// }
