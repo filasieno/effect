@@ -210,3 +210,4 @@ build/io: build/io.o
 test:: test_dlist
 test:: test_ak
 test:: test_event
+test:: test_file_io

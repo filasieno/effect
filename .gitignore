@@ -47,3 +47,6 @@
 #nix result folder
 /result
 
+#test files
+test*
+

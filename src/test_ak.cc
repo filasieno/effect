@@ -71,7 +71,8 @@ DefineTask MainTask(const char* name) noexcept {
 int main() {
 	KernelConfig config = {
 		.mem = nullptr,
-		.memSize = 0
+		.memSize = 0,
+		.ioEntryCount = 256
   	};
 	return RunMain(&config, MainTask, "main");
 }

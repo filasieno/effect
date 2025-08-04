@@ -133,18 +133,24 @@ namespace ak_internal {
         Link    taskList;
         void*   mem;
         Size    memSize;
+        
+        // IO
+        alignas(64) 
+        io_uring ioRing;
+        unsigned ioEntryCount;
+        
+        // Cold data
+        alignas(64) 
+        KernelTaskHdl kernelTask;
+        Link          zombieList;
 
-        // Counters (second cache line)  
+         // Counters (second cache line)  
         alignas(64) int taskCount;
         int readyCount;
         int waitingCount;
         int ioWaitingCount;
         int zombieCount;
         int interrupted;
-        
-        // Cold data
-        alignas(64) KernelTaskHdl kernelTask;
-        Link    zombieList;
     };
     
     extern struct Kernel gKernel;
@@ -252,6 +258,7 @@ struct TaskContext {
     void           unhandled_exception() noexcept  { assert(false); }
 
     TaskState state;
+    int       ioResult;
     Link      waitLink;                // Used to enqueue tasks waiting for Critical Section
     Link      taskListLink;            // Global Task list
     Link      awaitingTerminationList; // The list of all tasks waiting for this task
@@ -344,8 +351,9 @@ inline auto ResumeTask(TaskHdl hdl) noexcept {
 /// \brief Configuration for the Kernel
 /// \ingroup Kernel
 struct KernelConfig {
-    void* mem;
-    Size  memSize;
+    void*    mem;
+    Size     memSize;
+    unsigned ioEntryCount;
 };
 
 // Task::AwaitTaskEffect
@@ -353,6 +361,7 @@ struct KernelConfig {
 
 namespace ak_internal 
 {
+    
     inline static TaskContext* GetLinkedTaskContext(const Link* link) noexcept {
         unsigned long long promise_off = ((unsigned long long)link) - offsetof(TaskContext, waitLink);
         return (TaskContext*)promise_off;
@@ -538,6 +547,16 @@ namespace ak_internal
         assert(GetTaskState(mainTask) == TaskState::READY);
 
         while (true) {
+            // Sumbit IO operations
+            unsigned ready = io_uring_sq_ready(&gKernel.ioRing);
+            if (ready > 0) {
+                int ret = io_uring_submit(&gKernel.ioRing);
+                if (ret < 0) {
+                    std::print("io_uring_submit failed\n");
+                    std::fflush(stdout);
+                    std::abort();
+                }
+            }
 
             // If we have a ready task, resume it
             if (gKernel.readyCount > 0) {
@@ -574,7 +593,34 @@ namespace ak_internal
                 DebugTaskCount();
             }
 
-            if (gKernel.readyCount == 0) break;
+            bool waitingCC = gKernel.ioWaitingCount;
+            if (waitingCC) {
+                // Process all available completions
+                struct io_uring_cqe *cqe;
+                unsigned head;
+                unsigned completed = 0;
+                io_uring_for_each_cqe(&gKernel.ioRing, head, cqe) {
+                    // Return Result to the target Awaitable 
+                    TaskContext* ctx = (TaskContext*) io_uring_cqe_get_data(cqe);
+                    assert(ctx->state = TaskState::IO_WAITING);
+
+                    // Move the target task from IO_WAITING to READY
+                    --gKernel.ioWaitingCount;
+                    ctx->state = TaskState::READY;
+                    ++gKernel.readyCount;
+                    EnqueueLink(&gKernel.readyList, &ctx->waitLink);
+                    
+                    // Complete operation
+                    ctx->ioResult = cqe->res;
+                    completed++;
+                }
+                // Mark all as seen
+                io_uring_cq_advance(&gKernel.ioRing, completed);
+            }
+
+            if (gKernel.readyCount == 0 && gKernel.ioWaitingCount == 0) {
+                break;
+            }
         }
         co_await TerminateSchedulerTask();
 
@@ -595,24 +641,37 @@ namespace ak_internal
         co_return;
     }
 
-    inline void InitKernel(KernelConfig* config) noexcept {
+    inline int InitKernel(KernelConfig* config) noexcept {
         using namespace ak_internal;
+        
+        int res = io_uring_queue_init(config->ioEntryCount, &gKernel.ioRing, 0);
+        if (res < 0) {
+            std::print("io_uring_queue_init failed\n");
+            return -1;
+        }
+
+        gKernel.mem = config->mem;
+        gKernel.memSize = config->memSize;
         gKernel.taskCount = 0;
         gKernel.readyCount = 0;
         gKernel.waitingCount = 0;
         gKernel.ioWaitingCount = 0;
         gKernel.zombieCount = 0;
         gKernel.interrupted = 0;
-        gKernel.mem = config->mem;
-        gKernel.memSize = config->memSize;
+
         ClearTaskHdl(&gKernel.currentTaskHdl);
         ClearTaskHdl(&gKernel.schedulerTaskHdl);
+
         InitLink(&gKernel.zombieList);
         InitLink(&gKernel.readyList);
         InitLink(&gKernel.taskList);
+        
+        return 0;
     }
 
-    inline void FiniKernel() noexcept { }
+    inline void FiniKernel() noexcept {
+        io_uring_queue_exit(&gKernel.ioRing);
+    }
 
     inline void InitialSuspendTaskOp::await_suspend(TaskHdl hdl) const noexcept {
         TaskContext* promise = &hdl.promise();
@@ -819,6 +878,9 @@ namespace ak_internal
         return hdl;
     }
 
+
+
+
 }
 
 /// \brief Runs the main task
@@ -829,7 +891,9 @@ template <typename... Args>
 inline int RunMain(KernelConfig* config, DefineTask(*mainProc)(Args ...) noexcept , Args... args) noexcept {  
     using namespace ak_internal;
 
-    InitKernel(config);
+    if (InitKernel(config) < 0) {
+        return -1;
+    }
 
     KernelTaskHdl hdl = KernelTaskProc(mainProc, std::forward<Args>(args) ...);
     gKernel.kernelTask = hdl;
@@ -979,28 +1043,89 @@ auto WaitEvent(Event* event) {
 // IO Operators
 // -----------------------------------------------------------------------------
 
-// namespace ak_internal {
-    
-//     struct IOOp {
-//         io_uring_op type;
-//         TaskHdl     hdl;
+namespace ak_internal {
 
-//         constexpr bool await_ready() const noexcept { return false; }
-//         constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) const noexcept;
-//         constexpr void await_resume() const noexcept {}
-//     };
+    struct IOOp {
+        
+        constexpr bool await_ready() const noexcept { 
+            return gKernel.currentTaskHdl.promise().ioResult != 0; 
+        }
+        
+        constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) noexcept {
+            // if suspend is called we know that the operation has been submitted
+            using namespace ak_internal;
 
-// }
+            // Move the current Task from RUNNING to IO_WAITING
+            TaskContext* ctx = &currentTaskHdl.promise();
+            assert(ctx->state == TaskState::RUNNING);
+            ctx->state = TaskState::IO_WAITING;
+            ++gKernel.ioWaitingCount;
+            ClearTaskHdl(&gKernel.currentTaskHdl);
+            CheckInvariants();
+            DebugTaskCount();
 
-// ak_internal::IOOp Write(int fd, const void* buff, Size buffSize, Size offset) noexcept {
-//     ak_internal::IOOp op { IORING_OP_WRITE, ak_internal::gKernel.currentTaskHdl };
+            // Move the scheduler task from READY to RUNNING
+            TaskContext* schedCtx = &gKernel.schedulerTaskHdl.promise();
+            assert(schedCtx->state == TaskState::READY);
+            schedCtx->state = TaskState::RUNNING;
+            DetachLink(&schedCtx->waitLink);
+            --gKernel.readyCount;
+            gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
+            CheckInvariants();
+            DebugTaskCount();
+
+            return gKernel.schedulerTaskHdl;
+        }
+
+        constexpr int await_resume() const noexcept { return gKernel.currentTaskHdl.promise().ioResult; }
+    };
 
 
-//     return op;
-// }
+}
 
-// ak_internal::IOOp Read(int fd, void* buff, Size buffSize, Size offset) noexcept {
-//     ak_internal::IOOp op { IORING_OP_WRITE, ak_internal::gKernel.currentTaskHdl };
-    
-//     return op;
-// }
+ak_internal::IOOp Open(const char* path, int flags, mode_t mode) noexcept {
+    using namespace ak_internal;
+    TaskContext* ctx = &gKernel.currentTaskHdl.promise();
+    // Ensure that we have a free slot for submission
+    unsigned int free_slots = io_uring_sq_space_left(&gKernel.ioRing);
+    while (free_slots < 1) {
+        int ret = io_uring_submit(&gKernel.ioRing);
+        if (ret < 0) {
+            ctx->ioResult = -1;
+            return {};
+        }
+        free_slots = io_uring_sq_space_left(&gKernel.ioRing);
+    }
+
+    // Enqueue the operation
+    io_uring_sqe* sqe = io_uring_get_sqe(&gKernel.ioRing);
+    io_uring_sqe_set_data(sqe, (void*) ctx);
+    io_uring_prep_open(sqe, path, flags, mode);
+    ctx->ioResult = 0;
+    return {};
+}
+
+
+ak_internal::IOOp Close(int fd) noexcept {
+    using namespace ak_internal;
+    TaskContext* ctx = &gKernel.currentTaskHdl.promise();
+    // Ensure that we have a free slot for submission
+    unsigned int free_slots = io_uring_sq_space_left(&gKernel.ioRing);
+    while (free_slots < 1) {
+        int ret = io_uring_submit(&gKernel.ioRing);
+        if (ret < 0) {
+            ctx->ioResult = -1;
+            return {};
+        }
+        free_slots = io_uring_sq_space_left(&gKernel.ioRing);
+    }
+
+    // Enqueue the operation
+    io_uring_sqe* sqe = io_uring_get_sqe(&gKernel.ioRing);
+    io_uring_sqe_set_data(sqe, (void*) ctx);
+    io_uring_prep_close(sqe, fd);
+    ctx->ioResult = 0;
+    return {};
+}
+
+
