@@ -234,6 +234,8 @@ struct TaskContext {
         InitLink(&waitLink);
         InitLink(&awaitingTerminationList);
         state = TaskState::CREATED;
+        enqueuedIO = 0;
+        ioResult = -1;
 
         // Check post-conditions
         assert(IsLinkDetached(&taskListLink));
@@ -259,6 +261,7 @@ struct TaskContext {
 
     TaskState state;
     int       ioResult;
+    unsigned  enqueuedIO;
     Link      waitLink;                // Used to enqueue tasks waiting for Critical Section
     Link      taskListLink;            // Global Task list
     Link      awaitingTerminationList; // The list of all tasks waiting for this task
@@ -1047,6 +1050,14 @@ namespace ak_internal {
 
     struct IOOp {
         constexpr bool await_ready() const noexcept { 
+            TaskContext* ctx = &gKernel.currentTaskHdl.promise();
+            if constexpr (IS_DEBUG_MODE) {
+                assert(ctx->state == TaskState::RUNNING);
+                assert(IsLinkDetached(&ctx->waitLink));
+                assert(ctx->enqueuedIO == 1);
+                CheckInvariants();
+            }
+
             return gKernel.currentTaskHdl.promise().ioResult != 0; 
         }
         
@@ -1100,6 +1111,7 @@ namespace ak_internal {
         io_uring_sqe_set_data(sqe, (void*) ctx);
         prep(sqe);  // Call the preparation function
         ctx->ioResult = 0;
+        ++ctx->enqueuedIO;
         return {};
     }
   
@@ -1107,554 +1119,554 @@ namespace ak_internal {
 
 
 // File Operations
-inline ak_internal::IOOp Open(const char* path, int flags, mode_t mode) noexcept {
+inline ak_internal::IOOp XOpen(const char* path, int flags, mode_t mode) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_openat(sqe, AT_FDCWD, path, flags, mode);
     });
 }
 
-inline ak_internal::IOOp OpenAt(int dfd, const char* path, int flags, mode_t mode) noexcept {
+inline ak_internal::IOOp XOpenAt(int dfd, const char* path, int flags, mode_t mode) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_openat(sqe, dfd, path, flags, mode);
     });
 }
 
-inline ak_internal::IOOp OpenAtDirect(int dfd, const char* path, int flags, mode_t mode, unsigned file_index) noexcept {
+inline ak_internal::IOOp XOpenAtDirect(int dfd, const char* path, int flags, mode_t mode, unsigned file_index) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_openat_direct(sqe, dfd, path, flags, mode, file_index);
     });
 }
 
-inline ak_internal::IOOp Close(int fd) noexcept {
+inline ak_internal::IOOp XClose(int fd) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_close(sqe, fd);
     });
 }
 
-inline ak_internal::IOOp CloseDirect(unsigned file_index) noexcept {
+inline ak_internal::IOOp XCloseDirect(unsigned file_index) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_close_direct(sqe, file_index);
     });
 }
 
 // Read Operations
-inline ak_internal::IOOp Read(int fd, void* buf, unsigned nbytes, __u64 offset) noexcept {
+inline ak_internal::IOOp XRead(int fd, void* buf, unsigned nbytes, __u64 offset) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_read(sqe, fd, buf, nbytes, offset);
     });
 }
 
-inline ak_internal::IOOp ReadMultishot(int fd, unsigned nbytes, __u64 offset, int buf_group) noexcept {
+inline ak_internal::IOOp XReadMultishot(int fd, unsigned nbytes, __u64 offset, int buf_group) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_read_multishot(sqe, fd, nbytes, offset, buf_group);
     });
 }
 
-inline ak_internal::IOOp ReadFixed(int fd, void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
+inline ak_internal::IOOp XReadFixed(int fd, void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_read_fixed(sqe, fd, buf, nbytes, offset, buf_index);
     });
 }
 
-inline ak_internal::IOOp ReadV(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept {
+inline ak_internal::IOOp XReadV(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_readv(sqe, fd, iovecs, nr_vecs, offset);
     });
 }
 
-inline ak_internal::IOOp ReadV2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept {
+inline ak_internal::IOOp XReadV2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_readv2(sqe, fd, iovecs, nr_vecs, offset, flags);
     });
 }
 
-inline ak_internal::IOOp ReadVFixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept {
+inline ak_internal::IOOp XReadVFixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_readv_fixed(sqe, fd, iovecs, nr_vecs, offset, flags, buf_index);
     });
 }
 
 // Write Operations
-inline ak_internal::IOOp Write(int fd, const void* buf, unsigned nbytes, __u64 offset) noexcept {
+inline ak_internal::IOOp XWrite(int fd, const void* buf, unsigned nbytes, __u64 offset) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_write(sqe, fd, buf, nbytes, offset);
     });
 }
 
-inline ak_internal::IOOp WriteFixed(int fd, const void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
+inline ak_internal::IOOp XWriteFixed(int fd, const void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_write_fixed(sqe, fd, buf, nbytes, offset, buf_index);
     });
 }
 
-inline ak_internal::IOOp WriteV(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept {
+inline ak_internal::IOOp XWriteV(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_writev(sqe, fd, iovecs, nr_vecs, offset);
     });
 }
 
-inline ak_internal::IOOp WriteV2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept {
+inline ak_internal::IOOp XWriteV2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_writev2(sqe, fd, iovecs, nr_vecs, offset, flags);
     });
 }
 
-inline ak_internal::IOOp WriteVFixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept {
+inline ak_internal::IOOp XWriteVFixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_writev_fixed(sqe, fd, iovecs, nr_vecs, offset, flags, buf_index);
     });
 }
 
 // Socket Operations
-inline ak_internal::IOOp Accept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept {
+inline ak_internal::IOOp XAccept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_accept(sqe, fd, addr, addrlen, flags);
     });
 }
 
-inline ak_internal::IOOp AcceptDirect(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags, unsigned int file_index) noexcept {
+inline ak_internal::IOOp XAcceptDirect(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags, unsigned int file_index) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_accept_direct(sqe, fd, addr, addrlen, flags, file_index);
     });
 }
 
-inline ak_internal::IOOp MultishotAccept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept {
+inline ak_internal::IOOp XMultishotAccept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_multishot_accept(sqe, fd, addr, addrlen, flags);
     });
 }
 
-inline ak_internal::IOOp MultishotAcceptDirect(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept {
+inline ak_internal::IOOp XMultishotAcceptDirect(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_multishot_accept_direct(sqe, fd, addr, addrlen, flags);
     });
 }
 
-inline ak_internal::IOOp Connect(int fd, const struct sockaddr* addr, socklen_t addrlen) noexcept {
+inline ak_internal::IOOp XConnect(int fd, const struct sockaddr* addr, socklen_t addrlen) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_connect(sqe, fd, addr, addrlen);
     });
 }
 
-inline ak_internal::IOOp Send(int sockfd, const void* buf, size_t len, int flags) noexcept {
+inline ak_internal::IOOp XSend(int sockfd, const void* buf, size_t len, int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_send(sqe, sockfd, buf, len, flags);
     });
 }
 
-inline ak_internal::IOOp SendZC(int sockfd, const void* buf, size_t len, int flags, unsigned zc_flags) noexcept {
+inline ak_internal::IOOp XSendZC(int sockfd, const void* buf, size_t len, int flags, unsigned zc_flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_send_zc(sqe, sockfd, buf, len, flags, zc_flags);
     });
 }
 
-inline ak_internal::IOOp SendZCFixed(int sockfd, const void* buf, size_t len, int flags, unsigned zc_flags, unsigned buf_index) noexcept {
+inline ak_internal::IOOp XSendZCFixed(int sockfd, const void* buf, size_t len, int flags, unsigned zc_flags, unsigned buf_index) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_send_zc_fixed(sqe, sockfd, buf, len, flags, zc_flags, buf_index);
     });
 }
 
-inline ak_internal::IOOp SendMsg(int fd, const struct msghdr* msg, unsigned flags) noexcept {
+inline ak_internal::IOOp XSendMsg(int fd, const struct msghdr* msg, unsigned flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_sendmsg(sqe, fd, msg, flags);
     });
 }
 
-inline ak_internal::IOOp SendMsgZC(int fd, const struct msghdr* msg, unsigned flags) noexcept {
+inline ak_internal::IOOp XSendMsgZC(int fd, const struct msghdr* msg, unsigned flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_sendmsg_zc(sqe, fd, msg, flags);
     });
 }
 
-inline ak_internal::IOOp SendMsgZCFixed(int fd, const struct msghdr* msg, unsigned flags, unsigned buf_index) noexcept {
+inline ak_internal::IOOp XSendMsgZCFixed(int fd, const struct msghdr* msg, unsigned flags, unsigned buf_index) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_sendmsg_zc_fixed(sqe, fd, msg, flags, buf_index);
     });
 }
 
-inline ak_internal::IOOp Recv(int sockfd, void* buf, size_t len, int flags) noexcept {
+inline ak_internal::IOOp XRecv(int sockfd, void* buf, size_t len, int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_recv(sqe, sockfd, buf, len, flags);
     });
 }
 
-inline ak_internal::IOOp RecvMultishot(int sockfd, void* buf, size_t len, int flags) noexcept {
+inline ak_internal::IOOp XRecvMultishot(int sockfd, void* buf, size_t len, int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_recv_multishot(sqe, sockfd, buf, len, flags);
     });
 }
 
-inline ak_internal::IOOp RecvMsg(int fd, struct msghdr* msg, unsigned flags) noexcept {
+inline ak_internal::IOOp XRecvMsg(int fd, struct msghdr* msg, unsigned flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_recvmsg(sqe, fd, msg, flags);
     });
 }
 
-inline ak_internal::IOOp RecvMsgMultishot(int fd, struct msghdr* msg, unsigned flags) noexcept {
+inline ak_internal::IOOp XRecvMsgMultishot(int fd, struct msghdr* msg, unsigned flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_recvmsg_multishot(sqe, fd, msg, flags);
     });
 }
 
-inline ak_internal::IOOp Socket(int domain, int type, int protocol, unsigned int flags) noexcept {
+inline ak_internal::IOOp XSocket(int domain, int type, int protocol, unsigned int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_socket(sqe, domain, type, protocol, flags);
     });
 }
 
-inline ak_internal::IOOp SocketDirect(int domain, int type, int protocol, unsigned file_index, unsigned int flags) noexcept {
+inline ak_internal::IOOp XSocketDirect(int domain, int type, int protocol, unsigned file_index, unsigned int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_socket_direct(sqe, domain, type, protocol, file_index, flags);
     });
 }
 
 // Directory and Link Operations
-inline ak_internal::IOOp Mkdir(const char* path, mode_t mode) noexcept {
+inline ak_internal::IOOp XMkdir(const char* path, mode_t mode) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_mkdir(sqe, path, mode);
     });
 }
 
-inline ak_internal::IOOp MkdirAt(int dfd, const char* path, mode_t mode) noexcept {
+inline ak_internal::IOOp XMkdirAt(int dfd, const char* path, mode_t mode) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_mkdirat(sqe, dfd, path, mode);
     });
 }
 
-inline ak_internal::IOOp Symlink(const char* target, const char* linkpath) noexcept {
+inline ak_internal::IOOp XSymlink(const char* target, const char* linkpath) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_symlink(sqe, target, linkpath);
     });
 }
 
-inline ak_internal::IOOp SymlinkAt(const char* target, int newdirfd, const char* linkpath) noexcept {
+inline ak_internal::IOOp XSymlinkAt(const char* target, int newdirfd, const char* linkpath) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_symlinkat(sqe, target, newdirfd, linkpath);
     });
 }
 
-inline ak_internal::IOOp Link(const char* oldpath, const char* newpath, int flags) noexcept {
+inline ak_internal::IOOp XLink(const char* oldpath, const char* newpath, int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_link(sqe, oldpath, newpath, flags);
     });
 }
 
-inline ak_internal::IOOp LinkAt(int olddfd, const char* oldpath, int newdfd, const char* newpath, int flags) noexcept {
+inline ak_internal::IOOp XLinkAt(int olddfd, const char* oldpath, int newdfd, const char* newpath, int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_linkat(sqe, olddfd, oldpath, newdfd, newpath, flags);
     });
 }
 
 // File Management Operations
-inline ak_internal::IOOp Unlink(const char* path, int flags) noexcept {
+inline ak_internal::IOOp XUnlink(const char* path, int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_unlink(sqe, path, flags);
     });
 }
 
-inline ak_internal::IOOp UnlinkAt(int dfd, const char* path, int flags) noexcept {
+inline ak_internal::IOOp XUnlinkAt(int dfd, const char* path, int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_unlinkat(sqe, dfd, path, flags);
     });
 }
 
-inline ak_internal::IOOp Rename(const char* oldpath, const char* newpath) noexcept {
+inline ak_internal::IOOp XRename(const char* oldpath, const char* newpath) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_rename(sqe, oldpath, newpath);
     });
 }
 
-inline ak_internal::IOOp RenameAt(int olddfd, const char* oldpath, int newdfd, const char* newpath, unsigned int flags) noexcept {
+inline ak_internal::IOOp XRenameAt(int olddfd, const char* oldpath, int newdfd, const char* newpath, unsigned int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_renameat(sqe, olddfd, oldpath, newdfd, newpath, flags);
     });
 }
 
-inline ak_internal::IOOp Sync(int fd, unsigned fsync_flags) noexcept {
+inline ak_internal::IOOp XSync(int fd, unsigned fsync_flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_fsync(sqe, fd, fsync_flags);
     });
 }
 
-inline ak_internal::IOOp SyncFileRange(int fd, unsigned len, __u64 offset, int flags) noexcept {
+inline ak_internal::IOOp XSyncFileRange(int fd, unsigned len, __u64 offset, int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_sync_file_range(sqe, fd, len, offset, flags);
     });
 }
 
-inline ak_internal::IOOp Fallocate(int fd, int mode, __u64 offset, __u64 len) noexcept {
+inline ak_internal::IOOp XFAllocate(int fd, int mode, __u64 offset, __u64 len) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_fallocate(sqe, fd, mode, offset, len);
     });
 }
 
-inline ak_internal::IOOp OpenAt2(int dfd, const char* path, struct open_how* how) noexcept {
+inline ak_internal::IOOp XOpenAt2(int dfd, const char* path, struct open_how* how) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_openat2(sqe, dfd, path, how);
     });
 }
 
-inline ak_internal::IOOp OpenAt2Direct(int dfd, const char* path, struct open_how* how, unsigned file_index) noexcept {
+inline ak_internal::IOOp XOpenAt2Direct(int dfd, const char* path, struct open_how* how, unsigned file_index) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_openat2_direct(sqe, dfd, path, how, file_index);
     });
 }
 
-inline ak_internal::IOOp Statx(int dfd, const char* path, int flags, unsigned mask, struct statx* statxbuf) noexcept {
+inline ak_internal::IOOp XStatx(int dfd, const char* path, int flags, unsigned mask, struct statx* statxbuf) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_statx(sqe, dfd, path, flags, mask, statxbuf);
     });
 }
 
-inline ak_internal::IOOp Fadvise(int fd, __u64 offset, __u32 len, int advice) noexcept {
+inline ak_internal::IOOp XFAdvise(int fd, __u64 offset, __u32 len, int advice) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_fadvise(sqe, fd, offset, len, advice);
     });
 }
 
-inline ak_internal::IOOp Fadvise64(int fd, __u64 offset, off_t len, int advice) noexcept {
+inline ak_internal::IOOp XFAdvise64(int fd, __u64 offset, off_t len, int advice) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_fadvise64(sqe, fd, offset, len, advice);
     });
 }
 
-inline ak_internal::IOOp Madvise(void* addr, __u32 length, int advice) noexcept {
+inline ak_internal::IOOp XMAdvise(void* addr, __u32 length, int advice) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_madvise(sqe, addr, length, advice);
     });
 }
 
-inline ak_internal::IOOp Madvise64(void* addr, off_t length, int advice) noexcept {
+inline ak_internal::IOOp XMAdvise64(void* addr, off_t length, int advice) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_madvise64(sqe, addr, length, advice);
     });
 }
 
 // Extended Attributes Operations
-inline ak_internal::IOOp GetXAttr(const char* name, char* value, const char* path, unsigned int len) noexcept {
+inline ak_internal::IOOp XGetXAttr(const char* name, char* value, const char* path, unsigned int len) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_getxattr(sqe, name, value, path, len);
     });
 }
 
-inline ak_internal::IOOp SetXAttr(const char* name, const char* value, const char* path, int flags, unsigned int len) noexcept {
+inline ak_internal::IOOp XSetXAttr(const char* name, const char* value, const char* path, int flags, unsigned int len) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_setxattr(sqe, name, value, path, flags, len);
     });
 }
 
-inline ak_internal::IOOp FGetXAttr(int fd, const char* name, char* value, unsigned int len) noexcept {
+inline ak_internal::IOOp XFGetXAttr(int fd, const char* name, char* value, unsigned int len) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_fgetxattr(sqe, fd, name, value, len);
     });
 }
 
-inline ak_internal::IOOp FSetXAttr(int fd, const char* name, const char* value, int flags, unsigned int len) noexcept {
+inline ak_internal::IOOp XFSetXAttr(int fd, const char* name, const char* value, int flags, unsigned int len) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_fsetxattr(sqe, fd, name, value, flags, len);
     });
 }
 
 // Buffer Operations
-inline ak_internal::IOOp ProvideBuffers(void* addr, int len, int nr, int bgid, int bid) noexcept {
+inline ak_internal::IOOp XProvideBuffers(void* addr, int len, int nr, int bgid, int bid) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_provide_buffers(sqe, addr, len, nr, bgid, bid);
     });
 }
 
-inline ak_internal::IOOp RemoveBuffers(int nr, int bgid) noexcept {
+inline ak_internal::IOOp XRemoveBuffers(int nr, int bgid) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_remove_buffers(sqe, nr, bgid);
     });
 }
 
 // Polling Operations
-inline ak_internal::IOOp PollAdd(int fd, unsigned poll_mask) noexcept {
+inline ak_internal::IOOp XPollAdd(int fd, unsigned poll_mask) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_poll_add(sqe, fd, poll_mask);
     });
 }
 
-inline ak_internal::IOOp PollMultishot(int fd, unsigned poll_mask) noexcept {
+inline ak_internal::IOOp XPollMultishot(int fd, unsigned poll_mask) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_poll_multishot(sqe, fd, poll_mask);
     });
 }
 
-inline ak_internal::IOOp PollRemove(__u64 user_data) noexcept {
+inline ak_internal::IOOp XPollRemove(__u64 user_data) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_poll_remove(sqe, user_data);
     });
 }
 
-inline ak_internal::IOOp PollUpdate(__u64 old_user_data, __u64 new_user_data, unsigned poll_mask, unsigned flags) noexcept {
+inline ak_internal::IOOp XPollUpdate(__u64 old_user_data, __u64 new_user_data, unsigned poll_mask, unsigned flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_poll_update(sqe, old_user_data, new_user_data, poll_mask, flags);
     });
 }
 
-inline ak_internal::IOOp EpollCtl(int epfd, int fd, int op, struct epoll_event* ev) noexcept {
+inline ak_internal::IOOp XEpollCtl(int epfd, int fd, int op, struct epoll_event* ev) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_epoll_ctl(sqe, epfd, fd, op, ev);
     });
 }
 
-inline ak_internal::IOOp EpollWait(int fd, struct epoll_event* events, int maxevents, unsigned flags) noexcept {
+inline ak_internal::IOOp XEpollWait(int fd, struct epoll_event* events, int maxevents, unsigned flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_epoll_wait(sqe, fd, events, maxevents, flags);
     });
 }
 
 // Timeout Operations
-inline ak_internal::IOOp Timeout(struct __kernel_timespec* ts, unsigned count, unsigned flags) noexcept {
+inline ak_internal::IOOp XTimeout(struct __kernel_timespec* ts, unsigned count, unsigned flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_timeout(sqe, ts, count, flags);
     });
 }
 
-inline ak_internal::IOOp TimeoutRemove(__u64 user_data, unsigned flags) noexcept {
+inline ak_internal::IOOp XTimeoutRemove(__u64 user_data, unsigned flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_timeout_remove(sqe, user_data, flags);
     });
 }
 
-inline ak_internal::IOOp TimeoutUpdate(struct __kernel_timespec* ts, __u64 user_data, unsigned flags) noexcept {
+inline ak_internal::IOOp XTimeoutUpdate(struct __kernel_timespec* ts, __u64 user_data, unsigned flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_timeout_update(sqe, ts, user_data, flags);
     });
 }
 
-inline ak_internal::IOOp LinkTimeout(struct __kernel_timespec* ts, unsigned flags) noexcept {
+inline ak_internal::IOOp XLinkTimeout(struct __kernel_timespec* ts, unsigned flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_link_timeout(sqe, ts, flags);
     });
 }
 
 // Message Ring Operations
-inline ak_internal::IOOp MsgRing(int fd, unsigned int len, __u64 data, unsigned int flags) noexcept {
+inline ak_internal::IOOp XMsgRing(int fd, unsigned int len, __u64 data, unsigned int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_msg_ring(sqe, fd, len, data, flags);
     });
 }
 
-inline ak_internal::IOOp MsgRingCqeFlags(int fd, unsigned int len, __u64 data, unsigned int flags, unsigned int cqe_flags) noexcept {
+inline ak_internal::IOOp XMsgRingCqeFlags(int fd, unsigned int len, __u64 data, unsigned int flags, unsigned int cqe_flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_msg_ring_cqe_flags(sqe, fd, len, data, flags, cqe_flags);
     });
 }
 
-inline ak_internal::IOOp MsgRingFd(int fd, int source_fd, int target_fd, __u64 data, unsigned int flags) noexcept {
+inline ak_internal::IOOp XMsgRingFd(int fd, int source_fd, int target_fd, __u64 data, unsigned int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_msg_ring_fd(sqe, fd, source_fd, target_fd, data, flags);
     });
 }
 
-inline ak_internal::IOOp MsgRingFdAlloc(int fd, int source_fd, __u64 data, unsigned int flags) noexcept {
+inline ak_internal::IOOp XMsgRingFdAlloc(int fd, int source_fd, __u64 data, unsigned int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_msg_ring_fd_alloc(sqe, fd, source_fd, data, flags);
     });
 }
 
 // Process Operations
-inline ak_internal::IOOp WaitId(idtype_t idtype, id_t id, siginfo_t* infop, int options, unsigned int flags) noexcept {
+inline ak_internal::IOOp XWaitId(idtype_t idtype, id_t id, siginfo_t* infop, int options, unsigned int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_waitid(sqe, idtype, id, infop, options, flags);
     });
 }
 
 // Futex Operations
-inline ak_internal::IOOp FutexWake(uint32_t* futex, uint64_t val, uint64_t mask, uint32_t futex_flags, unsigned int flags) noexcept {
+inline ak_internal::IOOp XFutexWake(uint32_t* futex, uint64_t val, uint64_t mask, uint32_t futex_flags, unsigned int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_futex_wake(sqe, futex, val, mask, futex_flags, flags);
     });
 }
 
-inline ak_internal::IOOp FutexWait(uint32_t* futex, uint64_t val, uint64_t mask, uint32_t futex_flags, unsigned int flags) noexcept {
+inline ak_internal::IOOp XFutexWait(uint32_t* futex, uint64_t val, uint64_t mask, uint32_t futex_flags, unsigned int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_futex_wait(sqe, futex, val, mask, futex_flags, flags);
     });
 }
 
-inline ak_internal::IOOp FutexWaitV(struct futex_waitv* futex, uint32_t nr_futex, unsigned int flags) noexcept {
+inline ak_internal::IOOp XFutexWaitV(struct futex_waitv* futex, uint32_t nr_futex, unsigned int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_futex_waitv(sqe, futex, nr_futex, flags);
     });
 }
 
 // File Descriptor Management
-inline ak_internal::IOOp FixedFdInstall(int fd, unsigned int flags) noexcept {
+inline ak_internal::IOOp XFixedFdInstall(int fd, unsigned int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_fixed_fd_install(sqe, fd, flags);
     });
 }
 
-inline ak_internal::IOOp FilesUpdate(int* fds, unsigned nr_fds, int offset) noexcept {
+inline ak_internal::IOOp XFilesUpdate(int* fds, unsigned nr_fds, int offset) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_files_update(sqe, fds, nr_fds, offset);
     });
 }
 
 // Shutdown Operation
-inline ak_internal::IOOp Shutdown(int fd, int how) noexcept {
+inline ak_internal::IOOp XShutdown(int fd, int how) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_shutdown(sqe, fd, how);
     });
 }
 
 // File Truncation
-inline ak_internal::IOOp Ftruncate(int fd, loff_t len) noexcept {
+inline ak_internal::IOOp XFTruncate(int fd, loff_t len) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_ftruncate(sqe, fd, len);
     });
 }
 
 // Command Operations
-inline ak_internal::IOOp CmdSock(int cmd_op, int fd, int level, int optname, void* optval, int optlen) noexcept {
+inline ak_internal::IOOp XCmdSock(int cmd_op, int fd, int level, int optname, void* optval, int optlen) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_cmd_sock(sqe, cmd_op, fd, level, optname, optval, optlen);
     });
 }
 
-inline ak_internal::IOOp CmdDiscard(int fd, uint64_t offset, uint64_t nbytes) noexcept {
+inline ak_internal::IOOp XCmdDiscard(int fd, uint64_t offset, uint64_t nbytes) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_cmd_discard(sqe, fd, offset, nbytes);
     });
 }
 
 // Special Operations
-inline ak_internal::IOOp Nop() noexcept {
+inline ak_internal::IOOp XNop() noexcept {
     return ak_internal::SubmitIO([](io_uring_sqe* sqe) {
         io_uring_prep_nop(sqe);
     });
 }
 
 // Splice Operations
-inline ak_internal::IOOp Splice(int fd_in, int64_t off_in, int fd_out, int64_t off_out, unsigned int nbytes, unsigned int splice_flags) noexcept {
+inline ak_internal::IOOp XSplice(int fd_in, int64_t off_in, int fd_out, int64_t off_out, unsigned int nbytes, unsigned int splice_flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_splice(sqe, fd_in, off_in, fd_out, off_out, nbytes, splice_flags);
     });
 }
 
-inline ak_internal::IOOp Tee(int fd_in, int fd_out, unsigned int nbytes, unsigned int splice_flags) noexcept {
+inline ak_internal::IOOp XTee(int fd_in, int fd_out, unsigned int nbytes, unsigned int splice_flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_tee(sqe, fd_in, fd_out, nbytes, splice_flags);
     });
 }
 
 // Cancel Operations
-inline ak_internal::IOOp Cancel64(__u64 user_data, int flags) noexcept {
+inline ak_internal::IOOp XCancel64(__u64 user_data, int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_cancel64(sqe, user_data, flags);
     });
 }
 
-inline ak_internal::IOOp Cancel(void* user_data, int flags) noexcept {
+inline ak_internal::IOOp XCancel(void* user_data, int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_cancel(sqe, user_data, flags);
     });
 }
 
-inline ak_internal::IOOp CancelFd(int fd, unsigned int flags) noexcept {
+inline ak_internal::IOOp XCancelFd(int fd, unsigned int flags) noexcept {
     return ak_internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_cancel_fd(sqe, fd, flags);
     });
