@@ -116,7 +116,12 @@ DefineTask MainTask(const char* name) noexcept {
 
 
 int main() {
-	int res = RunMain(MainTask, "main");
+  KernelConfig config = {
+    .mem = nullptr,
+    .memSize = 0
+  };
+
+	int res = RunMain(&config, MainTask, "main");
 	std::print("main_task returned: {}\n", res);
 	return res;
 }

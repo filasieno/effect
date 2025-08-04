@@ -131,7 +131,8 @@ namespace ak_internal {
         TaskHdl schedulerTaskHdl;
         Link    readyList;
         Link    taskList;
-        Link    zombieList;
+        void*   mem;
+        Size    memSize;
 
         // Counters (second cache line)  
         alignas(64) int taskCount;
@@ -143,6 +144,7 @@ namespace ak_internal {
         
         // Cold data
         alignas(64) KernelTaskHdl kernelTask;
+        Link    zombieList;
     };
     
     extern struct Kernel gKernel;
@@ -338,6 +340,13 @@ inline bool IsTaskDone(TaskHdl hdl) noexcept {
 inline auto ResumeTask(TaskHdl hdl) noexcept {
 	return ak_internal::ResumeTaskOp{hdl};
 }
+
+/// \brief Configuration for the Kernel
+/// \ingroup Kernel
+struct KernelConfig {
+    void* mem;
+    Size  memSize;
+};
 
 // Task::AwaitTaskEffect
 // ----------------------------------------------------------------------------------------------------------------
@@ -586,7 +595,7 @@ namespace ak_internal
         co_return;
     }
 
-    inline void InitKernel() noexcept {
+    inline void InitKernel(KernelConfig* config) noexcept {
         using namespace ak_internal;
         gKernel.taskCount = 0;
         gKernel.readyCount = 0;
@@ -594,6 +603,8 @@ namespace ak_internal
         gKernel.ioWaitingCount = 0;
         gKernel.zombieCount = 0;
         gKernel.interrupted = 0;
+        gKernel.mem = config->mem;
+        gKernel.memSize = config->memSize;
         ClearTaskHdl(&gKernel.currentTaskHdl);
         ClearTaskHdl(&gKernel.schedulerTaskHdl);
         InitLink(&gKernel.zombieList);
@@ -815,10 +826,10 @@ namespace ak_internal
 /// \return 0 on success
 /// \ingroup Kernel
 template <typename... Args>
-inline int RunMain(DefineTask(*mainProc)(Args ...) noexcept , Args... args) noexcept {  
+inline int RunMain(KernelConfig* config, DefineTask(*mainProc)(Args ...) noexcept , Args... args) noexcept {  
     using namespace ak_internal;
 
-    InitKernel();
+    InitKernel(config);
 
     KernelTaskHdl hdl = KernelTaskProc(mainProc, std::forward<Args>(args) ...);
     gKernel.kernelTask = hdl;
