@@ -63,7 +63,7 @@
         ''; 
       };
 
-      echo = pkgs.stdenv.mkDerivation {
+      libak-examples-echo = pkgs.stdenv.mkDerivation {
         name = "libak-examples-echo";
         version = "0.0.1";
         srcs = [./examples/echo];
@@ -82,7 +82,7 @@
         ];
 
         buildPhase = ''
-          make doxygen
+          ./compile.sh
         '';
 
         checkPhase = ''
@@ -107,7 +107,7 @@
       in
         {
 
-        default = mkOverriddenShell
+          default = mkOverriddenShell
           {
             nativeBuildInputs = with pkgs; [
               lldb
@@ -138,5 +138,5 @@
             '';
           };
         };
-    };
+  };
 }
