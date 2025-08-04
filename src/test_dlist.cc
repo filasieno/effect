@@ -9,7 +9,7 @@ struct Data;
 using namespace ak_internal;
 
 struct Data {
-    Link node;
+    DLink node;
     int  value;
 };
 
