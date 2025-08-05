@@ -7,15 +7,16 @@
 using namespace ak;
 
 // Handle individual client connection
-DefineTask HandleClient(int task_id,int clientFd) noexcept {
+DefineTask HandleClient(int taskId,int clientFd) noexcept {
     char buffer[1024];
     
     while (true) {
         // Read from client
         int bytes = co_await XRecv(clientFd, buffer, sizeof(buffer), 0);
-        std::print("Received from {}: {} bytes\n", task_id, bytes);
+        std::print("Received from {}: {} bytes\n", taskId, bytes);
         if (bytes <= 0) {
-            std::print("Received from {}: recv failed\n", task_id);
+            std::print("Received from {}: recv failed\n", taskId);
+            co_await XClose(clientFd);
             break; // Client disconnected or error
         }
 

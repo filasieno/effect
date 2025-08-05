@@ -6,7 +6,7 @@
 using namespace ak;
 
 
-DefineTask ClientTask(int task_id,const char* server_ip, int server_port, int messages_per_client) noexcept {
+DefineTask ClientTask(int taskId,const char* serverIp, int port, int msgPerClient) noexcept {
     // Create socket
     int sock = co_await XSocket(AF_INET, SOCK_STREAM, 0, 0);
     if (sock < 0) {
@@ -15,33 +15,33 @@ DefineTask ClientTask(int task_id,const char* server_ip, int server_port, int me
     }
 
     // Setup server address
-    struct sockaddr_in server_addr;
+    sockaddr_in server_addr;
     std::memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(server_port);
-    if (inet_pton(AF_INET, server_ip, &server_addr.sin_addr) <= 0) {
+    server_addr.sin_port = htons(port);
+    if (inet_pton(AF_INET, serverIp, &server_addr.sin_addr) <= 0) {
         std::print("Invalid address\n");
         co_await XClose(sock);
         co_return;
     }
 
     // Connect to server
-    int result = co_await XConnect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr));
+    int result = co_await XConnect(sock, (sockaddr*)&server_addr, sizeof(server_addr));
     if (result < 0) {
         std::print("Connection failed\n");
         co_await XClose(sock);
         co_return;
     }
-    std::print("task {} connected to server\n", task_id);
+    std::print("task {} connected to server\n", taskId);
 
     char buff[128];
     TaskHdl current = co_await GetCurrentTask();
     
     // Send multiple messages
-    for (int i = 0; i < messages_per_client; i++) {
+    for (int i = 0; i < msgPerClient; i++) {
         // Prepare message
-        int len = std::snprintf(buff, sizeof(buff), "Message %d from Task %d", i, task_id); 
-        std::print("Client {} Received: {}\n", task_id, len); 
+        int len = std::snprintf(buff, sizeof(buff), "Message %d from Task %d", i, taskId); 
+        std::print("Client {} Received: {}\n", taskId, len); 
         // Send message
         result = co_await XWrite(sock, buff, len, 0);
         if (result < 0) {
@@ -64,31 +64,31 @@ DefineTask ClientTask(int task_id,const char* server_ip, int server_port, int me
     co_await XClose(sock);
 }
 
-DefineTask MainTask(int client_count, int messages_per_client, const char* server_ip, int server_port) noexcept {
+DefineTask MainTask(int clientCount, int msgPerClient, const char* serverIp, int serverPort) noexcept {
     // Create array to store client task handles
-    std::vector<TaskHdl> clients(client_count);
+    std::vector<TaskHdl> clients(clientCount);
 
     // Launch client tasks
-    for (int i = 0; i < client_count; i++) {
-        clients[i] = ClientTask(i, server_ip, server_port, messages_per_client);
+    for (int i = 0; i < clientCount; i++) {
+        clients[i] = ClientTask(i, serverIp, serverPort, msgPerClient);
     }
 
     // Wait for all clients to complete
     for (TaskHdl& client : clients) {
-        co_await client;
+        co_await JoinTask(client);
     }
 }
 
 int main(int argc, char* argv[]) {
     if (argc != 5) {
-        std::print("Usage: {} <server_ip> <server_port> <client_count> <messages_per_client>\n", argv[0]);
+        std::print("Usage: {} <server-ip> <server-port> <client-count> <messages-per-client>\n", argv[0]); 
         return 1;
     }
 
-    const char* server_ip = argv[1];
-    int server_port = std::atoi(argv[2]);
-    int client_count = std::atoi(argv[3]);
-    int messages_per_client = std::atoi(argv[4]);
+    const char* serverIp = argv[1];
+    int serverPort = std::atoi(argv[2]);
+    int clientCount = std::atoi(argv[3]);
+    int msgPerClient = std::atoi(argv[4]);
 
     // Configure kernel
     KernelConfig config{
@@ -98,5 +98,5 @@ int main(int argc, char* argv[]) {
     };
 
     // Run the main task
-    return RunMain(&config, MainTask, client_count, messages_per_client, server_ip, server_port);
+    return RunMain(&config, MainTask, clientCount, msgPerClient, serverIp, serverPort);
 }
