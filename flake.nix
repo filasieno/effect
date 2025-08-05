@@ -91,7 +91,8 @@
 
         installPhase = ''
           mkdir -p $out/bin
-          cp ./build/echo $out/bin/echo
+          cp ./build/echo-client $out/bin/echo-client
+          cp ./build/echo-server $out/bin/echo-server
         ''; 
       };
 

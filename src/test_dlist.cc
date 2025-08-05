@@ -3,10 +3,11 @@
 #include <cassert>
 #include <print>
 
+using namespace ak;
 
 struct Data;
 
-using namespace ak_internal;
+using namespace internal;
 
 struct Data {
     DLink node;

@@ -2,10 +2,7 @@
 #include <cassert>
 #include <print> 
 
-// Condition readyToWrite;
-// Condition readyToRead;
-// int value = -1;
-// int MAX = 10;
+using namespace ak;
 
 DefineTask ReaderTask(Event* canRead, Event* canWrite, int *readSignal, int* writeSignal, int* value) noexcept {
 	std::print("ReaderTask started\n");
@@ -46,9 +43,7 @@ DefineTask ReaderTask(Event* canRead, Event* canWrite, int *readSignal, int* wri
 
 		++check;
 	}
-	
 }
-
 
 DefineTask WriterTask(Event* canRead, Event* canWrite, int *readSignal, int* writeSignal, int* value) noexcept {
 	int check = 0;
@@ -105,13 +100,14 @@ DefineTask MainTask(const char* name) noexcept {
 
 	TaskHdl writer = WriterTask(&readyToRead, &readyToWrite, &readSignal, &writeSignal, &value);
 	TaskHdl reader = ReaderTask(&readyToRead, &readyToWrite, &readSignal, &writeSignal, &value);
-  std::print("State of reader: {}; State of writer: {}\n", ToString(GetTaskState(reader)), ToString(GetTaskState(writer)));
+	std::print("State of reader: {}; State of writer: {}\n", ToString(GetTaskState(reader)), ToString(GetTaskState(writer)));
 	co_await JoinTask(reader);
 	std::print("State of reader: {}; State of writer: {}\n", ToString(GetTaskState(reader)), ToString(GetTaskState(writer)));
-  co_await JoinTask(writer);
-  std::print("State of reader: {}; State of writer: {}\n", ToString(GetTaskState(reader)), ToString(GetTaskState(writer)));
+	co_await JoinTask(writer);
+	std::print("State of reader: {}; State of writer: {}\n", ToString(GetTaskState(reader)), ToString(GetTaskState(writer)));
 	std::fflush(stdout);
-  co_return;
+	
+	co_return;
 }
 
 

@@ -4,6 +4,8 @@
 #include <arpa/inet.h>
 #include <format>
 
+using namespace ak;
+
 // Handle individual client connection
 DefineTask HandleClient(int task_id,int clientFd) noexcept {
     char buffer[1024];

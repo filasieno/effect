@@ -3,6 +3,9 @@
 #include <cstring>
 #include <print>
 
+using namespace ak;
+
+
 DefineTask ClientTask(int task_id,const char* server_ip, int server_port, int messages_per_client) noexcept {
     // Create socket
     int sock = co_await XSocket(AF_INET, SOCK_STREAM, 0, 0);
