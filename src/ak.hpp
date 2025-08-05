@@ -1073,45 +1073,46 @@ inline void DebugIOURingSetupFlags(const unsigned int flags) {
     if (flags & IORING_SETUP_ATTACH_WQ) std::print("  ATTACH_WQ\n");
 }
 
-inline void DebugIOURingParams(const struct io_uring_params& p) {
+inline void DebugIOURingParams(const io_uring_params* p) {
     std::print("IO uring parameters:\n");
     
     // Main parameters
     std::print("Main Configuration:\n");
-    std::print("  sq_entries: {}\n", p.sq_entries);
-    std::print("  cq_entries: {}\n", p.cq_entries);
-    std::print("  sq_thread_cpu: {}\n", p.sq_thread_cpu);
-    std::print("  sq_thread_idle: {}\n", p.sq_thread_idle);
-    std::print("  wq_fd: {}\n", p.wq_fd);
+    std::print("  sq_entries: {}\n", p->sq_entries);
+    std::print("  cq_entries: {}\n", p->cq_entries);
+    std::print("  sq_thread_cpu: {}\n", p->sq_thread_cpu);
+    std::print("  sq_thread_idle: {}\n", p->sq_thread_idle);
+    std::print("  wq_fd: {}\n", p->wq_fd);
 
     // Print flags
-    DebugIOURingSetupFlags(p.flags);
+    DebugIOURingSetupFlags(p->flags);
 
     // Print features
-    DebugIOURingFeatures(p.features);
+    DebugIOURingFeatures(p->features);
 
     // Submission Queue Offsets
 
     std::print("Submission Queue Offsets:\n");
-    std::print("  head: {}\n", p.sq_off.head);
-    std::print("  tail: {}\n", p.sq_off.tail);
-    std::print("  ring_mask: {}\n", p.sq_off.ring_mask);
-    std::print("  ring_entries: {}\n", p.sq_off.ring_entries);
-    std::print("  flags: {}\n", p.sq_off.flags);
-    std::print("  dropped: {}\n", p.sq_off.dropped);
-    std::print("  array: {}\n", p.sq_off.array);
+    std::print("  head: {}\n", p->sq_off.head);
+    std::print("  tail: {}\n", p->sq_off.tail);
+    std::print("  ring_mask: {}\n", p->sq_off.ring_mask);
+    std::print("  ring_entries: {}\n", p->sq_off.ring_entries);
+    std::print("  flags: {}\n", p->sq_off.flags);
+    std::print("  dropped: {}\n", p->sq_off.dropped);
+    std::print("  array: {}\n", p->sq_off.array);
 
     // Completion Queue Offsets
 
     std::print("Completion Queue Offsets:\n");
-    std::print("  head: {}\n", p.cq_off.head);
-    std::print("  tail: {}\n", p.cq_off.tail);
-    std::print("  ring_mask: {}\n", p.cq_off.ring_mask);
-    std::print("  ring_entries: {}\n", p.cq_off.ring_entries);
-    std::print("  overflow: {}\n", p.cq_off.overflow);
-    std::print("  cqes: {}\n", p.cq_off.cqes);
-    std::print("  flags: {}\n", p.cq_off.flags);
+    std::print("  head: {}\n", p->cq_off.head);
+    std::print("  tail: {}\n", p->cq_off.tail);
+    std::print("  ring_mask: {}\n", p->cq_off.ring_mask);
+    std::print("  ring_entries: {}\n", p->cq_off.ring_entries);
+    std::print("  overflow: {}\n", p->cq_off.overflow);
+    std::print("  cqes: {}\n", p->cq_off.cqes);
+    std::print("  flags: {}\n", p->cq_off.flags);
     std::print("\n");
+    std::fflush(stdout);
 }
 
 // -----------------------------------------------------------------------------

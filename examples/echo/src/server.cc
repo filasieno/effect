@@ -2,15 +2,18 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <format>
 
 // Handle individual client connection
-DefineTask HandleClient(int clientFd) noexcept {
+DefineTask HandleClient(int task_id,int clientFd) noexcept {
     char buffer[1024];
     
     while (true) {
         // Read from client
         int bytes = co_await XRecv(clientFd, buffer, sizeof(buffer), 0);
+        std::print("Received from {}: {} bytes\n", task_id, bytes);
         if (bytes <= 0) {
+            std::print("Received from {}: recv failed\n", task_id);
             break; // Client disconnected or error
         }
 
@@ -25,6 +28,7 @@ DefineTask HandleClient(int clientFd) noexcept {
 
 // Accept and handle new connections
 DefineTask AcceptConnections(int serverFd) noexcept {
+    static int task_id = 0;
     while (true) {
         struct sockaddr_in clientAddr;
         socklen_t clientAddrLen = sizeof(clientAddr);
@@ -34,14 +38,18 @@ DefineTask AcceptConnections(int serverFd) noexcept {
         if (clientFd < 0) {
             continue;
         }
+        std::print("Accepted client: {}\n", task_id);
 
         // Handle client in a new task
-        HandleClient(clientFd);
+        HandleClient(task_id, clientFd);
+        ++task_id;
         // Note: We don't wait for the client handler to complete
     }
 }
 
 DefineTask MainTask() noexcept {
+    int res;
+
     // Create server socket
     int serverFd = co_await XSocket(AF_INET, SOCK_STREAM, 0, 0);
     if (serverFd < 0) {
@@ -84,7 +92,7 @@ DefineTask MainTask() noexcept {
     co_await AcceptConnections(serverFd);
 
     // Cleanup
-    co_await XClose(serverFd);
+    res = co_await XClose(serverFd);
     co_return;
 }
 
