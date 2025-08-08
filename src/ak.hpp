@@ -157,8 +157,8 @@ namespace internal {
     
     extern struct Kernel gKernel;
 
-    void DebugTaskCount() noexcept;
-    void CheckInvariants() noexcept;
+    // void DebugTaskCount() noexcept;
+    // void CheckInvariants() noexcept;
 
     struct InitialSuspendTaskOp {
         constexpr bool await_ready() const noexcept { return false; }
@@ -297,7 +297,7 @@ inline bool IsTaskHdlValid(TaskHdl hdl) {
 /// @param hdl 
 /// @return the TaskPromise associated with the target TaskHdl
 /// \ingroup Task
-inline TaskContext* GetTaskTaskContext(TaskHdl hdl) {
+inline TaskContext* GetTaskContext(TaskHdl hdl) {
     return &hdl.promise();
 }
 
@@ -507,8 +507,41 @@ namespace internal
             }
 
             if (gKernel.ioWaitingCount > 0) {
-                std::print("Unimplemented IO Waiting"); 
-                std::abort();
+                unsigned ready = io_uring_sq_ready(&gKernel.ioRing);
+                // Submit Ready IO Operations
+                if (ready > 0) {
+                    int ret = io_uring_submit(&gKernel.ioRing);
+                    if (ret < 0) {
+                        std::print("io_uring_submit failed\n");
+                        std::fflush(stdout);
+                        std::abort();
+                    }
+                }
+
+                // Process all available completions
+                struct io_uring_cqe *cqe;
+                unsigned head;
+                unsigned completed = 0;
+                io_uring_for_each_cqe(&gKernel.ioRing, head, cqe) {
+                    // Return Result to the target Awaitable 
+                    TaskContext* ctx = (TaskContext*) io_uring_cqe_get_data(cqe);
+                    assert(ctx->state == TaskState::IO_WAITING);
+
+                    // Move the target task from IO_WAITING to READY
+                    --gKernel.ioWaitingCount;
+                    ctx->state = TaskState::READY;
+                    ++gKernel.readyCount;
+                    EnqueueLink(&gKernel.readyList, &ctx->waitLink);
+                    
+                    // Complete operation
+                    ctx->ioResult = cqe->res;
+                    --ctx->enqueuedIO;
+                    ++completed;
+                }
+                // Mark all as seen
+                io_uring_cq_advance(&gKernel.ioRing, completed);
+                
+                continue;
             }
 
             // Zombie bashing
@@ -607,7 +640,7 @@ namespace internal
                 io_uring_for_each_cqe(&gKernel.ioRing, head, cqe) {
                     // Return Result to the target Awaitable 
                     TaskContext* ctx = (TaskContext*) io_uring_cqe_get_data(cqe);
-                    assert(ctx->state = TaskState::IO_WAITING);
+                    assert(ctx->state == TaskState::IO_WAITING);
 
                     // Move the target task from IO_WAITING to READY
                     --gKernel.ioWaitingCount;
@@ -815,7 +848,7 @@ namespace internal
                 CheckInvariants();
                 DebugTaskCount();
 
-                return joinedTaskHdl;
+                return gKernel.schedulerTaskHdl;
             }
             
             case TaskState::DELETING:

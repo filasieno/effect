@@ -77,6 +77,7 @@ DefineTask MainTask(int clientCount, int msgPerClient, const char* serverIp, int
     for (TaskHdl& client : clients) {
         co_await JoinTask(client);
     }
+    std::print("All clients completed\n");
 }
 
 int main(int argc, char* argv[]) {
