@@ -1226,554 +1226,554 @@ namespace internal {
 
 
 // File Operations
-inline internal::IOOp XOpen(const char* path, int flags, mode_t mode) noexcept {
+inline internal::IOOp IOOpen(const char* path, int flags, mode_t mode) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_openat(sqe, AT_FDCWD, path, flags, mode);
     });
 }
 
-inline internal::IOOp XOpenAt(int dfd, const char* path, int flags, mode_t mode) noexcept {
+inline internal::IOOp IOOpenAt(int dfd, const char* path, int flags, mode_t mode) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_openat(sqe, dfd, path, flags, mode);
     });
 }
 
-inline internal::IOOp XOpenAtDirect(int dfd, const char* path, int flags, mode_t mode, unsigned file_index) noexcept {
+inline internal::IOOp IOOpenAtDirect(int dfd, const char* path, int flags, mode_t mode, unsigned file_index) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_openat_direct(sqe, dfd, path, flags, mode, file_index);
     });
 }
 
-inline internal::IOOp XClose(int fd) noexcept {
+inline internal::IOOp IOClose(int fd) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_close(sqe, fd);
     });
 }
 
-inline internal::IOOp XCloseDirect(unsigned file_index) noexcept {
+inline internal::IOOp IOCloseDirect(unsigned file_index) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_close_direct(sqe, file_index);
     });
 }
 
 // Read Operations
-inline internal::IOOp XRead(int fd, void* buf, unsigned nbytes, __u64 offset) noexcept {
+inline internal::IOOp IORead(int fd, void* buf, unsigned nbytes, __u64 offset) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_read(sqe, fd, buf, nbytes, offset);
     });
 }
 
-inline internal::IOOp XReadMultishot(int fd, unsigned nbytes, __u64 offset, int buf_group) noexcept {
+inline internal::IOOp IOReadMultishot(int fd, unsigned nbytes, __u64 offset, int buf_group) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_read_multishot(sqe, fd, nbytes, offset, buf_group);
     });
 }
 
-inline internal::IOOp XReadFixed(int fd, void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
+inline internal::IOOp IOReadFixed(int fd, void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_read_fixed(sqe, fd, buf, nbytes, offset, buf_index);
     });
 }
 
-inline internal::IOOp XReadV(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept {
+inline internal::IOOp IOReadV(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_readv(sqe, fd, iovecs, nr_vecs, offset);
     });
 }
 
-inline internal::IOOp XReadV2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept {
+inline internal::IOOp IOReadV2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_readv2(sqe, fd, iovecs, nr_vecs, offset, flags);
     });
 }
 
-inline internal::IOOp XReadVFixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept {
+inline internal::IOOp IOReadVFixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_readv_fixed(sqe, fd, iovecs, nr_vecs, offset, flags, buf_index);
     });
 }
 
 // Write Operations
-inline internal::IOOp XWrite(int fd, const void* buf, unsigned nbytes, __u64 offset) noexcept {
+inline internal::IOOp IOWrite(int fd, const void* buf, unsigned nbytes, __u64 offset) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_write(sqe, fd, buf, nbytes, offset);
     });
 }
 
-inline internal::IOOp XWriteFixed(int fd, const void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
+inline internal::IOOp IOWriteFixed(int fd, const void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_write_fixed(sqe, fd, buf, nbytes, offset, buf_index);
     });
 }
 
-inline internal::IOOp XWriteV(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept {
+inline internal::IOOp IOWriteV(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_writev(sqe, fd, iovecs, nr_vecs, offset);
     });
 }
 
-inline internal::IOOp XWriteV2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept {
+inline internal::IOOp IOWriteV2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_writev2(sqe, fd, iovecs, nr_vecs, offset, flags);
     });
 }
 
-inline internal::IOOp XWriteVFixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept {
+inline internal::IOOp IOWriteVFixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_writev_fixed(sqe, fd, iovecs, nr_vecs, offset, flags, buf_index);
     });
 }
 
 // Socket Operations
-inline internal::IOOp XAccept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept {
+inline internal::IOOp IOAccept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_accept(sqe, fd, addr, addrlen, flags);
     });
 }
 
-inline internal::IOOp XAcceptDirect(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags, unsigned int file_index) noexcept {
+inline internal::IOOp IOAcceptDirect(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags, unsigned int file_index) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_accept_direct(sqe, fd, addr, addrlen, flags, file_index);
     });
 }
 
-inline internal::IOOp XMultishotAccept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept {
+inline internal::IOOp IOMultishotAccept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_multishot_accept(sqe, fd, addr, addrlen, flags);
     });
 }
 
-inline internal::IOOp XMultishotAcceptDirect(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept {
+inline internal::IOOp IOMultishotAcceptDirect(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_multishot_accept_direct(sqe, fd, addr, addrlen, flags);
     });
 }
 
-inline internal::IOOp XConnect(int fd, const struct sockaddr* addr, socklen_t addrlen) noexcept {
+inline internal::IOOp IOConnect(int fd, const struct sockaddr* addr, socklen_t addrlen) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_connect(sqe, fd, addr, addrlen);
     });
 }
 
-inline internal::IOOp XSend(int sockfd, const void* buf, size_t len, int flags) noexcept {
+inline internal::IOOp IOSend(int sockfd, const void* buf, size_t len, int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_send(sqe, sockfd, buf, len, flags);
     });
 }
 
-inline internal::IOOp XSendZC(int sockfd, const void* buf, size_t len, int flags, unsigned zc_flags) noexcept {
+inline internal::IOOp IOSendZC(int sockfd, const void* buf, size_t len, int flags, unsigned zc_flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_send_zc(sqe, sockfd, buf, len, flags, zc_flags);
     });
 }
 
-inline internal::IOOp XSendZCFixed(int sockfd, const void* buf, size_t len, int flags, unsigned zc_flags, unsigned buf_index) noexcept {
+inline internal::IOOp IOSendZCFixed(int sockfd, const void* buf, size_t len, int flags, unsigned zc_flags, unsigned buf_index) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_send_zc_fixed(sqe, sockfd, buf, len, flags, zc_flags, buf_index);
     });
 }
 
-inline internal::IOOp XSendMsg(int fd, const struct msghdr* msg, unsigned flags) noexcept {
+inline internal::IOOp IOSendMsg(int fd, const struct msghdr* msg, unsigned flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_sendmsg(sqe, fd, msg, flags);
     });
 }
 
-inline internal::IOOp XSendMsgZC(int fd, const struct msghdr* msg, unsigned flags) noexcept {
+inline internal::IOOp IOSendMsgZC(int fd, const struct msghdr* msg, unsigned flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_sendmsg_zc(sqe, fd, msg, flags);
     });
 }
 
-inline internal::IOOp XSendMsgZCFixed(int fd, const struct msghdr* msg, unsigned flags, unsigned buf_index) noexcept {
+inline internal::IOOp IOSendMsgZCFixed(int fd, const struct msghdr* msg, unsigned flags, unsigned buf_index) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_sendmsg_zc_fixed(sqe, fd, msg, flags, buf_index);
     });
 }
 
-inline internal::IOOp XRecv(int sockfd, void* buf, size_t len, int flags) noexcept {
+inline internal::IOOp IORecv(int sockfd, void* buf, size_t len, int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_recv(sqe, sockfd, buf, len, flags);
     });
 }
 
-inline internal::IOOp XRecvMultishot(int sockfd, void* buf, size_t len, int flags) noexcept {
+inline internal::IOOp IORecvMultishot(int sockfd, void* buf, size_t len, int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_recv_multishot(sqe, sockfd, buf, len, flags);
     });
 }
 
-inline internal::IOOp XRecvMsg(int fd, struct msghdr* msg, unsigned flags) noexcept {
+inline internal::IOOp IORecvMsg(int fd, struct msghdr* msg, unsigned flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_recvmsg(sqe, fd, msg, flags);
     });
 }
 
-inline internal::IOOp XRecvMsgMultishot(int fd, struct msghdr* msg, unsigned flags) noexcept {
+inline internal::IOOp IORecvMsgMultishot(int fd, struct msghdr* msg, unsigned flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_recvmsg_multishot(sqe, fd, msg, flags);
     });
 }
 
-inline internal::IOOp XSocket(int domain, int type, int protocol, unsigned int flags) noexcept {
+inline internal::IOOp IOSocket(int domain, int type, int protocol, unsigned int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_socket(sqe, domain, type, protocol, flags);
     });
 }
 
-inline internal::IOOp XSocketDirect(int domain, int type, int protocol, unsigned file_index, unsigned int flags) noexcept {
+inline internal::IOOp IOSocketDirect(int domain, int type, int protocol, unsigned file_index, unsigned int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_socket_direct(sqe, domain, type, protocol, file_index, flags);
     });
 }
 
 // Directory and Link Operations
-inline internal::IOOp XMkdir(const char* path, mode_t mode) noexcept {
+inline internal::IOOp IOMkdir(const char* path, mode_t mode) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_mkdir(sqe, path, mode);
     });
 }
 
-inline internal::IOOp XMkdirAt(int dfd, const char* path, mode_t mode) noexcept {
+inline internal::IOOp IOMkdirAt(int dfd, const char* path, mode_t mode) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_mkdirat(sqe, dfd, path, mode);
     });
 }
 
-inline internal::IOOp XSymlink(const char* target, const char* linkpath) noexcept {
+inline internal::IOOp IOSymlink(const char* target, const char* linkpath) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_symlink(sqe, target, linkpath);
     });
 }
 
-inline internal::IOOp XSymlinkAt(const char* target, int newdirfd, const char* linkpath) noexcept {
+inline internal::IOOp IOSymlinkAt(const char* target, int newdirfd, const char* linkpath) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_symlinkat(sqe, target, newdirfd, linkpath);
     });
 }
 
-inline internal::IOOp XLink(const char* oldpath, const char* newpath, int flags) noexcept {
+inline internal::IOOp IOLink(const char* oldpath, const char* newpath, int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_link(sqe, oldpath, newpath, flags);
     });
 }
 
-inline internal::IOOp XLinkAt(int olddfd, const char* oldpath, int newdfd, const char* newpath, int flags) noexcept {
+inline internal::IOOp IOLinkAt(int olddfd, const char* oldpath, int newdfd, const char* newpath, int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_linkat(sqe, olddfd, oldpath, newdfd, newpath, flags);
     });
 }
 
 // File Management Operations
-inline internal::IOOp XUnlink(const char* path, int flags) noexcept {
+inline internal::IOOp IOUnlink(const char* path, int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_unlink(sqe, path, flags);
     });
 }
 
-inline internal::IOOp XUnlinkAt(int dfd, const char* path, int flags) noexcept {
+inline internal::IOOp IOUnlinkAt(int dfd, const char* path, int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_unlinkat(sqe, dfd, path, flags);
     });
 }
 
-inline internal::IOOp XRename(const char* oldpath, const char* newpath) noexcept {
+inline internal::IOOp IORename(const char* oldpath, const char* newpath) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_rename(sqe, oldpath, newpath);
     });
 }
 
-inline internal::IOOp XRenameAt(int olddfd, const char* oldpath, int newdfd, const char* newpath, unsigned int flags) noexcept {
+inline internal::IOOp IORenameAt(int olddfd, const char* oldpath, int newdfd, const char* newpath, unsigned int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_renameat(sqe, olddfd, oldpath, newdfd, newpath, flags);
     });
 }
 
-inline internal::IOOp XSync(int fd, unsigned fsync_flags) noexcept {
+inline internal::IOOp IOSync(int fd, unsigned fsync_flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_fsync(sqe, fd, fsync_flags);
     });
 }
 
-inline internal::IOOp XSyncFileRange(int fd, unsigned len, __u64 offset, int flags) noexcept {
+inline internal::IOOp IOSyncFileRange(int fd, unsigned len, __u64 offset, int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_sync_file_range(sqe, fd, len, offset, flags);
     });
 }
 
-inline internal::IOOp XFAllocate(int fd, int mode, __u64 offset, __u64 len) noexcept {
+inline internal::IOOp IOFAllocate(int fd, int mode, __u64 offset, __u64 len) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_fallocate(sqe, fd, mode, offset, len);
     });
 }
 
-inline internal::IOOp XOpenAt2(int dfd, const char* path, struct open_how* how) noexcept {
+inline internal::IOOp IOOpenAt2(int dfd, const char* path, struct open_how* how) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_openat2(sqe, dfd, path, how);
     });
 }
 
-inline internal::IOOp XOpenAt2Direct(int dfd, const char* path, struct open_how* how, unsigned file_index) noexcept {
+inline internal::IOOp IOOpenAt2Direct(int dfd, const char* path, struct open_how* how, unsigned file_index) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_openat2_direct(sqe, dfd, path, how, file_index);
     });
 }
 
-inline internal::IOOp XStatx(int dfd, const char* path, int flags, unsigned mask, struct statx* statxbuf) noexcept {
+inline internal::IOOp IOStatx(int dfd, const char* path, int flags, unsigned mask, struct statx* statxbuf) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_statx(sqe, dfd, path, flags, mask, statxbuf);
     });
 }
 
-inline internal::IOOp XFAdvise(int fd, __u64 offset, __u32 len, int advice) noexcept {
+inline internal::IOOp IOFAdvise(int fd, __u64 offset, __u32 len, int advice) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_fadvise(sqe, fd, offset, len, advice);
     });
 }
 
-inline internal::IOOp XFAdvise64(int fd, __u64 offset, off_t len, int advice) noexcept {
+inline internal::IOOp IOFAdvise64(int fd, __u64 offset, off_t len, int advice) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_fadvise64(sqe, fd, offset, len, advice);
     });
 }
 
-inline internal::IOOp XMAdvise(void* addr, __u32 length, int advice) noexcept {
+inline internal::IOOp IOMAdvise(void* addr, __u32 length, int advice) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_madvise(sqe, addr, length, advice);
     });
 }
 
-inline internal::IOOp XMAdvise64(void* addr, off_t length, int advice) noexcept {
+inline internal::IOOp IOMAdvise64(void* addr, off_t length, int advice) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_madvise64(sqe, addr, length, advice);
     });
 }
 
 // Extended Attributes Operations
-inline internal::IOOp XGetXAttr(const char* name, char* value, const char* path, unsigned int len) noexcept {
+inline internal::IOOp IOGetXAttr(const char* name, char* value, const char* path, unsigned int len) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_getxattr(sqe, name, value, path, len);
     });
 }
 
-inline internal::IOOp XSetXAttr(const char* name, const char* value, const char* path, int flags, unsigned int len) noexcept {
+inline internal::IOOp IOSetXAttr(const char* name, const char* value, const char* path, int flags, unsigned int len) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_setxattr(sqe, name, value, path, flags, len);
     });
 }
 
-inline internal::IOOp XFGetXAttr(int fd, const char* name, char* value, unsigned int len) noexcept {
+inline internal::IOOp IOFGetXAttr(int fd, const char* name, char* value, unsigned int len) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_fgetxattr(sqe, fd, name, value, len);
     });
 }
 
-inline internal::IOOp XFSetXAttr(int fd, const char* name, const char* value, int flags, unsigned int len) noexcept {
+inline internal::IOOp IOFSetXAttr(int fd, const char* name, const char* value, int flags, unsigned int len) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_fsetxattr(sqe, fd, name, value, flags, len);
     });
 }
 
 // Buffer Operations
-inline internal::IOOp XProvideBuffers(void* addr, int len, int nr, int bgid, int bid) noexcept {
+inline internal::IOOp IOProvideBuffers(void* addr, int len, int nr, int bgid, int bid) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_provide_buffers(sqe, addr, len, nr, bgid, bid);
     });
 }
 
-inline internal::IOOp XRemoveBuffers(int nr, int bgid) noexcept {
+inline internal::IOOp IORemoveBuffers(int nr, int bgid) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_remove_buffers(sqe, nr, bgid);
     });
 }
 
 // Polling Operations
-inline internal::IOOp XPollAdd(int fd, unsigned poll_mask) noexcept {
+inline internal::IOOp IOPollAdd(int fd, unsigned poll_mask) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_poll_add(sqe, fd, poll_mask);
     });
 }
 
-inline internal::IOOp XPollMultishot(int fd, unsigned poll_mask) noexcept {
+inline internal::IOOp IOPollMultishot(int fd, unsigned poll_mask) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_poll_multishot(sqe, fd, poll_mask);
     });
 }
 
-inline internal::IOOp XPollRemove(__u64 user_data) noexcept {
+inline internal::IOOp IOPollRemove(__u64 user_data) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_poll_remove(sqe, user_data);
     });
 }
 
-inline internal::IOOp XPollUpdate(__u64 old_user_data, __u64 new_user_data, unsigned poll_mask, unsigned flags) noexcept {
+inline internal::IOOp IOPollUpdate(__u64 old_user_data, __u64 new_user_data, unsigned poll_mask, unsigned flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_poll_update(sqe, old_user_data, new_user_data, poll_mask, flags);
     });
 }
 
-inline internal::IOOp XEpollCtl(int epfd, int fd, int op, struct epoll_event* ev) noexcept {
+inline internal::IOOp IOEpollCtl(int epfd, int fd, int op, struct epoll_event* ev) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_epoll_ctl(sqe, epfd, fd, op, ev);
     });
 }
 
-inline internal::IOOp XEpollWait(int fd, struct epoll_event* events, int maxevents, unsigned flags) noexcept {
+inline internal::IOOp IOEpollWait(int fd, struct epoll_event* events, int maxevents, unsigned flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_epoll_wait(sqe, fd, events, maxevents, flags);
     });
 }
 
 // Timeout Operations
-inline internal::IOOp XTimeout(struct __kernel_timespec* ts, unsigned count, unsigned flags) noexcept {
+inline internal::IOOp IOTimeout(struct __kernel_timespec* ts, unsigned count, unsigned flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_timeout(sqe, ts, count, flags);
     });
 }
 
-inline internal::IOOp XTimeoutRemove(__u64 user_data, unsigned flags) noexcept {
+inline internal::IOOp IOTimeoutRemove(__u64 user_data, unsigned flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_timeout_remove(sqe, user_data, flags);
     });
 }
 
-inline internal::IOOp XTimeoutUpdate(struct __kernel_timespec* ts, __u64 user_data, unsigned flags) noexcept {
+inline internal::IOOp IOTimeoutUpdate(struct __kernel_timespec* ts, __u64 user_data, unsigned flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_timeout_update(sqe, ts, user_data, flags);
     });
 }
 
-inline internal::IOOp XLinkTimeout(struct __kernel_timespec* ts, unsigned flags) noexcept {
+inline internal::IOOp IOLinkTimeout(struct __kernel_timespec* ts, unsigned flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_link_timeout(sqe, ts, flags);
     });
 }
 
 // Message Ring Operations
-inline internal::IOOp XMsgRing(int fd, unsigned int len, __u64 data, unsigned int flags) noexcept {
+inline internal::IOOp IOMsgRing(int fd, unsigned int len, __u64 data, unsigned int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_msg_ring(sqe, fd, len, data, flags);
     });
 }
 
-inline internal::IOOp XMsgRingCqeFlags(int fd, unsigned int len, __u64 data, unsigned int flags, unsigned int cqe_flags) noexcept {
+inline internal::IOOp IOMsgRingCqeFlags(int fd, unsigned int len, __u64 data, unsigned int flags, unsigned int cqe_flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_msg_ring_cqe_flags(sqe, fd, len, data, flags, cqe_flags);
     });
 }
 
-inline internal::IOOp XMsgRingFd(int fd, int source_fd, int target_fd, __u64 data, unsigned int flags) noexcept {
+inline internal::IOOp IOMsgRingFd(int fd, int source_fd, int target_fd, __u64 data, unsigned int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_msg_ring_fd(sqe, fd, source_fd, target_fd, data, flags);
     });
 }
 
-inline internal::IOOp XMsgRingFdAlloc(int fd, int source_fd, __u64 data, unsigned int flags) noexcept {
+inline internal::IOOp IOMsgRingFdAlloc(int fd, int source_fd, __u64 data, unsigned int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_msg_ring_fd_alloc(sqe, fd, source_fd, data, flags);
     });
 }
 
 // Process Operations
-inline internal::IOOp XWaitId(idtype_t idtype, id_t id, siginfo_t* infop, int options, unsigned int flags) noexcept {
+inline internal::IOOp IOWaitId(idtype_t idtype, id_t id, siginfo_t* infop, int options, unsigned int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_waitid(sqe, idtype, id, infop, options, flags);
     });
 }
 
 // Futex Operations
-inline internal::IOOp XFutexWake(uint32_t* futex, uint64_t val, uint64_t mask, uint32_t futex_flags, unsigned int flags) noexcept {
+inline internal::IOOp IOFutexWake(uint32_t* futex, uint64_t val, uint64_t mask, uint32_t futex_flags, unsigned int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_futex_wake(sqe, futex, val, mask, futex_flags, flags);
     });
 }
 
-inline internal::IOOp XFutexWait(uint32_t* futex, uint64_t val, uint64_t mask, uint32_t futex_flags, unsigned int flags) noexcept {
+inline internal::IOOp IOFutexWait(uint32_t* futex, uint64_t val, uint64_t mask, uint32_t futex_flags, unsigned int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_futex_wait(sqe, futex, val, mask, futex_flags, flags);
     });
 }
 
-inline internal::IOOp XFutexWaitV(struct futex_waitv* futex, uint32_t nr_futex, unsigned int flags) noexcept {
+inline internal::IOOp IOFutexWaitV(struct futex_waitv* futex, uint32_t nr_futex, unsigned int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_futex_waitv(sqe, futex, nr_futex, flags);
     });
 }
 
 // File Descriptor Management
-inline internal::IOOp XFixedFdInstall(int fd, unsigned int flags) noexcept {
+inline internal::IOOp IOFixedFdInstall(int fd, unsigned int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_fixed_fd_install(sqe, fd, flags);
     });
 }
 
-inline internal::IOOp XFilesUpdate(int* fds, unsigned nr_fds, int offset) noexcept {
+inline internal::IOOp IOFilesUpdate(int* fds, unsigned nr_fds, int offset) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_files_update(sqe, fds, nr_fds, offset);
     });
 }
 
 // Shutdown Operation
-inline internal::IOOp XShutdown(int fd, int how) noexcept {
+inline internal::IOOp IOShutdown(int fd, int how) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_shutdown(sqe, fd, how);
     });
 }
 
 // File Truncation
-inline internal::IOOp XFTruncate(int fd, loff_t len) noexcept {
+inline internal::IOOp IOFTruncate(int fd, loff_t len) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_ftruncate(sqe, fd, len);
     });
 }
 
 // Command Operations
-inline internal::IOOp XCmdSock(int cmd_op, int fd, int level, int optname, void* optval, int optlen) noexcept {
+inline internal::IOOp IOCmdSock(int cmd_op, int fd, int level, int optname, void* optval, int optlen) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_cmd_sock(sqe, cmd_op, fd, level, optname, optval, optlen);
     });
 }
 
-inline internal::IOOp XCmdDiscard(int fd, uint64_t offset, uint64_t nbytes) noexcept {
+inline internal::IOOp IOCmdDiscard(int fd, uint64_t offset, uint64_t nbytes) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_cmd_discard(sqe, fd, offset, nbytes);
     });
 }
 
 // Special Operations
-inline internal::IOOp XNop() noexcept {
+inline internal::IOOp IONop() noexcept {
     return internal::SubmitIO([](io_uring_sqe* sqe) {
         io_uring_prep_nop(sqe);
     });
 }
 
 // Splice Operations
-inline internal::IOOp XSplice(int fd_in, int64_t off_in, int fd_out, int64_t off_out, unsigned int nbytes, unsigned int splice_flags) noexcept {
+inline internal::IOOp IOSplice(int fd_in, int64_t off_in, int fd_out, int64_t off_out, unsigned int nbytes, unsigned int splice_flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_splice(sqe, fd_in, off_in, fd_out, off_out, nbytes, splice_flags);
     });
 }
 
-inline internal::IOOp XTee(int fd_in, int fd_out, unsigned int nbytes, unsigned int splice_flags) noexcept {
+inline internal::IOOp IOTee(int fd_in, int fd_out, unsigned int nbytes, unsigned int splice_flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_tee(sqe, fd_in, fd_out, nbytes, splice_flags);
     });
 }
 
 // Cancel Operations
-inline internal::IOOp XCancel64(__u64 user_data, int flags) noexcept {
+inline internal::IOOp IOCancel64(__u64 user_data, int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_cancel64(sqe, user_data, flags);
     });
 }
 
-inline internal::IOOp XCancel(void* user_data, int flags) noexcept {
+inline internal::IOOp IOCancel(void* user_data, int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_cancel(sqe, user_data, flags);
     });
 }
 
-inline internal::IOOp XCancelFd(int fd, unsigned int flags) noexcept {
+inline internal::IOOp IOCancelFd(int fd, unsigned int flags) noexcept {
     return internal::SubmitIO([=](io_uring_sqe* sqe) {
         io_uring_prep_cancel_fd(sqe, fd, flags);
     });

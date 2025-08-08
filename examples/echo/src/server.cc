@@ -12,20 +12,20 @@ DefineTask HandleClient(int taskId,int clientFd) noexcept {
     
     while (true) {
         // Read from client
-        int bytes = co_await XRecv(clientFd, buffer, sizeof(buffer), 0);
+        int bytes = co_await IORecv(clientFd, buffer, sizeof(buffer), 0);
         std::print("Received from {}: {} bytes\n", taskId, bytes);
         if (bytes <= 0) {
             std::print("Received from {}: recv failed\n", taskId);
-            co_await XClose(clientFd);
+            co_await IOClose(clientFd);
             break; // Client disconnected or error
         }
 
         // Echo back
-        co_await XSend(clientFd, buffer, bytes, 0);
+        co_await IOSend(clientFd, buffer, bytes, 0);
     }
 
     // Close client connection
-    co_await XClose(clientFd);
+    co_await IOClose(clientFd);
     co_return;
 }
 
@@ -37,7 +37,7 @@ DefineTask AcceptConnections(int serverFd) noexcept {
         socklen_t clientAddrLen = sizeof(clientAddr);
 
         // Accept new connection
-        int clientFd = co_await XAccept(serverFd, (struct sockaddr*)&clientAddr, &clientAddrLen, 0);
+        int clientFd = co_await IOAccept(serverFd, (struct sockaddr*)&clientAddr, &clientAddrLen, 0);
         if (clientFd < 0) {
             continue;
         }
@@ -54,7 +54,7 @@ DefineTask MainTask() noexcept {
     int res;
 
     // Create server socket
-    int serverFd = co_await XSocket(AF_INET, SOCK_STREAM, 0, 0);
+    int serverFd = co_await IOSocket(AF_INET, SOCK_STREAM, 0, 0);
     if (serverFd < 0) {
         std::print("Failed to create socket\n");
         co_return;
@@ -64,7 +64,7 @@ DefineTask MainTask() noexcept {
     int opt = 1;
     if (setsockopt(serverFd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
         std::print("Failed to set socket options\n");
-        co_await XClose(serverFd);
+        co_await IOClose(serverFd);
         co_return;
     }
 
@@ -78,14 +78,14 @@ DefineTask MainTask() noexcept {
     // Bind
     if (bind(serverFd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
         std::print("Failed to bind\n");
-        co_await XClose(serverFd);
+        co_await IOClose(serverFd);
         co_return;
     }
 
     // Listen
     if (listen(serverFd, SOMAXCONN) < 0) {
         std::print("Failed to listen\n");
-        co_await XClose(serverFd);
+        co_await IOClose(serverFd);
         co_return;
     }
 
@@ -95,7 +95,7 @@ DefineTask MainTask() noexcept {
     co_await AcceptConnections(serverFd);
 
     // Cleanup
-    res = co_await XClose(serverFd);
+    res = co_await IOClose(serverFd);
     co_return;
 }
 
