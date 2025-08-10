@@ -92,5 +92,6 @@
         "new": "cpp",
         "numbers": "cpp",
         "cassert": "cpp"
-    }
+    },
+    "nixEnvSelector.nixFile": "${workspaceFolder}/shell.nix"
 }
