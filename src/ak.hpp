@@ -302,6 +302,14 @@ inline TaskContext* GetTaskContext(TaskHdl hdl) {
     return &hdl.promise();
 }
 
+/// \brief Returns the TaskPromise associated with the target TaskHdl
+/// @param hdl 
+/// @return the TaskPromise associated with the target TaskHdl
+/// \ingroup Task
+inline TaskContext* GetTaskContext() {
+    return &internal::gKernel.currentTaskHdl.promise();
+}
+
 /// \brief Get the current Task
 /// \return [Async] TaskHdl
 /// \ingroup Task
@@ -1155,13 +1163,13 @@ inline void DebugIOURingParams(const io_uring_params* p) {
 // -----------------------------------------------------------------------------
 
 int GetCurrentTaskEnqueuedIOOps() noexcept {
-    return GetTaskContext().enqueuedIO;
+    return GetTaskContext()->enqueuedIO;
 }
 
 namespace internal {
     
     // todo
-    strucy IODrainOp {
+    struct IODrainOp {
         constexpr bool await_ready() const noexcept { 
             // todo: 
             return false;

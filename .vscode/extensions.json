@@ -5,6 +5,7 @@
         "llvm-vs-code-extensions.vscode-clangd",
         "github.vscode-pull-request-github",
         "github.vscode-github-actions",
-        "github.vscode-codeql"
+        "github.vscode-codeql",
+        "ms-vscode.makefile-tools"
     ]
 }

@@ -92,7 +92,12 @@ build/%.o: src/%.cc build/precompiled.pch | build/.
 	$(call trace,CXX -o $@ -c $<)
 	$(COMPILE.cc) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $<
 
+build/%.o: src/test/%.cc build/precompiled.pch | build/.
+	$(call trace,CXX -o $@ -c $<)
+	$(COMPILE.cc) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $<
+
 -include $(patsubst src/%.cc,build/%.d,$(wildcard src/*.cc))
+-include $(patsubst src/test/%.cc,build/%.d,$(wildcard src/test/*.cc))
 
 .PRECIOUS: build/%
 build/%: build/%.o  | build/.
@@ -135,17 +140,17 @@ coverage-html: build/coverage.profdata
 		-show-instantiations \
 		-show-regions -show-line-counts -show-branches=count -show-mcdc -show-expansions \
 		-check-binary-ids\
-		$$(cat $<.binaries) -sources src/*.hpp src/*.cc
+		$$(cat $<.binaries) -sources src/*.hpp src/*.cc src/test/*.cc
 
 
 .PHONY: coverage-term
 coverage-term: build/coverage.profdata
 	$(call trace,Generating coverage report for terminal)
-	llvm-cov report -instr-profile=$< -use-color $$(cat $<.binaries) -sources src/*.hpp src/*.cc
+	llvm-cov report -instr-profile=$< -use-color $$(cat $<.binaries) -sources src/*.hpp src/*.cc src/test/*.cc
 	
 build/lcov.info: build/coverage.profdata
 	$(call trace,Generating lcov info file)
-	llvm-cov export -instr-profile=$< -format=lcov $$(cat $<.binaries) -sources src/*.hpp src/*.cc > $@
+	llvm-cov export -instr-profile=$< -format=lcov $$(cat $<.binaries) -sources src/*.hpp src/*.cc src/test/*.cc > $@
 
 
 .PHONY: coverage
