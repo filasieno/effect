@@ -47,6 +47,8 @@
           llvmPackages.libcxx 
         ];
 
+        outputs  = [ "out" "doc" ];
+
         buildPhase = ''
           make doxygen
         '';
@@ -56,10 +58,12 @@
         '';
 
         installPhase = ''
-          mkdir -p $out/share/doc/api
           mkdir -p $out/include
           cp ./src/ak.hpp $out/include/ak.hpp
-          cp -R ./build/doc $out/share/doc/api
+          
+          mkdir -p $doc/share/doc/api
+          cp -R ./build/doc $doc/share/doc/api
+          
         ''; 
       };
 
