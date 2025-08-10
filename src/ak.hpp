@@ -335,7 +335,7 @@ inline auto JoinTask(TaskHdl hdl) noexcept {
 /// \return [Async] void
 /// \ingroup Task
 inline auto operator co_await(TaskHdl hdl) noexcept {
-	return JoinTask(hdl);
+	return internal::JoinTaskOp{hdl};
 }
 
 /// \brief Resturns the current TaskState.
