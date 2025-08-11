@@ -4,6 +4,8 @@
 #include <coroutine>
 #include <print>
 #include <functional>
+#include <cstring>
+#include <immintrin.h>
 #include "liburing.h"
 
 namespace ak {
@@ -153,51 +155,43 @@ namespace internal {
         queue->next = link;
     }
 
-    inline DLink* DequeueLink(DLink* queue) {
-        assert(queue->next != nullptr);
-        assert(queue->prev != nullptr);
-        if (IsLinkDetached(queue)) return nullptr;
-        DLink* target = queue->prev;
-        DetachLink(target);
-        return target;
-    }
-
+    /// \brief AllocState is the state of the allocation.
+    /// \ingroup Allocator
+    /// 0 -> invalid
+    /// first bit  -> is free
+    /// second bit -> free
+    /// third bit  -> sentinel
     enum class AllocState {
-        INVALID         = 0,
-        USED            = 1,
-        SENTINEL        = 2,
-        FREE            = 3,
+        INVALID              = 0b0000,
+        USED                 = 0b0010,
+        FREE                 = 0b0001,
+        WILD_BLOCK           = 0b0011,
+        BEGIN_SENTINEL       = 0b0100,
+        LARGE_BLOCK_SENTINEL = 0b0110,
+        END_SENTINEL         = 0b1100,
     };
-
-    enum class AllocUsedKind {
-        INVALID = 0,
-        MALLOC  = 1,
-        PROMISE = 2        
-    };
-
-    enum class AllocSentinelKind {
-        INVALID     = 0,
-        BEGIN       = 1,
-        LARGE_BLOCK = 2,
-        END         = 3
-    };
-
+    
     struct AllocSizeRecord {
-        __u32 size     : 26; //< Module of 32 bytes
-        __u32 state    : 2;  //< True if the block is free
-        __u32 kind     : 4;
+        U64 size      : 48;
+        U64 state     : 4;
+        U64 _reserved : 12;
     };
 
-    struct AllocMetaData {
-        __u64 hash      : 48; 
-        __u64 _reserved : 16;
-    };
+    constexpr U64 ALLOC_STATE_IS_USED_MASK     = 0;
+    constexpr U64 ALLOC_STATE_IS_FREE_MASK     = 1;
+    constexpr U64 ALLOC_STATE_IS_SENTINEL_MASK = 4;    
 
     struct AllocHeader {
         AllocSizeRecord thisSize;
         AllocSizeRecord prevSize;
-        AllocMetaData   metaData;
     };
+
+    struct FreeAllocHeader {
+        AllocSizeRecord thisSize;
+        AllocSizeRecord prevSize;
+        DLink           freeListLink;
+    };
+    static_assert(sizeof(FreeAllocHeader) == 32);
 
     static constexpr int ALLOCATOR_BIN_COUNT = 256;
     
@@ -214,11 +208,7 @@ namespace internal {
     /// The allocator is designed for single-threaded operation and implements a segregated 
     /// free list strategy with 256 bins for efficient memory allocation and deallocation.
     /// It tracks heap boundaries, free list state, and comprehensive statistics.
-    /// 
-    /// \ingroup Allocator
-    /// \internal
-    /// \details
-    /// 
+    ///  
     /// ## Architecture Overview
     /// 
     /// The AllocTable serves as the central control structure for the allocator, managing:
@@ -640,7 +630,7 @@ namespace internal {
         /// Points to the beginning of the heap as returned by the system allocator
         /// (e.g., mmap, sbrk). May not be aligned to allocator requirements.
         /// This is the address that must be passed to the system deallocator.
-        alignas(8)  const char* heapBegin;
+        alignas(8)  char* heapBegin;
         
         /// \brief End of the heap memory region  
         /// 
@@ -652,9 +642,16 @@ namespace internal {
         /// \brief Start of aligned memory region for allocations
         /// 
         /// Points to heapBegin aligned up to 32-byte boundary. All allocator
-        /// blocks are carved from the region [memBegin, heapEnd). This ensures
+        /// blocks are carved from the region [memBegin, memEnd). This ensures
         /// all allocated blocks maintain proper 32-byte alignment.
-        alignas(8)  const char* memBegin;
+        alignas(8)  char* memBegin;
+        
+        /// \brief End of aligned memory region for allocations
+        /// 
+        /// Points to memBegin aligned up to 32-byte boundary. All allocator
+        /// blocks are carved from the region [memBegin, memEnd). This ensures
+        /// all allocated blocks maintain proper 32-byte alignment.
+        alignas(8)  char* memEnd;
         
         // ==================== MEMORY ACCOUNTING ====================
         
@@ -776,6 +773,8 @@ namespace internal {
     };
 
     struct Kernel {
+        alignas(64) AllocTable allocTable;
+        
         // Hot scheduling data (first cache line)
         TaskHdl currentTaskHdl;
         TaskHdl schedulerTaskHdl;
@@ -1425,9 +1424,9 @@ namespace internal
         }
     }
 
-    inline static void DoCheckTaskCountInvariant() noexcept {
+    inline void DoCheckTaskCountInvariant() noexcept {
         int running_count = gKernel.currentTaskHdl != TaskHdl() ? 1 : 0;
-        bool condition = gKernel.taskCount == running_count + gKernel.readyCount + gKernel.waitingCount + gKernel.ioWaitingCount + gKernel.zombieCount; // -1 for the running task
+        bool condition = gKernel.taskCount == running_count + gKernel.readyCount + gKernel.waitingCount + gKernel.ioWaitingCount + gKernel.zombieCount;
         if (!condition) {
             DebugTaskCount();
             std::abort();
@@ -2450,5 +2449,126 @@ inline internal::IOWaitOneOp IOCancelFd(int fd, unsigned int flags) noexcept {
         io_uring_prep_cancel_fd(sqe, fd, flags);
     });
 }
+
+namespace internal {
+
+    int InitAllocTable(void* mem, Size size) {
+        (void)mem;
+        (void)size;
+        // constexpr U64 SENTINEL_SIZE = sizeof(FreeAllocHeader);
+
+        // assert(mem != nullptr);
+        // assert(size >= 4096);
+
+        // AllocTable* at = (AllocTable*)&gKernel.allocTable;
+        // *at->heapBegin = {0}; // zero out the AllocTable
+
+        // // Establish heap boundaries
+        // char* heapBegin = (char*)(mem);
+        // char* heapEnd   = heapBegin + size;
+
+        // // Align start up to 32 and end down to 32 to keep all blocks 32B-multiples
+        // U64 alignedBegin = ((U64)heapBegin + 31ull) & 31ull;
+        // U64 alignedEnd   = ((U64)heapEnd - SENTINEL_SIZE) & 31ull;
+
+        // at->heapBegin = heapBegin;
+        // at->heapEnd   = heapEnd;
+        // at->memBegin  = (char*)alignedBegin;
+        // at->memEnd    = (char*)alignedEnd;
+        // at->memSize   = (Size)(at->memEnd - at->memBegin);
+
+        // // Addresses
+        // // Layout: [BeginSentinel] ... blocks ... [LargeBlockSentinel] ... largeBlocks ... [EndSentinel]
+        // AllocHeader* beginSentinel      = (AllocHeader*)alignedBegin;
+        // AllocHeader* wildBlock          = (AllocHeader*)((char*)beginSentinel + SENTINEL_SIZE);
+        // AllocHeader* endSentinel        = (AllocHeader*)((char*)alignedEnd - SENTINEL_SIZE); 
+        // AllocHeader* largeBlockSentinel = (AllocHeader*)((char*)endSentinel - SENTINEL_SIZE);
+        
+        // // Check alignments
+        // assert(((U64)beginSentinel & 31ull) == 0ull);
+        // assert(((U64)wildBlock & 31ull) == 0ull);
+        // assert(((U64)endSentinel & 31ull) == 0ull);
+        // assert(((U64)largeBlockSentinel & 31ull) == 0ull);
+
+        // beginSentinel->thisSize.size  = (U32)SENTINEL_SIZE;
+        // beginSentinel->thisSize.state = (U32)AllocState::SENTINEL;
+        // beginSentinel->thisSize.kind  = (U32)AllocSentinelKind::BEGIN;
+        // //beingSentinel Metadata has been Zeroed out
+
+        // wildBlock->thisSize.size = (uintptr_t)largeBlockSentinel - (uintptr_t)wildBlock;
+        // wildBlock->thisSize.state = (unsigned)AllocState::FREE;
+        // wildBlock->thisSize.kind = 0;
+        // // wildBlock Metadata has been Zeroed out
+
+        // largeBlockSentinel->thisSize.size = sizeof(AllocHeader);
+        // largeBlockSentinel->thisSize.state = (unsigned)AllocState::SENTINEL;
+        // largeBlockSentinel->thisSize.kind = (unsigned)AllocSentinelKind::LARGE_BLOCK;
+        // // largeBlockSentinel Metadata has been Zeroed out
+        
+        // endSentinel->thisSize.size = sizeof(AllocHeader);
+        // endSentinel->thisSize.state = (unsigned)AllocState::SENTINEL;
+        // endSentinel->thisSize.kind = (unsigned)AllocSentinelKind::END;
+        // // endSentinel Metadata has been Zeroed out
+
+        // // Chain blocks
+        // beginSentinel->prevSize = {0};
+        // wildBlock->prevSize = beginSentinel->thisSize;
+        // largeBlockSentinel->prevSize = wildBlock->thisSize;
+        // endSentinel->prevSize = largeBlockSentinel->thisSize;
+
+        
+        
+        
+
+        // // Sizes
+        // const Size beginSz  = 32u;
+        // const Size largeSz  = 32u;
+        // const Size endSz    = 32u;
+        // const Size wildSz   = static_cast<Size>(reinterpret_cast<const char*>(endSentinel) - reinterpret_cast<const char*>(wildBlock));
+
+        // // Sanity
+        // assert((reinterpret_cast<uintptr_t>(beginSentinel)      & 31u) == 0u);
+        // assert((reinterpret_cast<uintptr_t>(largeBlockSentinel) & 31u) == 0u);
+        // assert((reinterpret_cast<uintptr_t>(wildBlock)          & 31u) == 0u);
+        // assert((reinterpret_cast<uintptr_t>(endSentinel)        & 31u) == 0u);
+        // assert((wildSz % 32u) == 0u);
+
+        // // Initialize headers
+        // setHeader(beginSentinel, beginSz, AllocState::SENTINEL, static_cast<unsigned>(AllocSentinelKind::BEGIN), 0, AllocState::SENTINEL, static_cast<unsigned>(AllocSentinelKind::BEGIN));
+        // setHeader(largeBlockSentinel, largeSz, AllocState::SENTINEL, static_cast<unsigned>(AllocSentinelKind::LARGE_BLOCK), beginSz, AllocState::SENTINEL, static_cast<unsigned>(AllocSentinelKind::BEGIN));
+        // setHeader(wildBlock, wildSz, AllocState::FREE, 0u, largeSz, AllocState::SENTINEL, static_cast<unsigned>(AllocSentinelKind::LARGE_BLOCK));
+        // setHeader(endSentinel, endSz, AllocState::SENTINEL, static_cast<unsigned>(AllocSentinelKind::END), wildSz, AllocState::FREE, 0u);
+
+        // // Publish sentinel pointers
+        // at->beginSentinel      = beginSentinel;
+        // at->largeBlockSentinel = largeBlockSentinel;
+        // at->wildBlock          = wildBlock;
+        // at->endSentinel        = endSentinel;
+
+        // // Link the wild block into the wild bin (255); store list node in block payload
+        // DLink* wildNode = reinterpret_cast<DLink*>(reinterpret_cast<char*>(wildBlock) + sizeof(AllocHeader));
+        // InitLink(wildNode);
+        // EnqueueLink(&at->freeListBins[255], wildNode);
+        // at->freeListBinsSizes[255] = static_cast<unsigned>(wildSz);
+
+        // // Set availability mask: only wild bin (255) is non-empty initially
+        // reinterpret_cast<uint64_t*>(&at->freeListbinMask)[3] |= (1ull << 63);
+
+        // // Accounting and statistics
+        // at->requestedMemSize = size;
+        // at->maxMemSize       = size;
+        // at->memSize          = static_cast<Size>(at->heapEnd - at->heapBegin);
+        // at->usedMemSize      = 0;
+        // // Track free payload bytes (exclude header of the wild block)
+        // const Size wildPayload = wildSz - sizeof(AllocHeader);
+        // at->freeMemSize      = wildPayload;
+
+        std::abort();
+        // unreachable
+        return 0;
+    }
+
+}
+
 
 } // namespace ak

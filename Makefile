@@ -121,7 +121,7 @@ test::
 
 ifeq ($(CONFIG),coverage) # coverage support
 
-CXXFLAGS += -g -O0
+CXXFLAGS += -g -O0 -mavx2 -mbmi -msse4.2
 CXXFLAGS += -fprofile-instr-generate -fcoverage-mapping
 LDFLAGS += -fprofile-instr-generate
 
