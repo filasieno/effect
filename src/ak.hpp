@@ -2521,6 +2521,17 @@ namespace internal {
         return ((lanes[lane] >> bit) & 1ull) != 0ull;
     }
 
+    static inline void ClearAllocFreeBinBit(AllocTable* at, unsigned binIdx) {       
+        assert(at != nullptr);
+        assert(binIdx < 256);
+        const unsigned lane = binIdx >> 6;         // 0..3
+        const unsigned bit  = binIdx & 63u;        // 0..63
+        alignas(32) uint64_t lanes[4];
+        std::memcpy(lanes, &at->freeListbinMask, 32);
+        lanes[lane] &= ~(1ull << bit);
+        std::memcpy(&at->freeListbinMask, lanes, 32);
+    }
+
     inline int InitAllocTable(void* mem, Size size) noexcept {
         
         
@@ -2643,7 +2654,7 @@ namespace internal {
     
     static inline unsigned GetSmallBinIndexFromSize(uint64_t sz) {
         if (sz < 32) return 0u;
-        if (sz <= 32ull * 253ull) return (unsigned)(sz / 32ull) - 1u;
+        if (sz <= 32ull * 254ull) return (unsigned)(sz / 32ull) - 1u;
         return 254u; // 254 = medium, 255 = wild
     }
 
@@ -2926,6 +2937,152 @@ inline void DebugPrintAllocBlocks() noexcept
     }
 
     PrintBottomBorder();
+}
+
+inline int TryMalloc(Size size, void** outPtr) noexcept {
+    (void)size;
+    (void)outPtr;
+    // using namespace internal;
+    
+    // assert(size > 0);
+
+    // AllocTable* at = &gKernel.allocTable;
+    
+    // // Find the correct requested block size
+    // Size maybeAllocBlock = 16 + size;
+    // Size requestedBlockSize;
+    // Size unalignedSize = maybeAllocBlock & 31ull;
+    // if (unalignedSize != 0) {
+    //     requestedBlockSize = maybeAllocBlock + 32 - unalignedSize;
+    // } else {
+    //     requestedBlockSize = maybeAllocBlock;
+    // }
+    // assert((requestedBlockSize & 31ull) == 0ull);
+    
+    // // Find the correct free list bucket
+    // int binIdx = FindFreeListBucket(requestedBlockSize, (char*)&at->freeListbinMask);
+    // if (binIdx == 255) {
+    //     // Allocate from the wild block
+    //     assert(GetAllocFreeBinBit(at, 255));
+    //     FreeAllocHeader* wildBlock = at->wildBlock;
+    //     Size wildBlockSize = wildBlock->thisSize.size;
+        
+    //     if (wildBlockSize <= requestedBlockSize + 32) { // +32 to allow a the minimum split; with the wildBlock there always must be a valid split
+    //         return 255;
+    //     }
+
+    //     Size newWildBlockSize = wildBlockSize - requestedBlockSize;
+    //     FreeAllocHeader* newWildBlock = (FreeAllocHeader*)((char*)wildBlock + newWildBlockSize);
+    //     newWildBlock->thisSize.size = newWildBlockSize;
+    //     newWildBlock->thisSize.state = (U32)AllocState::WILD_BLOCK;
+    //     DLink* freeList = &at->freeListBins[255];
+    //     newWildBlock->freeListLink.prev = freeList;
+    //     newWildBlock->freeListLink.next = freeList;
+    //     freeList->prev = &newWildBlock->freeListLink;
+    //     freeList->next = &newWildBlock->freeListLink;
+    //     gKernel.allocTable.wildBlock = newWildBlock;
+
+    //     AllocHeader* block = wildBlock;
+    //     ClearLink(&block->freeListLink);
+    //     block->thisSize.size = requestedBlockSize;
+    //     block->thisSize.state = (U32)AllocState::USED;
+        
+    //     at->freeMemSize -= requestedBlockSize;
+    //     ++at->totalAllocCount;
+    //     ++at->freeListBinsCount[255];
+
+    //     *outPtr = (void*)((char*)block + sizeof(AllocHeader));
+    //     return 0;
+    // }
+
+    // std::print("Unimplemented\n");
+    // std::abort();
+    
+    // assert(GetAllocFreeBinBit(at, binIdx));
+    // if (binIdx == 255) {
+
+    // } 
+    
+    // DLink* queue = &at->freeListBins[binIdx];
+    // assert(queue->next != queue);
+    // DLink* link = queue->next;
+    // DetachLink(link);
+    // FreeAllocHeader* block = (FreeAllocHeader*)((char*)link - offsetof(FreeAllocHeader, freeListLink));
+    // Size block_size = block->thisSize.size;
+    // assert(block_size >= requestedBlockSize);
+    // if (block_size >= requestedBlockSize + 32) {
+    //     Size remainder_size = block_size - requestedBlockSize;
+    //     FreeAllocHeader* remainder = (FreeAllocHeader*)((char*)block + requestedBlockSize);
+    //     remainder->thisSize.size = remainder_size;
+    //     remainder->thisSize.state = (U32)AllocState::FREE;
+    //     block->thisSize.size = requestedBlockSize;
+    //     block->thisSize.state = (U32)AllocState::USED;
+    //     AllocHeader* next = NextHeaderPtr((AllocHeader*)remainder);
+    //     next->prevSize = remainder->thisSize;
+    //     remainder->prevSize = block->thisSize;
+    //     unsigned remainder_bin = internal::GetFreeListBinIndex((AllocHeader*)remainder);
+    //     DLink* rem_queue = &at->freeListBins[remainder_bin];
+    //     InitLink(&remainder->freeListLink);
+    //     InsertNextLink(rem_queue, &remainder->freeListLink);
+    //     at->freeListBinsCount[remainder_bin]++;
+    //     internal::SetAllocFreeBinBit(at, remainder_bin);
+    // } else {
+    //     block->thisSize.state = (U32)AllocState::USED;
+    // }
+    // at->freeListBinsCount[binIdx]--;
+    // if (at->freeListBinsCount[binIdx] == 0) {
+    //     internal::ClearAllocFreeBinBit(at, binIdx);
+    // }
+    // at->freeMemSize -= requestedBlockSize;
+    // at->totalAllocCount++;
+    // return (void*)((char*)block + 16);
+    
+    return 0;
+}
+
+inline void FreeMem(void* ptr) noexcept {
+    (void)ptr;
+
+    // using namespace internal;
+    // if (ptr == nullptr) return;
+    // AllocTable* at = &gKernel.allocTable;
+    // AllocHeader* header = (AllocHeader*)((char*)ptr - 16);
+    // assert(header->thisSize.state == (U32)AllocState::USED);
+    // Size freed_size = header->thisSize.size;
+    // AllocHeader* prev = (AllocHeader*)((char*)header - header->prevSize.size);
+    // AllocHeader* next = NextHeaderPtr(header);
+    // if ((U32)next->thisSize.state == (U32)AllocState::FREE || (U32)next->thisSize.state == (U32)AllocState::WILD_BLOCK) {
+    //     unsigned next_bin = internal::GetFreeListBinIndex(next);
+    //     DetachLink(&((FreeAllocHeader*)next)->freeListLink);
+    //     at->freeListBinsCount[next_bin]--;
+    //     if (at->freeListBinsCount[next_bin] == 0) internal::ClearAllocFreeBinBit(at, next_bin);
+    //     header->thisSize.size += next->thisSize.size;
+    //     AllocHeader* next_next = NextHeaderPtr(header);
+    //     next_next->prevSize = header->thisSize;
+    // }
+    // if ((U32)prev->thisSize.state == (U32)AllocState::FREE || (U32)prev->thisSize.state == (U32)AllocState::WILD_BLOCK) {
+    //     unsigned prev_bin = internal::GetFreeListBinIndex(prev);
+    //     DetachLink(&((FreeAllocHeader*)prev)->freeListLink);
+    //     at->freeListBinsCount[prev_bin]--;
+    //     if (at->freeListBinsCount[prev_bin] == 0) internal::ClearAllocFreeBinBit(at, prev_bin);
+    //     prev->thisSize.size += header->thisSize.size;
+    //     AllocHeader* new_next = NextHeaderPtr(prev);
+    //     new_next->prevSize = prev->thisSize;
+    //     header = prev;
+    // }
+    // header->thisSize.state = (U32)AllocState::FREE;
+    // if (NextHeaderPtr(header) == at->largeBlockSentinel) {
+    //     header->thisSize.state = (U32)AllocState::WILD_BLOCK;
+    //     at->wildBlock = (FreeAllocHeader*)header;
+    // }
+    // unsigned free_bin = internal::GetFreeListBinIndex(header);
+    // FreeAllocHeader* free_head = (FreeAllocHeader*)header;
+    // InitLink(&free_head->freeListLink);
+    // InsertNextLink(&at->freeListBins[free_bin], &free_head->freeListLink);
+    // at->freeListBinsCount[free_bin]++;
+    // internal::SetAllocFreeBinBit(at, free_bin);
+    // at->freeMemSize += freed_size;
+    // at->totalFreeCount++;
 }
 
 } // namespace ak
