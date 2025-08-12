@@ -2589,41 +2589,6 @@ namespace internal {
     constexpr const char* DEBUG_ALLOC_COLOR_RED    = "\033[1;31m"; 
     constexpr const char* DEBUG_ALLOC_COLOR_HDR    = "\033[36m"; 
 
-    constexpr const char* DEBUG_FREELIST_HEAD_TABLE[] = {
-        "HEAD(32)",    "HEAD(64)",    "HEAD(96)",    "HEAD(128)",   "HEAD(160)",   "HEAD(192)",   "HEAD(224)",   "HEAD(256)",
-        "HEAD(288)",   "HEAD(320)",   "HEAD(352)",   "HEAD(384)",   "HEAD(416)",   "HEAD(448)",   "HEAD(480)",   "HEAD(512)",
-        "HEAD(544)",   "HEAD(576)",   "HEAD(608)",   "HEAD(640)",   "HEAD(672)",   "HEAD(704)",   "HEAD(736)",   "HEAD(768)",
-        "HEAD(800)",   "HEAD(832)",   "HEAD(864)",   "HEAD(896)",   "HEAD(928)",   "HEAD(960)",   "HEAD(992)",   "HEAD(1024)",
-        "HEAD(1056)",  "HEAD(1088)",  "HEAD(1120)",  "HEAD(1152)",  "HEAD(1184)",  "HEAD(1216)",  "HEAD(1248)",  "HEAD(1280)",
-        "HEAD(1312)",  "HEAD(1344)",  "HEAD(1376)",  "HEAD(1408)",  "HEAD(1440)",  "HEAD(1472)",  "HEAD(1504)",  "HEAD(1536)",
-        "HEAD(1568)",  "HEAD(1600)",  "HEAD(1632)",  "HEAD(1664)",  "HEAD(1696)",  "HEAD(1728)",  "HEAD(1760)",  "HEAD(1792)",
-        "HEAD(1824)",  "HEAD(1856)",  "HEAD(1888)",  "HEAD(1920)",  "HEAD(1952)",  "HEAD(1984)",  "HEAD(2016)",  "HEAD(2048)",
-        "HEAD(2080)",  "HEAD(2112)",  "HEAD(2144)",  "HEAD(2176)",  "HEAD(2208)",  "HEAD(2240)",  "HEAD(2272)",  "HEAD(2304)",
-        "HEAD(2336)",  "HEAD(2368)",  "HEAD(2400)",  "HEAD(2432)",  "HEAD(2464)",  "HEAD(2496)",  "HEAD(2528)",  "HEAD(2560)",
-        "HEAD(2592)",  "HEAD(2624)",  "HEAD(2656)",  "HEAD(2688)",  "HEAD(2720)",  "HEAD(2752)",  "HEAD(2784)",  "HEAD(2816)",
-        "HEAD(2848)",  "HEAD(2880)",  "HEAD(2912)",  "HEAD(2944)",  "HEAD(2976)",  "HEAD(3008)",  "HEAD(3040)",  "HEAD(3072)",
-        "HEAD(3104)",  "HEAD(3136)",  "HEAD(3168)",  "HEAD(3200)",  "HEAD(3232)",  "HEAD(3264)",  "HEAD(3296)",  "HEAD(3328)",
-        "HEAD(3360)",  "HEAD(3392)",  "HEAD(3424)",  "HEAD(3456)",  "HEAD(3488)",  "HEAD(3520)",  "HEAD(3552)",  "HEAD(3584)",
-        "HEAD(3616)",  "HEAD(3648)",  "HEAD(3680)",  "HEAD(3712)",  "HEAD(3744)",  "HEAD(3776)",  "HEAD(3808)",  "HEAD(3840)",
-        "HEAD(3872)",  "HEAD(3904)",  "HEAD(3936)",  "HEAD(3968)",  "HEAD(4000)",  "HEAD(4032)",  "HEAD(4064)",  "HEAD(4096)",
-        "HEAD(4128)",  "HEAD(4160)",  "HEAD(4192)",  "HEAD(4224)",  "HEAD(4256)",  "HEAD(4288)",  "HEAD(4320)",  "HEAD(4352)",
-        "HEAD(4384)",  "HEAD(4416)",  "HEAD(4448)",  "HEAD(4480)",  "HEAD(4512)",  "HEAD(4544)",  "HEAD(4576)",  "HEAD(4608)",
-        "HEAD(4640)",  "HEAD(4672)",  "HEAD(4704)",  "HEAD(4736)",  "HEAD(4768)",  "HEAD(4800)",  "HEAD(4832)",  "HEAD(4864)",
-        "HEAD(4896)",  "HEAD(4928)",  "HEAD(4960)",  "HEAD(4992)",  "HEAD(5024)",  "HEAD(5056)",  "HEAD(5088)",  "HEAD(5120)",
-        "HEAD(5152)",  "HEAD(5184)",  "HEAD(5216)",  "HEAD(5248)",  "HEAD(5280)",  "HEAD(5312)",  "HEAD(5344)",  "HEAD(5376)",
-        "HEAD(5408)",  "HEAD(5440)",  "HEAD(5472)",  "HEAD(5504)",  "HEAD(5536)",  "HEAD(5568)",  "HEAD(5600)",  "HEAD(5632)",
-        "HEAD(5664)",  "HEAD(5696)",  "HEAD(5728)",  "HEAD(5760)",  "HEAD(5792)",  "HEAD(5824)",  "HEAD(5856)",  "HEAD(5888)",
-        "HEAD(5920)",  "HEAD(5952)",  "HEAD(5984)",  "HEAD(6016)",  "HEAD(6048)",  "HEAD(6080)",  "HEAD(6112)",  "HEAD(6144)",
-        "HEAD(6176)",  "HEAD(6208)",  "HEAD(6240)",  "HEAD(6272)",  "HEAD(6304)",  "HEAD(6336)",  "HEAD(6368)",  "HEAD(6400)",
-        "HEAD(6432)",  "HEAD(6464)",  "HEAD(6496)",  "HEAD(6528)",  "HEAD(6560)",  "HEAD(6592)",  "HEAD(6624)",  "HEAD(6656)",
-        "HEAD(6688)",  "HEAD(6720)",  "HEAD(6752)",  "HEAD(6784)",  "HEAD(6816)",  "HEAD(6848)",  "HEAD(6880)",  "HEAD(6912)",
-        "HEAD(6944)",  "HEAD(6976)",  "HEAD(7008)",  "HEAD(7040)",  "HEAD(7072)",  "HEAD(7104)",  "HEAD(7136)",  "HEAD(7168)",
-        "HEAD(7200)",  "HEAD(7232)",  "HEAD(7264)",  "HEAD(7296)",  "HEAD(7328)",  "HEAD(7360)",  "HEAD(7392)",  "HEAD(7424)",
-        "HEAD(7456)",  "HEAD(7488)",  "HEAD(7520)",  "HEAD(7552)",  "HEAD(7584)",  "HEAD(7616)",  "HEAD(7648)",  "HEAD(7680)",
-        "HEAD(7712)",  "HEAD(7744)",  "HEAD(7776)",  "HEAD(7808)",  "HEAD(7840)",  "HEAD(7872)",  "HEAD(7904)",  "HEAD(7936)",
-        "HEAD(7968)",  "HEAD(8000)",  "HEAD(8032)",  "HEAD(8064)",  "HEAD(8096)",  "HEAD(8128)",  "HEAD(MEDIUM)", "HEAD(WILD)",
-        "INVALID"
-    };
     
     inline AllocHeader* NextHeaderPtr(AllocHeader* h) {
         size_t sz = (size_t)h->thisSize.size;
@@ -2691,12 +2656,6 @@ namespace internal {
                 return 256;
             }
         }
-    }
-
-    // Build HEAD label based on bin index; bin 0..253 -> HEAD(size), 254 -> HEAD(MEDIUM), 255 -> HEAD(WILD)
-    inline static const char* GetFreeListHeadLabel(AllocHeader* h) {
-        unsigned binIdx = GetFreeListBinIndex(h);
-        return DEBUG_FREELIST_HEAD_TABLE[binIdx];
     }
 
     // Fixed column widths (constants) in requested order
@@ -2809,7 +2768,12 @@ namespace internal {
         if (h->thisSize.state == (U32)AllocState::FREE) {
             std::print("{} {:<18} ", stateColor, "TODO");
         } else if (h->thisSize.state == (U32)AllocState::WILD_BLOCK) {
-            std::print("{} {:<18} ", stateColor, "TODO");
+            FreeAllocHeader* freeBlock = (FreeAllocHeader*)h;
+            if (freeBlock->freeListLink.prev == &at->freeListBins[255]) {
+                std::print("{} {:<18} ", DEBUG_ALLOC_COLOR_GREEN, "WILD LIST");
+            } else {
+                std::print("{} {:<18} ", DEBUG_ALLOC_COLOR_RED, "INVALID");
+            }
         } else {
             std::print("{} {:<18} ", stateColor, "");
         }
@@ -2820,10 +2784,16 @@ namespace internal {
         if (h->thisSize.state == (U32)AllocState::FREE) {
             std::print("{} {:<18} ", stateColor, "TODO");
         } else if (h->thisSize.state == (U32)AllocState::WILD_BLOCK) {
-            std::print("{} {:<18} ", stateColor, "TODO");
+            FreeAllocHeader* freeBlock = (FreeAllocHeader*)h;
+            if (freeBlock->freeListLink.next == &at->freeListBins[255]) {
+                std::print("{} {:<18} ", DEBUG_ALLOC_COLOR_GREEN, "WILD LIST");
+            } else {
+                std::print("{} {:<18} ", DEBUG_ALLOC_COLOR_RED, "INVALID");
+            }
         } else {
             std::print("{} {:<18} ", stateColor, "");
         }
+
 
         std::print("{}│{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
