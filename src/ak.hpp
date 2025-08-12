@@ -2891,30 +2891,56 @@ namespace internal {
         const int bit_in_byte = __builtin_ctz((unsigned)byte_val);
         return byte_idx * 8 + bit_in_byte;
 #else
-        // Fallback: optimized scalar scan using 64-bit words, unrolled two words per iteration
+        // Fallback: branchless, fully unrolled scan of 4x64-bit words
         const uint64_t* words = (const uint64_t*)bitField; // 4 x 64-bit words
-        unsigned word_idx = requiredBin >> 6;              // starting 64-bit word index
-        unsigned bit_in_word = requiredBin & 63u;          // bit offset within first word
+        const unsigned word_idx = requiredBin >> 6;        // 0..3
+        const unsigned bit_in_word = requiredBin & 63u;    // 0..63
 
-        for (; word_idx < 4u; ) {
-            uint64_t w0 = words[word_idx];
-            if (bit_in_word) {
-                w0 &= (~0ull << bit_in_word);
-                bit_in_word = 0u; // mask only applies to the first word
-            }
-            if (w0) {
-                return (int)(word_idx * 64u + (unsigned)__builtin_ctzll(w0));
-            }
-            ++word_idx;
-            if (word_idx >= 4u) break;
+        const uint64_t startMask = ~0ull << bit_in_word;   // valid when selecting the starting word
 
-            uint64_t w1 = words[word_idx];
-            if (w1) {
-                return (int)(word_idx * 64u + (unsigned)__builtin_ctzll(w1));
-            }
-            ++word_idx;
+        // Enable masks for words >= word_idx (0xFFFFFFFFFFFFFFFF or 0x0)
+        const uint64_t en0 = (uint64_t)-(0u >= word_idx);
+        const uint64_t en1 = (uint64_t)-(1u >= word_idx);
+        const uint64_t en2 = (uint64_t)-(2u >= word_idx);
+        const uint64_t en3 = (uint64_t)-(3u >= word_idx);
+
+        // Equal masks for exactly the starting word
+        const uint64_t eq0 = (uint64_t)-(0u == word_idx);
+        const uint64_t eq1 = (uint64_t)-(1u == word_idx);
+        const uint64_t eq2 = (uint64_t)-(2u == word_idx);
+        const uint64_t eq3 = (uint64_t)-(3u == word_idx);
+
+        // Per-word effective masks: for starting word use startMask, otherwise ~0ull; then gate with enable mask
+        const uint64_t mask0 = en0 & ((eq0 & startMask) | (~eq0 & ~0ull));
+        const uint64_t mask1 = en1 & ((eq1 & startMask) | (~eq1 & ~0ull));
+        const uint64_t mask2 = en2 & ((eq2 & startMask) | (~eq2 & ~0ull));
+        const uint64_t mask3 = en3 & ((eq3 & startMask) | (~eq3 & ~0ull));
+
+        const uint64_t v0 = words[0] & mask0;
+        const uint64_t v1 = words[1] & mask1;
+        const uint64_t v2 = words[2] & mask2;
+        const uint64_t v3 = words[3] & mask3;
+
+        const unsigned n0 = (unsigned)(v0 != 0);
+        const unsigned n1 = (unsigned)(v1 != 0);
+        const unsigned n2 = (unsigned)(v2 != 0);
+        const unsigned n3 = (unsigned)(v3 != 0);
+        const unsigned nonzero_groups = (n0) | (n1 << 1) | (n2 << 2) | (n3 << 3);
+        if (nonzero_groups == 0u) {
+            return 255;
         }
-        return 255;
+
+        const unsigned group = (unsigned)__builtin_ctz(nonzero_groups); // 0..3
+
+        // Branchless selection of the first nonzero word
+        const uint64_t sel0 = (uint64_t)-(group == 0u);
+        const uint64_t sel1 = (uint64_t)-(group == 1u);
+        const uint64_t sel2 = (uint64_t)-(group == 2u);
+        const uint64_t sel3 = (uint64_t)-(group == 3u);
+        const uint64_t vv = (v0 & sel0) | (v1 & sel1) | (v2 & sel2) | (v3 & sel3);
+
+        const unsigned bit_in_word_first = (unsigned)__builtin_ctzll(vv);
+        return (int)(group * 64u + bit_in_word_first);
 #endif
 
     }
