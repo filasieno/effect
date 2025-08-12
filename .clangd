@@ -13,6 +13,10 @@ CompileFlags:
     - -stdlib=libstdc++
 
 Diagnostics:
-  ClangTidy: {}
-  # ClangTidyChecks: '*,-clang-analyzer-alpha.*'
+  ClangTidy:
+    Add: []
+    Remove: ["*"]
+    CheckOptions: {}
 
+If:
+  PathMatch: "(^|/)(doc|examples|spec)/"

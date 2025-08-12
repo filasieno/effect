@@ -7,6 +7,7 @@ using namespace ak;
 
 DefineTask MainTask() noexcept {
 	DebugDumpAllocTable();
+	DebugPrintAllocBlocks();
   	co_return;
 }
 

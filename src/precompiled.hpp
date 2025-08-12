@@ -4,7 +4,8 @@
 #include <cassert>
 #include <coroutine>
 #include <print>
-#include <functional>
+#include <cstdint>
+#include <cstring>
 #include "liburing.h"
 
 #endif

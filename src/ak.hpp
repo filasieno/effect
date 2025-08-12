@@ -3,9 +3,8 @@
 #include <cassert>
 #include <coroutine>
 #include <print>
-#include <functional>
+#include <cstdint>
 #include <cstring>
-#include <immintrin.h>
 #include "liburing.h"
 
 namespace ak {
@@ -69,10 +68,10 @@ struct TaskContext;
 /// \ingroup Task
 using TaskHdl = std::coroutine_handle<TaskContext>;
 
-/// \brief Defines a Task function
+/// \brief Defines a Task function type-erased pointer (no std::function)
 /// \ingroup Task
 template <typename... Args>
-using TaskFn = std::function<DefineTask(Args...)>;
+using TaskFn = DefineTask(*)(Args...);
 
 namespace internal {
 
@@ -186,10 +185,8 @@ namespace internal {
         AllocSizeRecord prevSize;
     };
 
-    struct FreeAllocHeader {
-        AllocSizeRecord thisSize;
-        AllocSizeRecord prevSize;
-        DLink           freeListLink;
+    struct FreeAllocHeader : public AllocHeader {
+        DLink freeListLink;
     };
     static_assert(sizeof(FreeAllocHeader) == 32);
 
@@ -616,7 +613,7 @@ namespace internal {
         /// Contains the total size (in bytes) of all free blocks in each bin.
         /// Used for statistics, fragmentation analysis, and allocation strategy
         /// optimization. Aligned to 64-byte boundary for cache efficiency.
-        alignas(64) U32 freeListBinsSizes[ALLOCATOR_BIN_COUNT];
+        alignas(64) U32 freeListBinsCount[ALLOCATOR_BIN_COUNT];
 
         // ==================== HEAP BOUNDARY MANAGEMENT ====================
         
@@ -720,7 +717,7 @@ namespace internal {
         /// - **Never Allocated**: Marked as permanently allocated to prevent use
         /// 
         /// The beginSentinel has zero payload size and is never included in free lists.
-        alignas(8)  AllocHeader* beginSentinel;
+        alignas(8) FreeAllocHeader* beginSentinel;
         
         /// \brief Pointer to the wild block
         /// 
@@ -731,7 +728,7 @@ namespace internal {
         /// - **Coalescing Target**: Free blocks adjacent to wild block merge into it
         /// - **Null When Fragmented**: May be null if heap is highly fragmented
         /// - **Bin 255 Resident**: Always stored in the last bin when available
-        alignas(8)  AllocHeader* wildBlock;
+        alignas(8) FreeAllocHeader* wildBlock;
         
         /// \brief Sentinel for large block tracking
         /// 
@@ -741,7 +738,7 @@ namespace internal {
         /// - **Direct Allocation Tracking**: Monitors blocks allocated directly from system
         /// - **Heap Traversal Aid**: Helps navigate around large blocks during walks
         /// - **Statistics Collection**: Enables separate accounting for large allocations
-        alignas(8) AllocHeader* largeBlockSentinel;
+        alignas(8) FreeAllocHeader* largeBlockSentinel;
         
         /// \brief Sentinel block at the end of heap
         /// 
@@ -752,7 +749,7 @@ namespace internal {
         /// - **Consistency Check**: Validates heap structure during debugging
         /// 
         /// Like beginSentinel, this block is never allocated and has zero payload.
-        alignas(8) AllocHeader* endSentinel;
+        alignas(8) FreeAllocHeader* endSentinel;
         
         // TODO: 
 
@@ -1150,8 +1147,8 @@ namespace internal
                     int ret = io_uring_submit(&gKernel.ioRing);
                     if (ret < 0) {
                         std::print("io_uring_submit failed\n");
-                        std::fflush(stdout);
-                        std::abort();
+                        fflush(stdout);
+                        abort();
                     }
                 }
 
@@ -1206,11 +1203,11 @@ namespace internal
             }
 
             if (gKernel.readyCount == 0) {
-                std::abort();
+                abort();
             }
         }
         // unreachable
-        std::abort();
+        abort();
     }
 
     template <typename... Args>
@@ -1228,8 +1225,8 @@ namespace internal
                 int ret = io_uring_submit(&gKernel.ioRing);
                 if (ret < 0) {
                     std::print("io_uring_submit failed\n");
-                    std::fflush(stdout);
-                    std::abort();
+                    fflush(stdout);
+                    abort();
                 }
             }
 
@@ -1416,7 +1413,7 @@ namespace internal
         bool condition = gKernel.taskCount == running_count + gKernel.readyCount + gKernel.waitingCount + gKernel.ioWaitingCount + gKernel.zombieCount;
         if (!condition) {
             DebugTaskCount();
-            std::abort();
+            abort();
         }
     }
 
@@ -1506,7 +1503,7 @@ namespace internal
             default:
             {
                 // Illegal State
-                std::abort();
+                abort();
             }
         }
     }
@@ -1613,7 +1610,7 @@ inline void TaskContext::return_void() noexcept {
 
 namespace internal {
 #ifdef AK_IMPLEMENTATION    
-    struct Kernel gKernel;
+    alignas(64) struct Kernel gKernel;
 #endif
 }
 
@@ -1867,7 +1864,7 @@ namespace internal {
         while (free_slots < 1) {
             int ret = io_uring_submit(&gKernel.ioRing);
             if (ret < 0) {
-                std::abort();
+                abort();
                 // unreachable
             }
             free_slots = io_uring_sq_space_left(&gKernel.ioRing);
@@ -2456,11 +2453,11 @@ inline void DebugDumpAllocTable() noexcept {
     std::print("  freeMemSize      : {}\n", at->freeMemSize);
 
     // Sentinels and wild/large tracking (addresses only; do not dereference)
-    std::print("  Key Locations:\n");
-    std::print("    Begin sentinel offset: {}\n", (intptr_t)at->memBegin - (intptr_t)at->beginSentinel);
-    std::print("    Wild  block    offset: {}\n", (intptr_t)at->memBegin - (intptr_t)at->wildBlock);
-    std::print("    LB    sentinel offset: {}\n", (intptr_t)at->memBegin - (intptr_t)at->largeBlockSentinel);
-    std::print("    End   sentinel offset: {}\n", (intptr_t)at->memBegin - (intptr_t)at->endSentinel);
+    std::print("  Key Offsets:\n");
+    std::print("    Begin sentinel offset: {}\n", (intptr_t)at->beginSentinel - (intptr_t)at->memBegin);
+    std::print("    Wild  block    offset: {}\n", (intptr_t)at->wildBlock - (intptr_t)at->memBegin);
+    std::print("    LB    sentinel offset: {}\n", (intptr_t)at->largeBlockSentinel - (intptr_t)at->memBegin);
+    std::print("    End   sentinel offset: {}\n", (intptr_t)at->endSentinel - (intptr_t)at->memBegin);
 
     // Free list availability mask as a bit array (256 bits)
     std::print("  FreeListbinMask:");
@@ -2468,18 +2465,18 @@ inline void DebugDumpAllocTable() noexcept {
         if (i % 64 == 0) std::print("\n    ");
         std::print("{}", (at->freeListbinMask[i / 32] >> (i % 32)) & 1u);
     }
-    std::print("\n");
+        std::print("\n");
 
     // Optional per-bin size accounting
     
     std::print("  FreeListBinsSizes begin\n");
     for (unsigned i = 0; i < 254; ++i) {
-        unsigned cc = at->freeListBinsSizes[i];
+        unsigned cc = at->freeListBinsCount[i];
         if (cc == 0) continue;
         std::print("    {:>3} bytes class  : {}\n", i * 32, cc);
     }
-    std::print("    medium class (254) : {}\n", at->freeListBinsSizes[254]);
-    std::print("    wild class   (255) : {}\n", at->freeListBinsSizes[255]);
+    std::print("    medium class (254) : {}\n", at->freeListBinsCount[254]);
+    std::print("    wild class   (255) : {}\n", at->freeListBinsCount[255]);
     std::print("  FreeListBinsSizes end\n");
     
 
@@ -2491,130 +2488,316 @@ inline void DebugDumpAllocTable() noexcept {
     // std::print("totalSplitCount: {}\n", at->totalSplitCount);
     // std::print("totalMergeCount: {}\n", at->totalMergeCount);
     // std::print("totalReuseCount: {}\n", at->totalReuseCount);
-
+            
     std::print("\n");
 }
 
 namespace internal {
 
+    static inline constexpr void SetAllocFreeBinBit(AllocTable* at, unsigned binIdx) {       
+        assert(at != nullptr);
+        assert(binIdx < 256);
+        at->freeListbinMask[binIdx >> 5] |= 1u << (binIdx & 31u);
+    }
+
+    static inline constexpr bool GetAllocFreeBinBit(AllocTable* at, unsigned binIdx) {       
+        assert(at != nullptr);
+        assert(binIdx < 256);
+        return (at->freeListbinMask[binIdx >> 5] >> (binIdx & 31u)) & 1u;
+    }
+
     inline int InitAllocTable(void* mem, Size size) noexcept {
-        (void)mem;
-        (void)size;
-        return 0;
-        // constexpr U64 SENTINEL_SIZE = sizeof(FreeAllocHeader);
+        
+        
+        constexpr U64 SENTINEL_SIZE = sizeof(FreeAllocHeader);
 
-        // assert(mem != nullptr);
-        // assert(size >= 4096);
+        assert(mem != nullptr);
+        assert(size >= 4096);
 
-        // AllocTable* at = (AllocTable*)&gKernel.allocTable;
-        // *at->heapBegin = {0}; // zero out the AllocTable
+        AllocTable* at = (AllocTable*)&gKernel.allocTable;
+        memset((void*)at, 0, sizeof(AllocTable));
+        
 
-        // // Establish heap boundaries
-        // char* heapBegin = (char*)(mem);
-        // char* heapEnd   = heapBegin + size;
+        // Establish heap boundaries
+        char* heapBegin = (char*)(mem);
+        char* heapEnd   = heapBegin + size;
 
         // // Align start up to 32 and end down to 32 to keep all blocks 32B-multiples
-        // U64 alignedBegin = ((U64)heapBegin + 31ull) & 31ull;
-        // U64 alignedEnd   = ((U64)heapEnd - SENTINEL_SIZE) & 31ull;
+        U64 alignedBegin = ((U64)heapBegin + SENTINEL_SIZE) & ~31ull;
+        U64 alignedEnd   = ((U64)heapEnd   - SENTINEL_SIZE) & ~31ull;
 
-        // at->heapBegin = heapBegin;
-        // at->heapEnd   = heapEnd;
-        // at->memBegin  = (char*)alignedBegin;
-        // at->memEnd    = (char*)alignedEnd;
-        // at->memSize   = (Size)(at->memEnd - at->memBegin);
+        at->heapBegin = heapBegin;
+        at->heapEnd   = heapEnd;
+        at->memBegin  = (char*)alignedBegin;
+        at->memEnd    = (char*)alignedEnd;
+        at->memSize   = (Size)(at->memEnd - at->memBegin);
 
-        // // Addresses
-        // // Layout: [BeginSentinel] ... blocks ... [LargeBlockSentinel] ... largeBlocks ... [EndSentinel]
-        // AllocHeader* beginSentinel      = (AllocHeader*)alignedBegin;
-        // AllocHeader* wildBlock          = (AllocHeader*)((char*)beginSentinel + SENTINEL_SIZE);
-        // AllocHeader* endSentinel        = (AllocHeader*)((char*)alignedEnd - SENTINEL_SIZE); 
-        // AllocHeader* largeBlockSentinel = (AllocHeader*)((char*)endSentinel - SENTINEL_SIZE);
+        // Addresses
+        // Layout: [BeginSentinel] ... blocks ... [LargeBlockSentinel] ... largeBlocks ... [EndSentinel]
+        FreeAllocHeader* beginSentinel      = (FreeAllocHeader*)alignedBegin;
+        FreeAllocHeader* wildBlock          = (FreeAllocHeader*)((char*)beginSentinel + SENTINEL_SIZE);
+        FreeAllocHeader* endSentinel        = (FreeAllocHeader*)((char*)alignedEnd - SENTINEL_SIZE); 
+        FreeAllocHeader* largeBlockSentinel = (FreeAllocHeader*)((char*)endSentinel - SENTINEL_SIZE);
+        InitLink(&wildBlock->freeListLink);
         
-        // // Check alignments
-        // assert(((U64)beginSentinel & 31ull) == 0ull);
-        // assert(((U64)wildBlock & 31ull) == 0ull);
-        // assert(((U64)endSentinel & 31ull) == 0ull);
-        // assert(((U64)largeBlockSentinel & 31ull) == 0ull);
-
-        // beginSentinel->thisSize.size  = (U32)SENTINEL_SIZE;
-        // beginSentinel->thisSize.state = (U32)AllocState::SENTINEL;
-        // beginSentinel->thisSize.kind  = (U32)AllocSentinelKind::BEGIN;
-        // //beingSentinel Metadata has been Zeroed out
-
-        // wildBlock->thisSize.size = (uintptr_t)largeBlockSentinel - (uintptr_t)wildBlock;
-        // wildBlock->thisSize.state = (unsigned)AllocState::FREE;
-        // wildBlock->thisSize.kind = 0;
-        // // wildBlock Metadata has been Zeroed out
-
-        // largeBlockSentinel->thisSize.size = sizeof(AllocHeader);
-        // largeBlockSentinel->thisSize.state = (unsigned)AllocState::SENTINEL;
-        // largeBlockSentinel->thisSize.kind = (unsigned)AllocSentinelKind::LARGE_BLOCK;
-        // // largeBlockSentinel Metadata has been Zeroed out
+        // Check alignments
+        assert(((U64)beginSentinel      & 31ull) == 0ull);
+        assert(((U64)wildBlock          & 31ull) == 0ull);
+        assert(((U64)endSentinel        & 31ull) == 0ull);
+        assert(((U64)largeBlockSentinel & 31ull) == 0ull);
         
-        // endSentinel->thisSize.size = sizeof(AllocHeader);
-        // endSentinel->thisSize.state = (unsigned)AllocState::SENTINEL;
-        // endSentinel->thisSize.kind = (unsigned)AllocSentinelKind::END;
-        // // endSentinel Metadata has been Zeroed out
-
-        // // Chain blocks
-        // beginSentinel->prevSize = {0};
-        // wildBlock->prevSize = beginSentinel->thisSize;
-        // largeBlockSentinel->prevSize = wildBlock->thisSize;
-        // endSentinel->prevSize = largeBlockSentinel->thisSize;
-
+        at->beginSentinel      = beginSentinel;
+        at->wildBlock          = wildBlock;
+        at->endSentinel        = endSentinel;
+        at->largeBlockSentinel = largeBlockSentinel;
         
-        
-        
+        beginSentinel->thisSize.size       = (U64)SENTINEL_SIZE;
+        beginSentinel->thisSize.state      = (U32)AllocState::BEGIN_SENTINEL;
+        wildBlock->thisSize.size           = (U64)((U64)largeBlockSentinel - (U64)wildBlock);
+        wildBlock->thisSize.state          = (U32)AllocState::WILD_BLOCK;
+        largeBlockSentinel->thisSize.size  = (U64)SENTINEL_SIZE;
+        largeBlockSentinel->thisSize.state = (U32)AllocState::LARGE_BLOCK_SENTINEL;
+        endSentinel->thisSize.size         = (U64)SENTINEL_SIZE;
+        endSentinel->thisSize.state        = (U32)AllocState::END_SENTINEL;
+        wildBlock->prevSize                = beginSentinel->thisSize;
+        largeBlockSentinel->prevSize       = wildBlock->thisSize;
+        endSentinel->prevSize              = largeBlockSentinel->thisSize;
+        at->freeMemSize                    = wildBlock->thisSize.size;
 
-        // // Sizes
-        // const Size beginSz  = 32u;
-        // const Size largeSz  = 32u;
-        // const Size endSz    = 32u;
-        // const Size wildSz   = static_cast<Size>(reinterpret_cast<const char*>(endSentinel) - reinterpret_cast<const char*>(wildBlock));
+        for (int i = 0; i < 256; ++i) {
+            InitLink(&at->freeListBins[i]);
+        }
 
-        // // Sanity
-        // assert((reinterpret_cast<uintptr_t>(beginSentinel)      & 31u) == 0u);
-        // assert((reinterpret_cast<uintptr_t>(largeBlockSentinel) & 31u) == 0u);
-        // assert((reinterpret_cast<uintptr_t>(wildBlock)          & 31u) == 0u);
-        // assert((reinterpret_cast<uintptr_t>(endSentinel)        & 31u) == 0u);
-        // assert((wildSz % 32u) == 0u);
+        SetAllocFreeBinBit(at, 255);
+        DLink* freeList = &at->freeListBins[255];
+        InitLink(&wildBlock->freeListLink);
+        InsertNextLink(freeList, &wildBlock->freeListLink);
+        at->freeListBinsCount[255] = 1;
 
-        // // Initialize headers
-        // setHeader(beginSentinel, beginSz, AllocState::SENTINEL, static_cast<unsigned>(AllocSentinelKind::BEGIN), 0, AllocState::SENTINEL, static_cast<unsigned>(AllocSentinelKind::BEGIN));
-        // setHeader(largeBlockSentinel, largeSz, AllocState::SENTINEL, static_cast<unsigned>(AllocSentinelKind::LARGE_BLOCK), beginSz, AllocState::SENTINEL, static_cast<unsigned>(AllocSentinelKind::BEGIN));
-        // setHeader(wildBlock, wildSz, AllocState::FREE, 0u, largeSz, AllocState::SENTINEL, static_cast<unsigned>(AllocSentinelKind::LARGE_BLOCK));
-        // setHeader(endSentinel, endSz, AllocState::SENTINEL, static_cast<unsigned>(AllocSentinelKind::END), wildSz, AllocState::FREE, 0u);
-
-        // // Publish sentinel pointers
-        // at->beginSentinel      = beginSentinel;
-        // at->largeBlockSentinel = largeBlockSentinel;
-        // at->wildBlock          = wildBlock;
-        // at->endSentinel        = endSentinel;
-
-        // // Link the wild block into the wild bin (255); store list node in block payload
-        // DLink* wildNode = reinterpret_cast<DLink*>(reinterpret_cast<char*>(wildBlock) + sizeof(AllocHeader));
-        // InitLink(wildNode);
-        // EnqueueLink(&at->freeListBins[255], wildNode);
-        // at->freeListBinsSizes[255] = static_cast<unsigned>(wildSz);
-
-        // // Set availability mask: only wild bin (255) is non-empty initially
-        // reinterpret_cast<uint64_t*>(&at->freeListbinMask)[3] |= (1ull << 63);
-
-        // // Accounting and statistics
-        // at->requestedMemSize = size;
-        // at->maxMemSize       = size;
-        // at->memSize          = static_cast<Size>(at->heapEnd - at->heapBegin);
-        // at->usedMemSize      = 0;
-        // // Track free payload bytes (exclude header of the wild block)
-        // const Size wildPayload = wildSz - sizeof(AllocHeader);
-        // at->freeMemSize      = wildPayload;
-
-        
-        // unreachable
         return 0;
     }
 
 }
 
+namespace internal {
+    constexpr const char* DEBUG_ALLOC_COLOR_RESET  = "\033[0m";
+    constexpr const char* DEBUG_ALLOC_COLOR_WHITE  = "\033[37m"; 
+    constexpr const char* DEBUG_ALLOC_COLOR_GREEN  = "\033[1;32m"; 
+    constexpr const char* DEBUG_ALLOC_COLOR_YELLOW = "\033[1;33m"; 
+    constexpr const char* DEBUG_ALLOC_COLOR_CYAN   = "\033[36m"; 
+    constexpr const char* DEBUG_ALLOC_COLOR_MAG    = "\033[35m"; 
+    constexpr const char* DEBUG_ALLOC_COLOR_RED    = "\033[1;31m"; 
+    constexpr const char* DEBUG_ALLOC_COLOR_HDR    = "\033[36m"; 
+
+    constexpr const char* DEBUG_FREELIST_HEAD_TABLE[] = {
+        "HEAD(32)", "HEAD(64)", "HEAD(96)", "HEAD(128)", "HEAD(160)", "HEAD(192)", "HEAD(224)", "HEAD(256)", "HEAD(288)", "HEAD(320)", "HEAD(352)", "HEAD(384)", "HEAD(416)", "HEAD(448)", "HEAD(480)", "HEAD(512)", "HEAD(544)", "HEAD(576)", "HEAD(608)", "HEAD(640)", "HEAD(672)", "HEAD(704)", "HEAD(736)", "HEAD(768)", "HEAD(800)", "HEAD(832)", "HEAD(864)", "HEAD(896)", "HEAD(928)", "HEAD(960)", "HEAD(992)", "HEAD(1024)", "HEAD(1056)", "HEAD(1088)", "HEAD(1120)", "HEAD(1152)", "HEAD(1184)", "HEAD(1216)", "HEAD(1248)", "HEAD(1280)", "HEAD(1312)", "HEAD(1344)", "HEAD(1376)", "HEAD(1408)", "HEAD(1440)", "HEAD(1472)", "HEAD(1504)", "HEAD(1536)", "HEAD(1568)", "HEAD(1600)", "HEAD(1632)", "HEAD(1664)", "HEAD(1696)", "HEAD(1728)", "HEAD(1760)", "HEAD(1792)", "HEAD(1824)", "HEAD(1856)", "HEAD(1888)", "HEAD(1920)", "HEAD(1952)", "HEAD(1984)", "HEAD(2016)", "HEAD(2048)", "HEAD(2080)", "HEAD(2112)", "HEAD(2144)", "HEAD(2176)", "HEAD(2208)", "HEAD(2240)", "HEAD(2272)", "HEAD(2304)", "HEAD(2336)", "HEAD(2368)", "HEAD(2400)", "HEAD(2432)", "HEAD(2464)", "HEAD(2496)", "HEAD(2528)", "HEAD(2560)", "HEAD(2592)", "HEAD(2624)", "HEAD(2656)", "HEAD(2688)", "HEAD(2720)", "HEAD(2752)", "HEAD(2784)", "HEAD(2816)", "HEAD(2848)", "HEAD(2880)", "HEAD(2912)", "HEAD(2944)", "HEAD(2976)", "HEAD(3008)", "HEAD(3040)", "HEAD(3072)", "HEAD(3104)", "HEAD(3136)", "HEAD(3168)", "HEAD(3200)", "HEAD(3232)", "HEAD(3264)", "HEAD(3296)", "HEAD(3328)", "HEAD(3360)", "HEAD(3392)", "HEAD(3424)", "HEAD(3456)", "HEAD(3488)", "HEAD(3520)", "HEAD(3552)", "HEAD(3584)", "HEAD(3616)", "HEAD(3648)", "HEAD(3680)", "HEAD(3712)", "HEAD(3744)", "HEAD(3776)", "HEAD(3808)", "HEAD(3840)", "HEAD(3872)", "HEAD(3904)", "HEAD(3936)", "HEAD(3968)", "HEAD(4000)", "HEAD(4032)", "HEAD(4064)", "HEAD(4096)", "HEAD(4128)", "HEAD(4160)", "HEAD(4192)", "HEAD(4224)", "HEAD(4256)", "HEAD(4288)", "HEAD(4320)", "HEAD(4352)", "HEAD(4384)", "HEAD(4416)", "HEAD(4448)", "HEAD(4480)", "HEAD(4512)", "HEAD(4544)", "HEAD(4576)", "HEAD(4608)", "HEAD(4640)", "HEAD(4672)", "HEAD(4704)", "HEAD(4736)", "HEAD(4768)", "HEAD(4800)", "HEAD(4832)", "HEAD(4864)", "HEAD(4896)", "HEAD(4928)", "HEAD(4960)", "HEAD(4992)", "HEAD(5024)", "HEAD(5056)", "HEAD(5088)", "HEAD(5120)", "HEAD(5152)", "HEAD(5184)", "HEAD(5216)", "HEAD(5248)", "HEAD(5280)", "HEAD(5312)", "HEAD(5344)", "HEAD(5376)", "HEAD(5408)", "HEAD(5440)", "HEAD(5472)", "HEAD(5504)", "HEAD(5536)", "HEAD(5568)", "HEAD(5600)", "HEAD(5632)", "HEAD(5664)", "HEAD(5696)", "HEAD(5728)", "HEAD(5760)", "HEAD(5792)", "HEAD(5824)", "HEAD(5856)", "HEAD(5888)", "HEAD(5920)", "HEAD(5952)", "HEAD(5984)", "HEAD(6016)", "HEAD(6048)", "HEAD(6080)", "HEAD(6112)", "HEAD(6144)", "HEAD(6176)", "HEAD(6208)", "HEAD(6240)", "HEAD(6272)", "HEAD(6304)", "HEAD(6336)", "HEAD(6368)", "HEAD(6400)", "HEAD(6432)", "HEAD(6464)", "HEAD(6496)", "HEAD(6528)", "HEAD(6560)", "HEAD(6592)", "HEAD(6624)", "HEAD(6656)", "HEAD(6688)", "HEAD(6720)", "HEAD(6752)", "HEAD(6784)", "HEAD(6816)", "HEAD(6848)", "HEAD(6880)", "HEAD(6912)", "HEAD(6944)", "HEAD(6976)", "HEAD(7008)", "HEAD(7040)", "HEAD(7072)", "HEAD(7104)", "HEAD(7136)", "HEAD(7168)", "HEAD(7200)", "HEAD(7232)", "HEAD(7264)", "HEAD(7296)", "HEAD(7328)", "HEAD(7360)", "HEAD(7392)", "HEAD(7424)", "HEAD(7456)", "HEAD(7488)", "HEAD(7520)", "HEAD(7552)", "HEAD(7584)", "HEAD(7616)", "HEAD(7648)", "HEAD(7680)", "HEAD(7712)", "HEAD(7744)", "HEAD(7776)", "HEAD(7808)", "HEAD(7840)", "HEAD(7872)", "HEAD(7904)", "HEAD(7936)", "HEAD(7968)", "HEAD(8000)", "HEAD(8032)", "HEAD(8064)", "HEAD(8096)", 
+        "HEAD(8128)", "HEAD(MEDIUM)", "HEAD(WILD)", "INVALID"
+    };
+    
+    inline AllocHeader* NextHeaderPtr(AllocHeader* h) {
+        size_t sz = (size_t)h->thisSize.size;
+        if (sz == 0) return h;
+        return (internal::AllocHeader*)((char*)h + sz);
+    }
+    
+    inline const char* StateText(AllocState s) {
+        switch (s) {
+            case AllocState::USED:                 return "USED";
+            case AllocState::FREE:                 return "FREE";
+            case AllocState::WILD_BLOCK:           return "WILD";
+            case AllocState::BEGIN_SENTINEL:       return "SENTINEL B";
+            case AllocState::LARGE_BLOCK_SENTINEL: return "SENTINEL L";
+            case AllocState::END_SENTINEL:         return "SENTINEL E";
+            default:                               return "INVALID";
+        }
+    }
+    
+    static inline constexpr const char* StateColor(AllocState s) {
+        switch (s) {
+            case AllocState::USED:               
+                return DEBUG_ALLOC_COLOR_CYAN;
+            case AllocState::FREE:   
+            case AllocState::WILD_BLOCK: 
+                return DEBUG_ALLOC_COLOR_GREEN;
+            case AllocState::BEGIN_SENTINEL:
+            case AllocState::LARGE_BLOCK_SENTINEL:
+            case AllocState::END_SENTINEL: 
+                return DEBUG_ALLOC_COLOR_YELLOW;
+            case AllocState::INVALID: 
+                return DEBUG_ALLOC_COLOR_RED;
+            default: 
+                return DEBUG_ALLOC_COLOR_RESET;
+        }
+    }
+    
+    static inline unsigned GetSmallBinIndexFromSize(uint64_t sz) {
+        if (sz < 32) return 0u;
+        if (sz <= 32ull * 253ull) return (unsigned)(sz / 32ull) - 1u;
+        return 254u; // 254 = medium, 255 = wild
+    }
+
+    static inline void PrintRun(const char* s, int n, const char* color = DEBUG_ALLOC_COLOR_WHITE) {
+        for (int i = 0; i < n; ++i) std::print("{}{}", color, s);
+    }
+
+    inline static unsigned GetFreeListBinIndex(const AllocHeader* h) {
+        switch ((AllocState)h->thisSize.state) {
+            case AllocState::WILD_BLOCK:
+                return 255;
+            case AllocState::FREE: 
+            {
+                Size sz = h->thisSize.size;
+                if (sz >= 254ull * 32ull) return 254;
+                else return (unsigned)(sz / 32ull);
+            }
+            case AllocState::INVALID:
+            case AllocState::USED:
+            case AllocState::BEGIN_SENTINEL:
+            case AllocState::LARGE_BLOCK_SENTINEL:
+            case AllocState::END_SENTINEL:
+            default:
+            {
+                return 256;
+            }
+        }
+    }
+
+    // Build HEAD label based on bin index; bin 0..253 -> HEAD(size), 254 -> HEAD(MEDIUM), 255 -> HEAD(WILD)
+    inline static const char* GetFreeListHeadLabel(AllocHeader* h) {
+        unsigned binIdx = GetFreeListBinIndex(h);
+        return DEBUG_FREELIST_HEAD_TABLE[binIdx];
+    }
+
+    // Fixed column widths (constants) in requested order
+    constexpr int DEBUG_COL_W_OFF     = 18; // 0x + 16 hex
+    constexpr int DEBUG_COL_W_SIZE    = 12;
+    constexpr int DEBUG_COL_W_STATE   = 10;
+    constexpr int DEBUG_COL_W_PSIZE   = 12;
+    constexpr int DEBUG_COL_W_PSTATE  = 10;
+    constexpr int DEBUG_COL_W_FL_PREV = 18;
+    constexpr int DEBUG_COL_W_FL_NEXT = 18;
+
+    static inline void PrintTopBorder() {
+        std::print("{}┌{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_OFF + 2);
+        std::print("{}┬{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_SIZE + 2);
+        std::print("{}┬{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_STATE + 2);
+        std::print("{}┬{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_PSIZE + 2);
+        std::print("{}┬{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_PSTATE + 2);
+        std::print("{}┬{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_FL_PREV + 2);
+        std::print("{}┬{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_FL_NEXT + 2);
+        std::print("{}┐{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+    }
+
+    static inline void PrintHeaderSeparator() {
+        std::print("{}├{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_OFF + 2);
+        std::print("{}┼{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_SIZE + 2);
+        std::print("{}┼{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_STATE + 2);
+        std::print("{}┼{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_PSIZE + 2);
+        std::print("{}┼{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_PSTATE + 2);
+        std::print("{}┼{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_FL_PREV + 2);
+        std::print("{}┼{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_FL_NEXT + 2);
+        std::print("{}┤{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+    }
+
+    static inline void PrintBottomBorder() {
+        std::print("{}└{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_OFF + 2);
+        std::print("{}┴{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_SIZE + 2);
+        std::print("{}┴{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_STATE + 2);
+        std::print("{}┴{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_PSIZE + 2);
+        std::print("{}┴{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_PSTATE + 2);
+        std::print("{}┴{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_FL_PREV + 2);
+        std::print("{}┴{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        PrintRun("─", DEBUG_COL_W_FL_NEXT + 2);
+        std::print("{}┘{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+    }
+
+    static inline void PrintHeader() {
+        std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        std::print("{} {:<18} "  , DEBUG_ALLOC_COLOR_HDR,   "Offset");
+        std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        std::print("{} {:<12} "  , DEBUG_ALLOC_COLOR_HDR,   "Size");
+        std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        std::print("{} {:<10} "  , DEBUG_ALLOC_COLOR_HDR,   "State");
+        std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        std::print("{} {:<12} "  , DEBUG_ALLOC_COLOR_HDR,   "PrevSize");
+        std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        std::print("{} {:<10} "  , DEBUG_ALLOC_COLOR_HDR,   "PrevState");
+        std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        std::print("{} {:<18} "  , DEBUG_ALLOC_COLOR_HDR,   "FreeListPrev");
+        std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        std::print("{} {:<18} "  , DEBUG_ALLOC_COLOR_HDR,   "FreeListNext");
+        std::print("{}│{}\n"     , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+    }
+
+    static inline void PrintRow(const AllocHeader* h) {
+        const AllocTable* at = &gKernel.allocTable;
+        uintptr_t beginAddr = (uintptr_t)at->beginSentinel;
+        uintptr_t off = (uintptr_t)h - beginAddr;
+        uint64_t  sz  = (uint64_t)h->thisSize.size;
+        uint64_t  psz = (uint64_t)h->prevSize.size;
+        AllocState st = (AllocState)h->thisSize.state;
+        AllocState pst = (AllocState)h->prevSize.state;
+
+        const char* stateText = StateText(st);
+        const char* previousStateText = StateText(pst);
+        const char* stateColor = StateColor(st);
+
+        std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        std::print("{} {:<18} ", stateColor, (unsigned long long)off);
+        std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        std::print("{} {:<12} ", stateColor, (unsigned long long)sz);
+        std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        std::print("{} {:<10} ", stateColor, stateText);
+        std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        std::print("{} {:<12} ", stateColor, (unsigned long long)psz);
+        std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        std::print("{} {:<10} ", stateColor, previousStateText);
+        std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        std::print("{} {:<18} ", stateColor, "TODO");
+        std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+        std::print("{} {:<18} ", stateColor, "TODO");
+        std::print("{}│{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
+    }
+    
+}
+
+inline void DebugPrintAllocBlocks() noexcept 
+{
+    using namespace internal;
+    assert(gKernel.allocTable.beginSentinel != nullptr);
+    assert(gKernel.allocTable.endSentinel != nullptr);
+    
+    PrintTopBorder();
+    PrintHeader();
+    PrintHeaderSeparator();
+    AllocHeader* head = (AllocHeader*) gKernel.allocTable.beginSentinel;
+    AllocHeader* end  = (AllocHeader*) NextHeaderPtr(gKernel.allocTable.endSentinel);
+    
+    for (; head != end; head = NextHeaderPtr(head)) {
+        PrintRow(head);
+    }
+
+    PrintBottomBorder();
+}
 
 } // namespace ak
