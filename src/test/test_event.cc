@@ -112,12 +112,14 @@ DefineTask MainTask(const char* name) noexcept {
 }
 
 
+char buffer[8192];
+
 int main() {
-  KernelConfig config = {
-    .mem = nullptr,
-    .memSize = 0,
-    .ioEntryCount = 256
-  };
+	KernelConfig config = {
+		.mem = buffer,
+		.memSize = sizeof(buffer),
+		.ioEntryCount = 256
+  	};
 
 	int res = RunMain(&config, MainTask, "main");
 	std::print("main_task returned: {}\n", res);

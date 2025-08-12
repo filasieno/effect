@@ -38,11 +38,12 @@ DefineTask MainTask(const char* name) noexcept {
 	co_return;
 }
 
+char buffer[8192];
 
 int main() {
 	KernelConfig config = {
-		.mem = nullptr,
-		.memSize = 0,
+		.mem = buffer,
+		.memSize = sizeof(buffer),
 		.ioEntryCount = 256
   	};
 	return RunMain(&config, MainTask, "main");

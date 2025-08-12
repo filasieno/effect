@@ -47,3 +47,7 @@ build
 #nix result folder
 result
 
+#cland cache
+.cache
+
+
