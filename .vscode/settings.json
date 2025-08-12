@@ -93,5 +93,7 @@
         "numbers": "cpp",
         "cassert": "cpp"
     },
+    "editor.semanticHighlighting.enabled": true,
+    "clangd.semanticHighlighting": true,
     "nixEnvSelector.nixFile": "${workspaceFolder}/shell.nix"
 }
