@@ -5,6 +5,7 @@
 #include <print>
 #include <cstdint>
 #include <cstring>
+#include <immintrin.h>
 #include "liburing.h"
 
 namespace ak {
@@ -2878,6 +2879,33 @@ namespace internal {
 #endif
         // Defensive return to satisfy all control paths for static analyzers
         return 255;
+    }
+
+    static inline bool GetFreeListBit(char* bitField, int bucket) noexcept {
+        assert(bitField != nullptr);
+        assert(bucket >= 0 && bucket < 256);
+        uint8_t* bytes = reinterpret_cast<uint8_t*>(bitField);
+        int byte_idx = bucket / 8;
+        int bit_in_byte = bucket % 8;
+        return (bytes[byte_idx] & (1u << bit_in_byte)) != 0;
+    }
+
+    static inline void SetFreeListBit(char* bitField, int bucket) noexcept {
+        assert(bitField != nullptr);
+        assert(bucket >= 0 && bucket < 256);
+        uint8_t* bytes = reinterpret_cast<uint8_t*>(bitField);
+        int byte_idx = bucket / 8;
+        int bit_in_byte = bucket % 8;
+        bytes[byte_idx] |= (1u << bit_in_byte);
+    }
+
+    static inline void ClearFreeListBit(char* bitField, int bucket) noexcept {
+        assert(bitField != nullptr);
+        assert(bucket >= 0 && bucket < 256);
+        uint8_t* bytes = reinterpret_cast<uint8_t*>(bitField);
+        int byte_idx = bucket / 8;
+        int bit_in_byte = bucket % 8;
+        bytes[byte_idx] &= ~(1u << bit_in_byte);
     }
 }
 
