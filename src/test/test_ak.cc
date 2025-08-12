@@ -46,5 +46,11 @@ int main() {
 		.memSize = sizeof(buffer),
 		.ioEntryCount = 256
   	};
-	return RunMain(&config, MainTask, "main");
+	
+	if (RunMain(&config, MainTask, "main") != 0) {
+		std::print("main failed\n");
+		std::abort();
+		// Unreachable
+	}
+	return 0;
 }

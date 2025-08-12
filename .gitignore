@@ -50,4 +50,7 @@ result
 #cland cache
 .cache
 
+#valgrind
+vgcore.*
+
 

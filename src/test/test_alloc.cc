@@ -6,10 +6,7 @@
 using namespace ak;
 
 DefineTask MainTask() noexcept {
-	int res = 0;
-
-	std::print("Hello, world! {}\n", res);
-	
+	DebugDumpAllocTable();
   	co_return;
 }
 
@@ -21,5 +18,10 @@ int main() {
 		.memSize = sizeof(buffer),
 		.ioEntryCount = 256
 	};
-	return RunMain(&config, MainTask);
+	if (RunMain(&config, MainTask) != 0) {
+		std::print("main failed\n");
+		std::abort();
+		// Unreachable
+	}
+	return 0;
 }

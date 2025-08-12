@@ -601,7 +601,7 @@ namespace internal {
         /// Each bit indicates whether the corresponding bin contains free blocks.
         /// Aligned to 64-byte boundary for optimal SIMD performance.
         /// Used with SIMD instructions to find the first available bin in O(1) time.
-        alignas(64) __m256i     freeListbinMask;                         
+        alignas(64) U32 freeListbinMask[8];                         
         
         /// \brief Array of doubly-linked list heads for each bin
         /// 
@@ -609,19 +609,14 @@ namespace internal {
         /// Free blocks in each bin are organized as circular doubly-linked lists
         /// for O(1) insertion and removal. Aligned to 64-byte boundary to prevent
         /// false sharing and optimize cache performance when accessing multiple bins.
-        alignas(64) DLink       freeListBins[ALLOCATOR_BIN_COUNT];
+        alignas(64) DLink freeListBins[ALLOCATOR_BIN_COUNT];
         
         /// \brief Size tracking for each bin's free blocks
         /// 
         /// Contains the total size (in bytes) of all free blocks in each bin.
         /// Used for statistics, fragmentation analysis, and allocation strategy
         /// optimization. Aligned to 64-byte boundary for cache efficiency.
-        alignas(64) unsigned    freeListBinsSizes[ALLOCATOR_BIN_COUNT];
-
-        /// \brief Free list for large blocks
-        /// 
-        /// A doubly-linked list of large blocks that are free.
-        alignas(8) DLink        largeBlockFreeList;
+        alignas(64) U32 freeListBinsSizes[ALLOCATOR_BIN_COUNT];
 
         // ==================== HEAP BOUNDARY MANAGEMENT ====================
         
@@ -630,60 +625,46 @@ namespace internal {
         /// Points to the beginning of the heap as returned by the system allocator
         /// (e.g., mmap, sbrk). May not be aligned to allocator requirements.
         /// This is the address that must be passed to the system deallocator.
-        alignas(8)  char* heapBegin;
+        alignas(8) char* heapBegin;
         
         /// \brief End of the heap memory region  
         /// 
         /// Points to the first byte beyond the heap. The valid heap range is
         /// [heapBegin, heapEnd). Used for bounds checking during allocation
         /// and to determine when heap expansion is needed.
-        alignas(8)  const char* heapEnd;
+        alignas(8) const char* heapEnd;
         
         /// \brief Start of aligned memory region for allocations
         /// 
         /// Points to heapBegin aligned up to 32-byte boundary. All allocator
         /// blocks are carved from the region [memBegin, memEnd). This ensures
         /// all allocated blocks maintain proper 32-byte alignment.
-        alignas(8)  char* memBegin;
+        alignas(8) char* memBegin;
         
         /// \brief End of aligned memory region for allocations
         /// 
         /// Points to memBegin aligned up to 32-byte boundary. All allocator
         /// blocks are carved from the region [memBegin, memEnd). This ensures
         /// all allocated blocks maintain proper 32-byte alignment.
-        alignas(8)  char* memEnd;
+        alignas(8) char* memEnd;
         
         // ==================== MEMORY ACCOUNTING ====================
         
-        /// \brief Originally requested heap size from system
-        /// 
-        /// The size initially requested from the system allocator. Used for
-        /// statistics and to track heap growth over time.
-        Size        requestedMemSize;
-        
-        /// \brief Maximum allowed heap size
-        /// 
-        /// Upper limit on heap size to prevent unbounded growth. When reached,
-        /// allocations will fail rather than expanding the heap further.
-        Size        maxMemSize;
-        
         /// \brief Current total heap size
         /// 
-        /// Total size of the heap region (heapEnd - heapBegin). Includes both
-        /// allocated and free memory, plus any alignment padding.
-        Size        memSize;
+        Size memSize;
         
         /// \brief Currently allocated memory
         /// 
         /// Total bytes currently allocated to users (not including headers).
         /// Updated on each allocation and deallocation for real-time tracking.
-        Size        usedMemSize;
+        Size usedMemSize;
         
         /// \brief Currently free memory
         /// 
         /// Total bytes available for allocation across all bins and wild block.
         /// Should satisfy: usedMemSize + freeMemSize ≈ memSize (accounting for headers).
-        Size        freeMemSize;
+        Size freeMemSize;
 
         /// \brief Maximum free block size
         /// 
@@ -696,37 +677,37 @@ namespace internal {
         /// 
         /// Incremented on each successful malloc/alloc call. Used for performance
         /// analysis and allocation pattern profiling.
-        Size        totalAllocCount;
+        Size totalAllocCount;
         
         /// \brief Total number of deallocations
         /// 
         /// Incremented on each free call. Should eventually equal totalAllocCount
         /// in programs that properly free all allocations.
-        Size        totalFreeCount;
+        Size totalFreeCount;
         
         /// \brief Total number of reallocation operations
         /// 
         /// Incremented on each realloc call. Tracks memory resize operations
         /// which may involve copying data to larger blocks.
-        Size        totalReallocCount;
+        Size totalReallocCount;
         
         /// \brief Total number of block splits performed
         /// 
         /// Incremented when a free block is split to satisfy a smaller allocation.
         /// High split counts may indicate fragmentation or suboptimal bin sizing.
-        Size        totalSplitCount;
+        Size totalSplitCount;
         
         /// \brief Total number of block merges performed
         /// 
         /// Incremented when adjacent free blocks are coalesced during deallocation.
         /// Indicates the allocator's effectiveness at reducing fragmentation.
-        Size        totalMergeCount;
+        Size totalMergeCount;
         
         /// \brief Total number of block reuses from free lists
         /// 
         /// Incremented when an allocation is satisfied by reusing a free block
         /// from a bin rather than splitting or expanding the heap.
-        Size        totalReuseCount;
+        Size totalReuseCount;
         
         // ==================== SENTINEL BLOCKS ====================
         
@@ -760,7 +741,7 @@ namespace internal {
         /// - **Direct Allocation Tracking**: Monitors blocks allocated directly from system
         /// - **Heap Traversal Aid**: Helps navigate around large blocks during walks
         /// - **Statistics Collection**: Enables separate accounting for large allocations
-        alignas(8)  AllocHeader* largeBlockSentinel;
+        alignas(8) AllocHeader* largeBlockSentinel;
         
         /// \brief Sentinel block at the end of heap
         /// 
@@ -771,7 +752,7 @@ namespace internal {
         /// - **Consistency Check**: Validates heap structure during debugging
         /// 
         /// Like beginSentinel, this block is never allocated and has zero payload.
-        alignas(8)  AllocHeader* endSentinel;
+        alignas(8) AllocHeader* endSentinel;
         
         // TODO: 
 
@@ -783,23 +764,21 @@ namespace internal {
         // Hot scheduling data (first cache line)
         TaskHdl currentTaskHdl;
         TaskHdl schedulerTaskHdl;
-        DLink    readyList;
-        DLink    taskList;
+        DLink   readyList;
+        DLink   taskList;
         void*   mem;
         Size    memSize;
         
-        // IO
         alignas(64) 
         io_uring ioRing;
         unsigned ioEntryCount;
         
-        // Cold data
         alignas(64) 
         KernelTaskHdl kernelTask;
-        DLink          zombieList;
+        DLink         zombieList;
 
-         // Counters (second cache line)  
-        alignas(64) int taskCount;
+        alignas(64) 
+        int taskCount;
         int readyCount;
         int waitingCount;
         int ioWaitingCount;
@@ -1338,9 +1317,15 @@ namespace internal
         co_return;
     }
 
+    int InitAllocTable(void* mem, Size size) noexcept;
+
     inline int InitKernel(KernelConfig* config) noexcept {
         using namespace internal;
         
+        if (InitAllocTable(config->mem, config->memSize) != 0) {
+            return -1;
+        }
+
         int res = io_uring_queue_init(config->ioEntryCount, &gKernel.ioRing, 0);
         if (res < 0) {
             std::print("io_uring_queue_init failed\n");
@@ -2454,11 +2439,68 @@ inline internal::IOWaitOneOp IOCancelFd(int fd, unsigned int flags) noexcept {
     });
 }
 
+inline void DebugDumpAllocTable() noexcept {
+    using namespace internal;
+
+    AllocTable* at = (AllocTable*)&gKernel.allocTable;
+
+    // Basic layout and sizes
+    std::print("AllocTable: {}\n", (void*)at);
+    
+    std::print("  heapBegin        : {}\n", (void*)at->heapBegin);
+    std::print("  heapEnd          : {}; size: {}\n", (void*)at->heapEnd, (intptr_t)(at->heapEnd - at->heapBegin));
+    std::print("  memBegin         : {}\n", (void*)at->memBegin);
+    std::print("  memEnd           : {}; size: {}\n", (void*)at->memEnd, (intptr_t)(at->memEnd - at->memBegin));
+    std::print("  memSize          : {}\n", at->memSize);
+    std::print("  usedMemSize      : {}\n", at->usedMemSize);
+    std::print("  freeMemSize      : {}\n", at->freeMemSize);
+
+    // Sentinels and wild/large tracking (addresses only; do not dereference)
+    std::print("  Key Locations:\n");
+    std::print("    Begin sentinel offset: {}\n", (intptr_t)at->memBegin - (intptr_t)at->beginSentinel);
+    std::print("    Wild  block    offset: {}\n", (intptr_t)at->memBegin - (intptr_t)at->wildBlock);
+    std::print("    LB    sentinel offset: {}\n", (intptr_t)at->memBegin - (intptr_t)at->largeBlockSentinel);
+    std::print("    End   sentinel offset: {}\n", (intptr_t)at->memBegin - (intptr_t)at->endSentinel);
+
+    // Free list availability mask as a bit array (256 bits)
+    std::print("  FreeListbinMask:");
+    for (unsigned i = 0; i < 256; i++) {
+        if (i % 64 == 0) std::print("\n    ");
+        std::print("{}", (at->freeListbinMask[i / 32] >> (i % 32)) & 1u);
+    }
+    std::print("\n");
+
+    // Optional per-bin size accounting
+    
+    std::print("  FreeListBinsSizes begin\n");
+    for (unsigned i = 0; i < 254; ++i) {
+        unsigned cc = at->freeListBinsSizes[i];
+        if (cc == 0) continue;
+        std::print("    {:>3} bytes class  : {}\n", i * 32, cc);
+    }
+    std::print("    medium class (254) : {}\n", at->freeListBinsSizes[254]);
+    std::print("    wild class   (255) : {}\n", at->freeListBinsSizes[255]);
+    std::print("  FreeListBinsSizes end\n");
+    
+
+    // Aggregate statistics
+    // std::print("maxFreeBlockSize: {}\n", at->maxFreeBlockSize);
+    // std::print("totalAllocCount: {}\n", at->totalAllocCount);
+    // std::print("totalFreeCount: {}\n", at->totalFreeCount);
+    // std::print("totalReallocCount: {}\n", at->totalReallocCount);
+    // std::print("totalSplitCount: {}\n", at->totalSplitCount);
+    // std::print("totalMergeCount: {}\n", at->totalMergeCount);
+    // std::print("totalReuseCount: {}\n", at->totalReuseCount);
+
+    std::print("\n");
+}
+
 namespace internal {
 
     inline int InitAllocTable(void* mem, Size size) noexcept {
         (void)mem;
         (void)size;
+        return 0;
         // constexpr U64 SENTINEL_SIZE = sizeof(FreeAllocHeader);
 
         // assert(mem != nullptr);
@@ -2567,7 +2609,7 @@ namespace internal {
         // const Size wildPayload = wildSz - sizeof(AllocHeader);
         // at->freeMemSize      = wildPayload;
 
-        std::abort();
+        
         // unreachable
         return 0;
     }

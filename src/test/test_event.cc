@@ -121,7 +121,10 @@ int main() {
 		.ioEntryCount = 256
   	};
 
-	int res = RunMain(&config, MainTask, "main");
-	std::print("main_task returned: {}\n", res);
-	return res;
+	if (RunMain(&config, MainTask, "main") != 0) {
+		std::print("main failed\n");
+		std::abort();
+		// Unreachable
+	}
+	return 0;
 }

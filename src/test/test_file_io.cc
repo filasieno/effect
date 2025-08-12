@@ -5,7 +5,7 @@
 
 using namespace ak;
 
-DefineTask MainTask() noexcept {
+DefineTask MainTask(const char* name) noexcept {
 	int res;
 
 	const char* path = "test.txt";
@@ -29,5 +29,11 @@ int main() {
 		.memSize = sizeof(buffer),
 		.ioEntryCount = 256
   	};
-	return RunMain(&config, MainTask);
+	
+	if (RunMain(&config, MainTask, "main") != 0) {
+		std::print("main failed\n");
+		std::abort();
+		// Unreachable
+	}
+	return 0;
 }
