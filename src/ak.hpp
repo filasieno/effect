@@ -2833,63 +2833,90 @@ namespace internal {
     /// \pre bitField is 64 byte aligned
     static inline int FindFreeListBucket(Size allocSize, char* bitField) noexcept {
         assert(bitField != nullptr);
-        assert(((uintptr_t)bitField & 63ull) == 0ull);
+        assert(((uintptr_t)bitField % 64ull) == 0ull);
 
         // Compute the starting bin index (ceil(allocSize/32) - 1), clamped to [0,255]
         unsigned requiredBin = 0u;
-        if (allocSize > 0) {
-            unsigned units = (unsigned)((allocSize + 31u) >> 5); // ceil(allocSize/32)
-            requiredBin = units ? (units - 1u) : 0u;
+        if (allocSize != 0) {
+            requiredBin = (unsigned)((allocSize - 1u) >> 5); // floor((allocSize-1)/32)
         }
         if (requiredBin > 255u) requiredBin = 255u;
 
 #if defined(__AVX2__)
-        // Build a 256-bit mask that keeps bits >= requiredBin
-        const uint64_t m0 = (requiredBin < 64u)  ? (~0ull << requiredBin)           : 0ull;
-        const uint64_t m1 = (requiredBin < 128u) ? (~0ull << (requiredBin - 64u))   : 0ull;
-        const uint64_t m2 = (requiredBin < 192u) ? (~0ull << (requiredBin - 128u))  : 0ull;
-        const uint64_t m3 = (requiredBin < 256u) ? (~0ull << (requiredBin - 192u))  : 0ull;
+        // AVX2 fast path (no runtime feature check)
+        // Build a byte-granular mask: zero bytes < requiredByte, keep bytes >= requiredByte;
+        // additionally mask bits < bitInByte in the requiredByte itself
+        const unsigned requiredByte = requiredBin >> 3;   // 0..31
+        const unsigned bitInByteReq = requiredBin & 7u;   // 0..7
 
-        const __m256i keepMask = _mm256_setr_epi64x((long long)m0, (long long)m1, (long long)m2, (long long)m3);
+        // Precomputed 0..31 index vector (one-time constant)
+        alignas(32) static const unsigned char INDEX_0_31[32] = {
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+            16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31
+        };
+
         const __m256i availability = _mm256_load_si256((const __m256i*)bitField);
-        const __m256i masked = _mm256_and_si256(availability, keepMask);
+        const __m256i idx = _mm256_load_si256((const __m256i*)INDEX_0_31);
+        const __m256i reqByteVec = _mm256_set1_epi8((char)requiredByte);
+        const __m256i allOnes    = _mm256_set1_epi8((char)-1);
 
-        // Find the lowest set bit using branchless movemask
+        // geMask: 0xFF where idx >= requiredByte, 0x00 otherwise (one compare + andnot)
+        const __m256i ltMask = _mm256_cmpgt_epi8(reqByteVec, idx); // 0xFF where req > idx (i.e., idx < req)
+        const __m256i geMask = _mm256_andnot_si256(ltMask, allOnes);
+
+        // Apply byte-level mask and also clear bits below bitInByteReq in the required byte
+        __m256i masked = _mm256_and_si256(availability, geMask);
+        const __m256i eqMask = _mm256_cmpeq_epi8(idx, reqByteVec);
+        const __m256i firstByteMaskVec = _mm256_set1_epi8((char)(unsigned char)(0xFFu << bitInByteReq));
+        const __m256i onlyEqLane       = _mm256_and_si256(masked, eqMask);
+        const __m256i maskedEqLane     = _mm256_and_si256(onlyEqLane, firstByteMaskVec);
+        const __m256i otherLanes       = _mm256_andnot_si256(eqMask, masked);
+        masked = _mm256_or_si256(otherLanes, maskedEqLane);
+
+        // Find the lowest set bit using movemask on zero-compare
         const __m256i zero = _mm256_setzero_si256();
         const __m256i is_zero = _mm256_cmpeq_epi8(masked, zero);
-        const int movemask_val = _mm256_movemask_epi8(is_zero);
-        const unsigned non_zero_mask = ~static_cast<unsigned>(movemask_val);
-
+        const unsigned non_zero_mask = ~static_cast<unsigned>(_mm256_movemask_epi8(is_zero));
         if (non_zero_mask == 0u) {
             return 255;
         }
 
         const int byte_idx = __builtin_ctz(non_zero_mask);
-        const int byte_val_i = _mm256_extract_epi8(masked, byte_idx);
-        const unsigned char byte_val = static_cast<unsigned char>(byte_val_i);
-        const int bit_in_byte = __builtin_ctz(static_cast<unsigned>(byte_val));
-
+        // Read the target byte directly from the original bitfield and apply the per-byte bit mask for the first lane only (branchless)
+        const unsigned char* bytes_src = (const unsigned char*)bitField;
+        unsigned char byte_val = bytes_src[byte_idx];
+        const unsigned char firstByteMaskScalar = (unsigned char)(0xFFu << bitInByteReq);
+        const unsigned char sameMask = (unsigned char)-(byte_idx == (int)requiredByte); // 0xFF if same, 0x00 otherwise
+        byte_val &= (unsigned char)((sameMask & firstByteMaskScalar) | (~sameMask));
+        const int bit_in_byte = __builtin_ctz((unsigned)byte_val);
         return byte_idx * 8 + bit_in_byte;
 #else
-        // Fallback: optimized scalar scan using per-word ctz
-        const U32* words = (const U32*)bitField;
-        unsigned word_idx = requiredBin >> 5;
-        unsigned bit_in_word = requiredBin & 31u;
+        // Fallback: optimized scalar scan using 64-bit words, unrolled two words per iteration
+        const uint64_t* words = (const uint64_t*)bitField; // 4 x 64-bit words
+        unsigned word_idx = requiredBin >> 6;              // starting 64-bit word index
+        unsigned bit_in_word = requiredBin & 63u;          // bit offset within first word
 
-        for (; word_idx < 8u; ++word_idx) {
-            U32 w = words[word_idx];
+        for (; word_idx < 4u; ) {
+            uint64_t w0 = words[word_idx];
             if (bit_in_word) {
-                w &= (~0u << bit_in_word);
-                bit_in_word = 0u;  // Only mask the first word
+                w0 &= (~0ull << bit_in_word);
+                bit_in_word = 0u; // mask only applies to the first word
             }
-            if (w) {
-                return static_cast<int>(word_idx * 32u + static_cast<unsigned>(__builtin_ctz(w)));
+            if (w0) {
+                return (int)(word_idx * 64u + (unsigned)__builtin_ctzll(w0));
             }
+            ++word_idx;
+            if (word_idx >= 4u) break;
+
+            uint64_t w1 = words[word_idx];
+            if (w1) {
+                return (int)(word_idx * 64u + (unsigned)__builtin_ctzll(w1));
+            }
+            ++word_idx;
         }
         return 255;
 #endif
-        // Defensive return to satisfy all control paths for static analyzers
-        return 255;
+
     }
 
     static inline bool GetFreeListBit(char* bitField, int bucket) noexcept {

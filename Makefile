@@ -15,12 +15,13 @@ all::
 
 include .config.mk
 
-TARGET_ARCH = -march=x86-64
+TARGET_ARCH = -march=x86-64-v3
 CXX = clang++
 
 CXXFLAGS = -Wall -Wextra
 CXXFLAGS += -std=c++2c -fno-exceptions -fno-rtti
 CXXFLAGS += -fdiagnostics-color=always
+CXXFLAGS += -mavx2 -mbmi -mbmi2
 
 CONFIG ?= debug
 ifeq ($(CONFIG),debug)
