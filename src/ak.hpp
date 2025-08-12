@@ -46,7 +46,7 @@ enum class TaskState
     DELETING     ///< Currently being deleted
 };
 
-const char* ToString(TaskState state) noexcept 
+inline const char* ToString(TaskState state) noexcept 
 {
     switch (state) {
         case TaskState::INVALID:    return "INVALID";
@@ -684,6 +684,11 @@ namespace internal {
         /// Total bytes available for allocation across all bins and wild block.
         /// Should satisfy: usedMemSize + freeMemSize ≈ memSize (accounting for headers).
         Size        freeMemSize;
+
+        /// \brief Maximum free block size
+        /// 
+        /// The largest free block size in the heap.
+        Size maxFreeBlockSize;
         
         // ==================== ALLOCATION STATISTICS ====================
         
@@ -803,9 +808,6 @@ namespace internal {
     };
     
     extern struct Kernel gKernel;
-
-    // void DebugTaskCount() noexcept;
-    // void CheckInvariants() noexcept;
 
     struct InitialSuspendTaskOp {
         constexpr bool await_ready() const noexcept { return false; }
@@ -1028,7 +1030,7 @@ namespace internal
         return (TaskContext*)promise_off;
     }
 
-    auto RunSchedulerTask() noexcept {
+    inline auto RunSchedulerTask() noexcept {
         struct RunSchedulerTaskOp {
 
             constexpr bool await_ready() const noexcept  { return false; }
@@ -1063,7 +1065,7 @@ namespace internal
         return RunSchedulerTaskOp{};
     }
 
-    auto TerminateSchedulerTask() noexcept {
+    inline auto TerminateSchedulerTask() noexcept {
 
         struct TerminateSchedulerOp {
             constexpr bool await_ready() const noexcept { return false; }
@@ -1090,7 +1092,7 @@ namespace internal
         return TerminateSchedulerOp{};
     }
 
-    void DestroySchedulerTask(TaskHdl hdl) noexcept {
+    inline void DestroySchedulerTask(TaskHdl hdl) noexcept {
         using namespace internal;
         TaskContext* promise = &hdl.promise();
 
@@ -1145,7 +1147,7 @@ namespace internal
     ///
     /// \return the next Task to be resumed
     /// \internal
-    TaskHdl ScheduleNextTask() noexcept {
+    inline TaskHdl ScheduleNextTask() noexcept {
         using namespace internal;
 
         // If we have a ready task, resume it
@@ -1625,18 +1627,20 @@ inline void TaskContext::return_void() noexcept {
 }
 
 namespace internal {
+#ifdef AK_IMPLEMENTATION    
     struct Kernel gKernel;
+#endif
 }
 
 struct Event {  
     internal::DLink waitingList;
 };
 
-void InitEvent(Event* event) {
+inline void InitEvent(Event* event) {
     InitLink(&event->waitingList);
 }
 
-int SignalOne(Event* event) {
+inline int SignalOne(Event* event) {
     using namespace internal;
     assert(event != nullptr);
     
@@ -1655,7 +1659,7 @@ int SignalOne(Event* event) {
     return 1;
 }
 
-int SignalSome(Event* event, int n) {
+inline int SignalSome(Event* event, int n) {
     using namespace internal;
     assert(event != nullptr);
     assert(n >= 0);
@@ -1676,7 +1680,7 @@ int SignalSome(Event* event, int n) {
     return cc;
 }
 
-int SignalAll(Event* event) {
+inline int SignalAll(Event* event) {
     using namespace internal;
     assert(event != nullptr);
     int signalled = 0;
@@ -1697,7 +1701,7 @@ int SignalAll(Event* event) {
     return signalled;
 }
 
-auto WaitEvent(Event* event) {
+inline auto WaitEvent(Event* event) {
     using namespace internal;
     
     assert(event != nullptr);
@@ -1809,7 +1813,7 @@ inline void DebugIOURingParams(const io_uring_params* p) {
 // IO Operators
 // -----------------------------------------------------------------------------
 
-int GetCurrentTaskEnqueuedIOOps() noexcept {
+inline int GetCurrentTaskEnqueuedIOOps() noexcept {
     return GetTaskContext()->enqueuedIO;
 }
 
@@ -2452,7 +2456,7 @@ inline internal::IOWaitOneOp IOCancelFd(int fd, unsigned int flags) noexcept {
 
 namespace internal {
 
-    int InitAllocTable(void* mem, Size size) {
+    inline int InitAllocTable(void* mem, Size size) noexcept {
         (void)mem;
         (void)size;
         // constexpr U64 SENTINEL_SIZE = sizeof(FreeAllocHeader);

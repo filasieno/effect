@@ -2,10 +2,10 @@
   "env": {
     "myIncludePath": [
       "${workspaceFolder}/src",
-      "/nix/store/qg056x5dz2kcvqj77qqdz1s90mqv3bhn-libcxx-20.1.6/share/libc++/v1",
+      "/nix/store/gbwf7by78vgqjmcjf1smbh1zib0mycf8-libcxx-20.1.6-dev/include",
       "/nix/store/qqjsw1fzand71ajx326r84zgi485mqb8-liburing-2.11-dev/include"
     ],
-    "myDefines": ["DEBUG", "MY_FEATURE=1"]
+    "myDefines": ["DEBUG", "_LIBCPP_HAS_NO_VENDOR_AVAILABILITY_ANNOTATIONS"]
   },
   "configurations": [
     {
@@ -13,7 +13,7 @@
       "intelliSenseMode": "linux-clang-x64",
       "compilerPath": "/nix/store/ybx56vja0ci0am4w6cvaln0z5ygxbmyy-clang-wrapper-20.1.6/bin/clang++",
       "cStandard": "c17",
-      "cppStandard": "c++23",
+      "cppStandard": "c++latest",
       "includePath": ["${myIncludePath}"],
       "defines": ["${myDefines}"]
     }

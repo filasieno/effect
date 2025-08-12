@@ -1,3 +1,4 @@
+#define AK_IMPLEMENTATION
 #include "ak.hpp"
 #include <cassert>
 #include <print> 

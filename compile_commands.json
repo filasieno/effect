@@ -1,0 +1,71 @@
+[
+  {
+    "arguments": [
+      "/nix/store/ybx56vja0ci0am4w6cvaln0z5ygxbmyy-clang-wrapper-20.1.6/bin/clang++",
+      "-Wall",
+      "-Wextra",
+      "-std=c++2c",
+      "-fno-exceptions",
+      "-fno-rtti",
+      "-fdiagnostics-color=always",
+      "-I./src",
+      "-march=x86-64",
+      "-c",
+      "-x",
+      "c++-header",
+      "-c",
+      "-o",
+      "build/precompiled.pch",
+      "src/precompiled.hpp"
+    ],
+    "directory": "/home/fabio/code/effect",
+    "file": "/home/fabio/code/effect/src/precompiled.hpp",
+    "output": "/home/fabio/code/effect/build/precompiled.pch"
+  },
+  {
+    "arguments": [
+      "/nix/store/ybx56vja0ci0am4w6cvaln0z5ygxbmyy-clang-wrapper-20.1.6/bin/clang++",
+      "-Wall",
+      "-Wextra",
+      "-std=c++2c",
+      "-fno-exceptions",
+      "-fno-rtti",
+      "-fdiagnostics-color=always",
+      "-I./src",
+      "-march=x86-64",
+      "-c",
+      "-include-pch",
+      "build/precompiled.pch",
+      "-c",
+      "-o",
+      "build/test_dlist.o",
+      "src/test/test_dlist.cc"
+    ],
+    "directory": "/home/fabio/code/effect",
+    "file": "/home/fabio/code/effect/src/test/test_dlist.cc",
+    "output": "/home/fabio/code/effect/build/test_dlist.o"
+  },
+  {
+    "arguments": [
+      "/nix/store/ybx56vja0ci0am4w6cvaln0z5ygxbmyy-clang-wrapper-20.1.6/bin/clang++",
+      "-Wall",
+      "-Wextra",
+      "-std=c++2c",
+      "-fno-exceptions",
+      "-fno-rtti",
+      "-fdiagnostics-color=always",
+      "-I./src",
+      "-march=x86-64",
+      "-c",
+      "-include-pch",
+      "build/precompiled.pch",
+      "-c",
+      "-o",
+      "build/test_ak.o",
+      "src/test/test_ak.cc"
+    ],
+    "directory": "/home/fabio/code/effect",
+    "file": "/home/fabio/code/effect/src/test/test_ak.cc",
+    "output": "/home/fabio/code/effect/build/test_ak.o"
+  }
+]

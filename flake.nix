@@ -122,6 +122,8 @@
               valgrind 
               graphviz
               ragel
+              python3
+              bear
             ];
             
             buildInputs = with pkgs; [
