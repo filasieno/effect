@@ -495,7 +495,7 @@ namespace internal {
     /// - jemalloc/tcmalloc (single-threaded use of a single arena):
     ///   - Strengths: Excellent throughput and fragmentation in general-purpose use.
     ///   - Compared to this design: Larger machinery, often tuned for multi-threaded
-    ///     workloads. This allocator’s fixed-heap, SIMD O(1) selection and
+    ///     workloads. This allocator's fixed-heap, SIMD O(1) selection and
     ///     coroutine suspension provide more predictable latency and graceful
     ///     behavior near OOM without extra coordination buffers.
     /// 
@@ -509,7 +509,7 @@ namespace internal {
     /// 
     /// Key advantages of this near-OOM design:
     /// - **No overprovisioning required**: The system remains operational by
-    ///   suspending requesters; memory pressure doesn’t cascade into failures.
+    ///   suspending requesters; memory pressure doesn't cascade into failures.
     /// - **No external coordination allocations**: Wait semantics are intrinsic to
     ///   coroutines, avoiding additional buffers/queues.
     /// - **O(1) bin selection at scale**: 256 bins plus branchless SIMD yields
@@ -565,10 +565,10 @@ namespace internal {
     ///   - Bitmaps for size classes: known; some allocators use bit twiddling, but SIMD-accelerated first-fit with 256 bins + branchless masks is not widely documented.
     ///   - Sleepable allocations: common in kernels (e.g., Linux GFP_KERNEL can sleep; slab allocators wake sleepers), rare in general-purpose user-space allocators.
     /// - Differentiators
-    ///   - Coroutine-native allocation that suspends under pressure (no external queues); “no allocate-to-allocate.”
+    ///   - Coroutine-native allocation that suspends under pressure (no external queues); "no allocate-to-allocate."
     ///   - Fixed-heap operation tuned for near-OOM regimes with built-in backpressure.
     ///   - Branchless, lane-wise SIMD (AVX2/BMI1) bin selection at 256 bins to reduce fragmentation while keeping O(1).
-    /// “Has anyone done this?”
+    /// "Has anyone done this?"
     /// - Closest parallels
     ///   - Kernel allocators that may block on memory, then wake sleepers on free.
     ///   - Research/industrial allocators with bitmap-based bin finding (some use popcnt/ctz), but few (if any) publicly emphasize SIMD+branchless selection at this granularity.
@@ -598,7 +598,7 @@ namespace internal {
         /// Each bit indicates whether the corresponding bin contains free blocks.
         /// Aligned to 64-byte boundary for optimal SIMD performance.
         /// Used with SIMD instructions to find the first available bin in O(1) time.
-        alignas(64) U32 freeListbinMask[8];                         
+        alignas(64) __m256i freeListbinMask;                         
         
         /// \brief Array of doubly-linked list heads for each bin
         /// 
@@ -2461,9 +2461,14 @@ inline void DebugDumpAllocTable() noexcept {
 
     // Free list availability mask as a bit array (256 bits)
     std::print("  FreeListbinMask:");
+    alignas(32) uint64_t lanesPrint[4] = {0,0,0,0};
+    static_assert(sizeof(lanesPrint) == 32, "lanesPrint must be 256 bits");
+    std::memcpy(lanesPrint, &at->freeListbinMask, 32);
     for (unsigned i = 0; i < 256; i++) {
         if (i % 64 == 0) std::print("\n    ");
-        std::print("{}", (at->freeListbinMask[i / 32] >> (i % 32)) & 1u);
+        unsigned lane = i >> 6;
+        unsigned bit  = i & 63u;
+        std::print("{}", (lanesPrint[lane] >> bit) & 1ull);
     }
         std::print("\n");
 
@@ -2494,16 +2499,25 @@ inline void DebugDumpAllocTable() noexcept {
 
 namespace internal {
 
-    static inline constexpr void SetAllocFreeBinBit(AllocTable* at, unsigned binIdx) {       
+    static inline void SetAllocFreeBinBit(AllocTable* at, unsigned binIdx) {       
         assert(at != nullptr);
         assert(binIdx < 256);
-        at->freeListbinMask[binIdx >> 5] |= 1u << (binIdx & 31u);
+        const unsigned lane = binIdx >> 6;         // 0..3
+        const unsigned bit  = binIdx & 63u;        // 0..63
+        alignas(32) uint64_t lanes[4];
+        std::memcpy(lanes, &at->freeListbinMask, 32);
+        lanes[lane] |= (1ull << bit);
+        std::memcpy(&at->freeListbinMask, lanes, 32);
     }
 
-    static inline constexpr bool GetAllocFreeBinBit(AllocTable* at, unsigned binIdx) {       
+    static inline bool GetAllocFreeBinBit(AllocTable* at, unsigned binIdx) {       
         assert(at != nullptr);
         assert(binIdx < 256);
-        return (at->freeListbinMask[binIdx >> 5] >> (binIdx & 31u)) & 1u;
+        const unsigned lane = binIdx >> 6;         // 0..3
+        const unsigned bit  = binIdx & 63u;        // 0..63
+        alignas(32) uint64_t lanes[4];
+        std::memcpy(lanes, &at->freeListbinMask, 32);
+        return ((lanes[lane] >> bit) & 1ull) != 0ull;
     }
 
     inline int InitAllocTable(void* mem, Size size) noexcept {
@@ -2798,6 +2812,73 @@ namespace internal {
         std::print("{}│{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
     
+    /// \brief Find the smallest free list that can store the allocSize
+    /// 
+    /// \param allocSize The size of the allocation
+    /// \param bitField A pointer to a 64 byte aligned bit field
+    /// \return The index of the smallest free list that can store the allocSize
+    /// \pre AVX2 is available
+    /// \pre bitField is 64 byte aligned
+    static inline int FindFreeListBucket(Size allocSize, char* bitField) noexcept {
+        assert(bitField != nullptr);
+        assert(((uintptr_t)bitField & 63ull) == 0ull);
+
+        // Compute the starting bin index (ceil(allocSize/32) - 1), clamped to [0,255]
+        unsigned requiredBin = 0u;
+        if (allocSize > 0) {
+            unsigned units = (unsigned)((allocSize + 31u) >> 5); // ceil(allocSize/32)
+            requiredBin = units ? (units - 1u) : 0u;
+        }
+        if (requiredBin > 255u) requiredBin = 255u;
+
+#if defined(__AVX2__)
+        // Build a 256-bit mask that keeps bits >= requiredBin
+        const uint64_t m0 = (requiredBin < 64u)  ? (~0ull << requiredBin)           : 0ull;
+        const uint64_t m1 = (requiredBin < 128u) ? (~0ull << (requiredBin - 64u))   : 0ull;
+        const uint64_t m2 = (requiredBin < 192u) ? (~0ull << (requiredBin - 128u))  : 0ull;
+        const uint64_t m3 = (requiredBin < 256u) ? (~0ull << (requiredBin - 192u))  : 0ull;
+
+        const __m256i keepMask = _mm256_setr_epi64x((long long)m0, (long long)m1, (long long)m2, (long long)m3);
+        const __m256i availability = _mm256_load_si256((const __m256i*)bitField);
+        const __m256i masked = _mm256_and_si256(availability, keepMask);
+
+        // Find the lowest set bit using branchless movemask
+        const __m256i zero = _mm256_setzero_si256();
+        const __m256i is_zero = _mm256_cmpeq_epi8(masked, zero);
+        const int movemask_val = _mm256_movemask_epi8(is_zero);
+        const unsigned non_zero_mask = ~static_cast<unsigned>(movemask_val);
+
+        if (non_zero_mask == 0u) {
+            return 255;
+        }
+
+        const int byte_idx = __builtin_ctz(non_zero_mask);
+        const int byte_val_i = _mm256_extract_epi8(masked, byte_idx);
+        const unsigned char byte_val = static_cast<unsigned char>(byte_val_i);
+        const int bit_in_byte = __builtin_ctz(static_cast<unsigned>(byte_val));
+
+        return byte_idx * 8 + bit_in_byte;
+#else
+        // Fallback: optimized scalar scan using per-word ctz
+        const U32* words = (const U32*)bitField;
+        unsigned word_idx = requiredBin >> 5;
+        unsigned bit_in_word = requiredBin & 31u;
+
+        for (; word_idx < 8u; ++word_idx) {
+            U32 w = words[word_idx];
+            if (bit_in_word) {
+                w &= (~0u << bit_in_word);
+                bit_in_word = 0u;  // Only mask the first word
+            }
+            if (w) {
+                return static_cast<int>(word_idx * 32u + static_cast<unsigned>(__builtin_ctz(w)));
+            }
+        }
+        return 255;
+#endif
+        // Defensive return to satisfy all control paths for static analyzers
+        return 255;
+    }
 }
 
 inline void DebugPrintAllocBlocks() noexcept 
