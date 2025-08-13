@@ -107,6 +107,11 @@ namespace internal {
         link->prev = link;
     }
 
+    inline void ClearLink(DLink* link) {
+        link->next = nullptr;
+        link->prev = nullptr;
+    }
+
     inline void EnqueueLink(DLink* queue, DLink* link) {
         assert(link != nullptr);
         assert(queue->next != nullptr);
@@ -133,7 +138,6 @@ namespace internal {
         assert(link != nullptr);
         assert(queue->next != nullptr);
         assert(queue->prev != nullptr);
-        assert(IsLinkDetached(link));
 
         link->next = queue;
         link->prev = queue->prev;
@@ -146,7 +150,6 @@ namespace internal {
         assert(link != nullptr);
         assert(queue->next != nullptr);
         assert(queue->prev != nullptr);
-        assert(IsLinkDetached(link));
 
         link->next = queue->next;
         link->prev = queue;
@@ -154,6 +157,22 @@ namespace internal {
         link->next->prev = link;
         queue->next = link;
     }
+
+    inline void PushLink(DLink* stack, DLink* link) {
+        InsertNextLink(stack, link);
+    }
+
+    inline DLink* PopLink(DLink* stack) {
+        assert(stack != nullptr);
+        assert(stack->next != nullptr);
+        assert(stack->prev != nullptr);
+        assert(!IsLinkDetached(stack));
+        
+        DLink* target = stack->next;
+        DetachLink(target);
+        return target;
+    }
+
 
     /// \brief AllocState is the state of the allocation.
     /// \ingroup Allocator
@@ -194,11 +213,16 @@ namespace internal {
     static constexpr int ALLOCATOR_BIN_COUNT = 256;
     
     struct AllocStats {
+        // User Requested operations
         Size binAllocCount[ALLOCATOR_BIN_COUNT];
+        Size binReallocCount[ALLOCATOR_BIN_COUNT];
         Size binFreeCount[ALLOCATOR_BIN_COUNT];
+
+        // Actual System operations
         Size binSplitCount[ALLOCATOR_BIN_COUNT];
         Size binMergeCount[ALLOCATOR_BIN_COUNT];
         Size binReuseCount[ALLOCATOR_BIN_COUNT];
+        Size binPoolCount[ALLOCATOR_BIN_COUNT];
     };
     
     /// \brief AllocTable is the main data structure for our general purpose allocator.
@@ -218,108 +242,55 @@ namespace internal {
     /// 
     /// ## Bin Organization (256 bins total)
     /// 
-    /// All allocations are aligned to 32-byte boundaries for optimal cache performance.
+    /// 0 is an illegal allocation size. 
+    /// 
+    /// All "physical" allocations:
+    ///  - Have a header of 16 bytes
+    ///  - 16 bytes free lists are used to manage free blocks; therefore the minimum allocated payload will be of 32 bytes, given the header and free list requirements.
+    ///  - are aligned to 16-byte boundaries
+    /// 
+    /// Consider that the minimal "physical" allocation size is 32-bytes, therefore small allocations will
+    /// have a very high overhead.
+    /// 
+    /// It is raccomanded that the user builds pools for such objects; having small objects in the general purpose allocator is not a wise strategy 
+    /// as essentially the user is building a "vector with holes". For instance, by building a pool managed by bit fields 
+    /// the user can more effectively manage the memory as it has more constraints than a general purpose allocator.
+    ///
+    /// Nevertheless, the allocator is designed to be able to handle small allocations, but it is not optimized for it **by design**.
+    ///
     /// The 256 bins are organized as follows:
     /// 
     /// - **Small bins (0-253)**: Fixed-size bins for common allocations
-    ///   - Bin 0: 32 bytes
-    ///   - Bin 1: 64 bytes  
-    ///   - Bin 2: 96 bytes
-    ///   - Bin 3: 128 bytes
-    ///   - ...
-    ///   - Bin 253: 8,096 bytes (32 * 253)
+    ///   
+    ///   - Bin 1: 1–16 bytes   (32 bytes of physical allocation)
+    ///   - Bin 2: 17–48 bytes  (64 bytes of physical allocation)
+    ///   - Bin 3: 49–80 bytes  (96 bytes of physical allocation)
+    ///   ...
+    ///   - Bin 253: 8,065–8,096 bytes (32 * 253 of physical allocation)
+    ///   - Bin 254: >= 8,097 bytes    (32 * 254 of physical allocation)
+    ///   - Bin 255: the wild block.
     /// 
     /// - **Medium bin (254)**: Variable-size bin for medium blocks (8,128+ bytes)
     ///   Used for blocks too large for small bins but not requiring wild block allocation
     /// 
-    /// - **Wild block bin (255)**: Special bin containing the wild block
-    ///   A large contiguous region used for very large allocations when no suitable
+    /// - **Wild block bin (255)**: Special bin containing ONLY the wild block which is
+    ///   a large contiguous region used for very large allocations when no suitable
     ///   free blocks exist in other bins
+    /// 
+    /// Essentially the allocator is designed to track 253 bins each growing by 32 bytes.
+    /// The medium bin is will use a first fit allocation strategy. 
     /// 
     /// ## SIMD-Accelerated Bin Selection
     /// 
-    /// The allocator leverages AVX2 SIMD instructions for extremely fast bin selection:
+    /// The allocator leverages AVX2 SIMD instructions for extremely fast bin selection.
+    /// - **Wild Block Guarantee**: Bit 255 (wild block) is always set to 1, ensuring
+    ///   that there's always at least one available bin for any allocation size.
     /// 
-    /// 1. **Bit Mask Representation**: The `freeListbinMask` (__m256i) contains 256 bits,
-    ///    one for each bin. A set bit indicates the bin contains free blocks.
-    /// 
-    /// 2. **Fast Bin Finding**: To find the first suitable bin for size S (branchless):
-    ///    ```cpp
-    ///    unsigned targetBin = (S + 31) >> 5;  // Round up to bin index (divide by 32)
-    ///    
-    ///    // Branchless mask creation: set all bits from targetBin to 255
-    ///    // Each 64-bit segment handles bins [0-63], [64-127], [128-191], [192-255]
-    ///    unsigned shift0 = targetBin & 63;           // targetBin % 64
-    ///    unsigned shift1 = (targetBin - 64) & 63;    // (targetBin - 64) % 64  
-    ///    unsigned shift2 = (targetBin - 128) & 63;   // (targetBin - 128) % 64
-    ///    unsigned shift3 = (targetBin - 192) & 63;   // (targetBin - 192) % 64
-    ///    
-    ///    // Create masks using arithmetic right shift to avoid branches
-    ///    uint64_t maskLow = (~0ULL << shift0) & (((int64_t)(63 - targetBin)) >> 63);
-    ///    uint64_t maskHigh = (~0ULL << shift1) & (((int64_t)(127 - targetBin)) >> 63);
-    ///    uint64_t maskHigh2 = (~0ULL << shift2) & (((int64_t)(191 - targetBin)) >> 63);
-    ///    uint64_t maskHigh3 = (~0ULL << shift3) | (1ULL << 63); // Wild block always set
-    ///    
-    ///    __m256i clearMask = _mm256_setr_epi64x(maskLow, maskHigh, maskHigh2, maskHigh3);
-    ///    
-    ///    // Apply mask and find first set bit (first available bin >= targetBin)
-    ///    __m256i availableBins = _mm256_and_si256(freeListbinMask, clearMask);
-    ///    unsigned availableBin = _tzcnt_u32(_mm256_movemask_epi8(availableBins));
-    ///    ```
-    /// 
-    /// 3. **Wild Block Guarantee**: Bit 255 (wild block) is always set to 1, ensuring
-    ///    that there's always at least one available bin for any allocation size.
-    /// 
-    /// 4. **Branchless Performance**: This completely branchless implementation provides:
-    ///    - O(1) bin selection regardless of allocation size or number of bins
-    ///    - No conditional jumps or pipeline stalls
-    ///    - Predictable execution time for all allocation sizes
-    ///    - Optimal CPU pipeline utilization compared to O(n) linear search
-    /// 
-    /// ### Lane-wise Find-First Strategy (x64 AVX2/BMI1)
-    /// 
-    /// The 256-bit availability mask is logically four 64-bit lanes. The find-first
-    /// non-empty bin is derived lane-wise without branches:
-    /// 
-    /// 1. Build a lane-masked view by AND-ing `freeListbinMask` with the branchless
-    ///    cut mask created from `targetBin` (see above).
-    /// 2. Extract per-lane 64-bit values (conceptually) and compute per-lane
-    ///    "is-zero" flags using vector test operations (e.g., `_mm256_testz_si256`) or
-    ///    comparisons combined via bitwise ops.
-    /// 3. For the first non-zero lane, compute `tzcnt64(lane)` and add its lane
-    ///    offset in {0, 64, 128, 192} to obtain the global bin index.
-    /// 4. Use boolean masks to select the winning lane/index without control-flow
-    ///    branches; on x64, BMI1 `tzcnt` provides constant-time trailing-zero count.
-    /// 
-    /// Example (illustrative, simplified):
-    /// ```cpp
-    /// // masked is the 256-bit availability after clearing bins < targetBin
-    /// __m256i masked = _mm256_and_si256(freeListbinMask, clearMask);
-    /// 
-    /// // Derive 64-bit lane values (conceptually; compilers lower this efficiently)
-    /// uint64_t l0 = (uint64_t)_mm256_extract_epi64(masked, 0);
-    /// uint64_t l1 = (uint64_t)_mm256_extract_epi64(masked, 1);
-    /// uint64_t l2 = (uint64_t)_mm256_extract_epi64(masked, 2);
-    /// uint64_t l3 = (uint64_t)_mm256_extract_epi64(masked, 3);
-    /// 
-    /// // Compute candidate indices per lane (tzcnt undefined on 0 -> guard via masks)
-    /// unsigned i0 = _tzcnt_u64(l0) + 0u;
-    /// unsigned i1 = _tzcnt_u64(l1) + 64u;
-    /// unsigned i2 = _tzcnt_u64(l2) + 128u;
-    /// unsigned i3 = _tzcnt_u64(l3) + 192u;
-    /// 
-    /// // Lane non-emptiness masks (0xFFFFFFFF if lane non-zero, else 0)
-    /// uint32_t m0 = (uint32_t)-(l0 != 0);
-    /// uint32_t m1 = (uint32_t)-(l1 != 0);
-    /// uint32_t m2 = (uint32_t)-(l2 != 0);
-    /// uint32_t m3 = (uint32_t)-(l3 != 0);
-    /// 
-    /// // Select the first non-empty lane without branches
-    /// unsigned idx = (m0 & i0) | (~m0 & (m1 & i1 | (~m1 & (m2 & i2 | (~m2 & i3)))));
-    /// ```
-    /// 
-    /// Portability: This implementation targets x86-64 with AVX2 and BMI1 (tzcnt).
-    /// Portability/fallback paths are explicitly out of scope for this design.
+    /// -  **Branchless Performance**: This completely branchless implementation provides:
+    /// - O(1) bin selection regardless of allocation size or number of bins
+    /// - No conditional jumps or pipeline stalls
+    /// - Predictable execution time for all allocation sizes
+    /// - Optimal CPU pipeline utilization compared to O(n) linear search
     /// 
     /// ## Allocation Strategy
     /// 
@@ -440,6 +411,7 @@ namespace internal {
     /// The AllocTable provides comprehensive statistics for performance analysis:
     /// 
     /// ### Global Counters
+    /// - TODO: Outdated
     /// - `totalAllocCount`: Track allocation frequency and patterns
     /// - `totalFreeCount`: Monitor deallocation behavior and potential leaks
     /// - `totalReallocCount`: Identify memory resize patterns
@@ -458,6 +430,7 @@ namespace internal {
     /// - `binSplitCount[i]`: Fragmentation analysis per size class
     /// - `binMergeCount[i]`: Coalescing effectiveness per bin
     /// - `binReuseCount[i]`: Free list hit rate per bin
+    /// - `binPoolCount[i]`: Increased every time a block is insered into the pool
     /// 
     /// ### Derived Metrics
     /// ```cpp
@@ -518,15 +491,14 @@ namespace internal {
     /// - **Fixed-heap predictability**: No OS calls in the hot path; latency is
     ///   stable even under pressure.
     /// 
-    /// ## Allocator Rating Card (x86-64, single-threaded)
+    /// ## Self-evaluated allocator Rating Card (x86-64, single-threaded)
     /// 
     /// - Throughput (steady-state, medium sizes): 9/10 — O(1) SIMD bin select + O(1) free/coalesce
-    /// - Tail Latency Predictability: 9/10 — Branchless hot path; no syscalls in steady state
+    /// - Tail Latency Predictability: 9/10 — Branchless hot path
     /// - Near-OOM Robustness: 10/10 — Coroutine suspension; no overprovisioning required
     /// - Internal Fragmentation: 8/10 — 256 bins, 32-byte granularity balance
     /// - External Fragmentation: 8/10 — Immediate coalescing + wild block reservoir
-    /// - Memory Overhead: 8/10 — Compact headers; 32B alignment trade-off
-    /// - Simplicity/Maintainability: 8/10 — Clear structure; SIMD path requires care
+    /// - Memory Overhead: 8/10 — Compact headers; 32 byte minimum alloc size; 16 byte overhead
     /// - Determinism (single-threaded): 9/10 — Fixed-heap, constant-time selection
     /// - Portability: N/A by design — x86-64 AVX2/BMI1 focus
     /// 
@@ -575,7 +547,7 @@ namespace internal {
     ///   - Research/industrial allocators with bitmap-based bin finding (some use popcnt/ctz), but few (if any) publicly emphasize SIMD+branchless selection at this granularity.
     ///   - Task systems with memory-aware throttling/backpressure, but not at the allocator call boundary as an awaitable primitive.
     /// - Likely novelty
-    ///   - The coroutine-suspending user-space allocator as a first-class API plus a branchless SIMD O(1) selection path appears novel enough for a workshop/experience paper.
+    ///   - The coroutine-suspending user-space allocator as a first-class API
     /// - Contributions
     ///   - O(1) branchless SIMD bin selection with 256 bins and a lane-wise first-set protocol.
     ///   - Coroutine-native alloc API that suspends and resumes without external coordination or extra allocations.
@@ -587,7 +559,7 @@ namespace internal {
     ///   - Ablations: with/without SIMD, with/without suspension, varying bin counts, wildcard reservoir on/off.
     /// - Proofs/assurances
     ///   - Correctness invariants (headers, coalescing, sentinels).
-    ///   - SIMD lane correctness and tzcnt fallbacks not required (x86-64 only, by design).
+    ///   - SIMD lane correctness and tzcnt fallbacks not required (x86-64 only, **by design**).
     ///
     struct AllocTable {
         
@@ -671,41 +643,7 @@ namespace internal {
         
         // ==================== ALLOCATION STATISTICS ====================
         
-        /// \brief Total number of successful allocations
-        /// 
-        /// Incremented on each successful malloc/alloc call. Used for performance
-        /// analysis and allocation pattern profiling.
-        Size totalAllocCount;
-        
-        /// \brief Total number of deallocations
-        /// 
-        /// Incremented on each free call. Should eventually equal totalAllocCount
-        /// in programs that properly free all allocations.
-        Size totalFreeCount;
-        
-        /// \brief Total number of reallocation operations
-        /// 
-        /// Incremented on each realloc call. Tracks memory resize operations
-        /// which may involve copying data to larger blocks.
-        Size totalReallocCount;
-        
-        /// \brief Total number of block splits performed
-        /// 
-        /// Incremented when a free block is split to satisfy a smaller allocation.
-        /// High split counts may indicate fragmentation or suboptimal bin sizing.
-        Size totalSplitCount;
-        
-        /// \brief Total number of block merges performed
-        /// 
-        /// Incremented when adjacent free blocks are coalesced during deallocation.
-        /// Indicates the allocator's effectiveness at reducing fragmentation.
-        Size totalMergeCount;
-        
-        /// \brief Total number of block reuses from free lists
-        /// 
-        /// Incremented when an allocation is satisfied by reusing a free block
-        /// from a bin rather than splitting or expanding the heap.
-        Size totalReuseCount;
+        AllocStats stats;
         
         // ==================== SENTINEL BLOCKS ====================
         
@@ -2616,10 +2554,16 @@ namespace internal {
     constexpr const char* DEBUG_ALLOC_COLOR_HDR    = "\033[36m"; 
 
     
-    inline AllocHeader* NextHeaderPtr(AllocHeader* h) {
+    inline static AllocHeader* NextHeaderPtr(AllocHeader* h) {
         size_t sz = (size_t)h->thisSize.size;
         if (sz == 0) return h;
         return (internal::AllocHeader*)((char*)h + sz);
+    }
+
+    inline static AllocHeader* PrevHeaderPtr(AllocHeader* h) {
+        size_t sz = (size_t)h->prevSize.size;
+        if (sz == 0) return h;
+        return (internal::AllocHeader*)((char*)h - sz);
     }
     
     inline const char* StateText(AllocState s) {
@@ -2992,150 +2936,353 @@ inline void DebugPrintAllocBlocks() noexcept
     PrintBottomBorder();
 }
 
-inline int TryMalloc(Size size, void** outPtr) noexcept {
-    (void)size;
-    (void)outPtr;
-    // using namespace internal;
-    
-    // assert(size > 0);
+// Constants for allocator (add at top of allocator section, around line 212)
+constexpr Size HEADER_SIZE = 16;
+constexpr Size MIN_BLOCK_SIZE = 32;
+constexpr Size ALIGNMENT = 32;
 
-    // AllocTable* at = &gKernel.allocTable;
+// In TryMalloc (replace existing function starting at 2933):
+/// \brief Attempts to synchronously allocate memory from the heap.
+/// 
+/// Algorithm:
+/// 1. Compute aligned block size: Add HEADER_SIZE and round up to ALIGNMENT.
+/// 2. Find smallest available bin >= required using SIMD-accelerated search.
+/// 3. For small bins (<254): Pop free block, split if larger than needed.
+/// 4. For medium bin (254): First-fit search on list, split if possible.
+/// 5. For wild bin (255): Split from wild block or allocate entirely if exact match.
+/// 
+/// Returns nullptr if no suitable block found (heap doesn't grow).
+/// For async version that suspends on failure, use co_await AllocMem(size).
+inline void* TryMalloc(Size size) noexcept {
+    using namespace internal;
+    AllocTable* at = &gKernel.allocTable;
     
-    // // Find the correct requested block size
-    // Size maybeAllocBlock = 16 + size;
-    // Size requestedBlockSize;
-    // Size unalignedSize = maybeAllocBlock & 31ull;
-    // if (unalignedSize != 0) {
-    //     requestedBlockSize = maybeAllocBlock + 32 - unalignedSize;
-    // } else {
-    //     requestedBlockSize = maybeAllocBlock;
-    // }
-    // assert((requestedBlockSize & 31ull) == 0ull);
+    // Compute aligned block size
+    Size maybeBlock = HEADER_SIZE + size;
+    Size unaligned = maybeBlock & (ALIGNMENT - 1);
+    Size requestedBlockSize = (unaligned != 0) ? maybeBlock + (ALIGNMENT - unaligned) : maybeBlock;
+    assert((requestedBlockSize & (ALIGNMENT - 1)) == 0);
+    assert(requestedBlockSize >= MIN_BLOCK_SIZE);
     
-    // // Find the correct free list bucket
-    // int binIdx = FindFreeListBucket(requestedBlockSize, (char*)&at->freeListbinMask);
-    // if (binIdx == 255) {
-    //     // Allocate from the wild block
-    //     assert(GetAllocFreeBinBit(at, 255));
-    //     FreeAllocHeader* wildBlock = at->wildBlock;
-    //     Size wildBlockSize = wildBlock->thisSize.size;
+    // Find bin
+    int binIdx = FindFreeListBucket(requestedBlockSize, (char*)&at->freeListbinMask);
+    assert(GetAllocFreeBinBit(at, binIdx));
+    assert(!IsLinkDetached(&at->freeListBins[binIdx]));
+    assert(at->freeListBinsCount[binIdx] > 0);
+    
+    if (binIdx < 254) {  // Small bin: Pop and optional split
+        DLink* freeStack = &at->freeListBins[binIdx];
+        DLink* link = PopLink(freeStack);
+        --at->freeListBinsCount[binIdx];
+        if (at->freeListBinsCount[binIdx] == 0) ClearAllocFreeBinBit(at, binIdx);
         
-    //     if (wildBlockSize <= requestedBlockSize + 32) { // +32 to allow a the minimum split; with the wildBlock there always must be a valid split
-    //         return 255;
-    //     }
-
-    //     Size newWildBlockSize = wildBlockSize - requestedBlockSize;
-    //     FreeAllocHeader* newWildBlock = (FreeAllocHeader*)((char*)wildBlock + newWildBlockSize);
-    //     newWildBlock->thisSize.size = newWildBlockSize;
-    //     newWildBlock->thisSize.state = (U32)AllocState::WILD_BLOCK;
-    //     DLink* freeList = &at->freeListBins[255];
-    //     newWildBlock->freeListLink.prev = freeList;
-    //     newWildBlock->freeListLink.next = freeList;
-    //     freeList->prev = &newWildBlock->freeListLink;
-    //     freeList->next = &newWildBlock->freeListLink;
-    //     gKernel.allocTable.wildBlock = newWildBlock;
-
-    //     AllocHeader* block = wildBlock;
-    //     ClearLink(&block->freeListLink);
-    //     block->thisSize.size = requestedBlockSize;
-    //     block->thisSize.state = (U32)AllocState::USED;
+        AllocHeader* block = (AllocHeader*)((char*)link - offsetof(FreeAllocHeader, freeListLink));
+        AllocHeader* nextBlock = NextHeaderPtr(block);
+        __builtin_prefetch(nextBlock, 1, 3);
         
-    //     at->freeMemSize -= requestedBlockSize;
-    //     ++at->totalAllocCount;
-    //     ++at->freeListBinsCount[255];
-
-    //     *outPtr = (void*)((char*)block + sizeof(AllocHeader));
-    //     return 0;
-    // }
-
-    // std::print("Unimplemented\n");
-    // std::abort();
+#ifdef IS_DEBUG_MODE
+        ClearLink(link);
+#endif
+        Size blockSize = block->thisSize.size;
+        
+        if (blockSize == requestedBlockSize) {  // Exact match
+            block->thisSize.state = (U32)AllocState::USED;
+            at->freeMemSize -= requestedBlockSize;
+            AllocStats* stats = &at->stats;
+            ++stats->binAllocCount[binIdx];
+            ++stats->binReuseCount[binIdx];
+            nextBlock->prevSize.state = (U32)AllocState::USED;
+            return (void*)((char*)block + HEADER_SIZE);
+        } else {  // Split
+            Size newFreeSize = blockSize - requestedBlockSize;
+            assert(newFreeSize >= MIN_BLOCK_SIZE && newFreeSize % ALIGNMENT == 0);
+            
+            FreeAllocHeader* newFree = (FreeAllocHeader*)((char*)block + requestedBlockSize);
+            __builtin_prefetch(newFree, 1, 3);
+            
+            block->thisSize.size = requestedBlockSize;
+            block->thisSize.state = (U32)AllocState::USED;
+            
+            newFree->thisSize.size = newFreeSize;
+            newFree->thisSize.state = (U32)AllocState::FREE;
+            newFree->prevSize = block->thisSize;
+            
+            nextBlock->prevSize = newFree->thisSize;
+            
+            int newBinIdx = (newFreeSize / ALIGNMENT) - 1;
+            DLink* newStack = &at->freeListBins[newBinIdx];
+            PushLink(newStack, &newFree->freeListLink);
+            ++at->freeListBinsCount[newBinIdx];
+            if (at->freeListBinsCount[newBinIdx] == 1) SetAllocFreeBinBit(at, newBinIdx);
+            
+            AllocStats* stats = &at->stats;
+            ++stats->binAllocCount[binIdx];
+            ++stats->binSplitCount[binIdx];
+            ++stats->binPoolCount[newBinIdx];
+            at->freeMemSize -= requestedBlockSize;
+            
+            return (void*)((char*)block + HEADER_SIZE);
+        }
+    }
     
-    // assert(GetAllocFreeBinBit(at, binIdx));
-    // if (binIdx == 255) {
-
-    // } 
+    if (binIdx == 254) {  // Medium bin: First-fit search and split
+        DLink* mediumList = &at->freeListBins[254];
+        for (DLink* link = mediumList->next; link != mediumList; link = link->next) {
+            FreeAllocHeader* block = (FreeAllocHeader*)((char*)link - offsetof(FreeAllocHeader, freeListLink));
+            Size blockSize = block->thisSize.size;
+            if (blockSize >= requestedBlockSize) {
+                DetachLink(link);
+                --at->freeListBinsCount[254];
+                if (at->freeListBinsCount[254] == 0) ClearAllocFreeBinBit(at, 254);
+                
+                AllocHeader* nextBlock = NextHeaderPtr(block);
+                __builtin_prefetch(nextBlock, 1, 3);
+                
+#ifdef IS_DEBUG_MODE
+                ClearLink(link);
+#endif
+                
+                if (blockSize == requestedBlockSize) {  // Exact
+                    block->thisSize.state = (U32)AllocState::USED;
+                    at->freeMemSize -= requestedBlockSize;
+                    AllocStats* stats = &at->stats;
+                    ++stats->binAllocCount[254];
+                    ++stats->binReuseCount[254];
+                    nextBlock->prevSize.state = (U32)AllocState::USED;
+                    return (void*)((char*)block + HEADER_SIZE);
+                } else {  // Split
+                    Size newFreeSize = blockSize - requestedBlockSize;
+                    assert(newFreeSize >= MIN_BLOCK_SIZE && newFreeSize % ALIGNMENT == 0);
+                    
+                    FreeAllocHeader* newFree = (FreeAllocHeader*)((char*)block + requestedBlockSize);
+                    __builtin_prefetch(newFree, 1, 3);
+                    
+                    block->thisSize.size = requestedBlockSize;
+                    block->thisSize.state = (U32)AllocState::USED;
+                    
+                    newFree->thisSize.size = newFreeSize;
+                    newFree->thisSize.state = (U32)AllocState::FREE;
+                    newFree->prevSize = block->thisSize;
+                    
+                    nextBlock->prevSize = newFree->thisSize;
+                    
+                    // For medium remainder, push back to medium bin (254)
+                    DLink* newStack = &at->freeListBins[254];
+                    PushLink(newStack, &newFree->freeListLink);
+                    ++at->freeListBinsCount[254];
+                    if (at->freeListBinsCount[254] == 1) SetAllocFreeBinBit(at, 254);
+                    
+                    AllocStats* stats = &at->stats;
+                    ++stats->binAllocCount[254];
+                    ++stats->binSplitCount[254];
+                    ++stats->binPoolCount[254];
+                    at->freeMemSize -= requestedBlockSize;
+                    
+                    return (void*)((char*)block + HEADER_SIZE);
+                }
+            }
+        }
+        return nullptr;  // No fit found
+    }
     
-    // DLink* queue = &at->freeListBins[binIdx];
-    // assert(queue->next != queue);
-    // DLink* link = queue->next;
-    // DetachLink(link);
-    // FreeAllocHeader* block = (FreeAllocHeader*)((char*)link - offsetof(FreeAllocHeader, freeListLink));
-    // Size block_size = block->thisSize.size;
-    // assert(block_size >= requestedBlockSize);
-    // if (block_size >= requestedBlockSize + 32) {
-    //     Size remainder_size = block_size - requestedBlockSize;
-    //     FreeAllocHeader* remainder = (FreeAllocHeader*)((char*)block + requestedBlockSize);
-    //     remainder->thisSize.size = remainder_size;
-    //     remainder->thisSize.state = (U32)AllocState::FREE;
-    //     block->thisSize.size = requestedBlockSize;
-    //     block->thisSize.state = (U32)AllocState::USED;
-    //     AllocHeader* next = NextHeaderPtr((AllocHeader*)remainder);
-    //     next->prevSize = remainder->thisSize;
-    //     remainder->prevSize = block->thisSize;
-    //     unsigned remainder_bin = internal::GetFreeListBinIndex((AllocHeader*)remainder);
-    //     DLink* rem_queue = &at->freeListBins[remainder_bin];
-    //     InitLink(&remainder->freeListLink);
-    //     InsertNextLink(rem_queue, &remainder->freeListLink);
-    //     at->freeListBinsCount[remainder_bin]++;
-    //     internal::SetAllocFreeBinBit(at, remainder_bin);
-    // } else {
-    //     block->thisSize.state = (U32)AllocState::USED;
-    // }
-    // at->freeListBinsCount[binIdx]--;
-    // if (at->freeListBinsCount[binIdx] == 0) {
-    //     internal::ClearAllocFreeBinBit(at, binIdx);
-    // }
-    // at->freeMemSize -= requestedBlockSize;
-    // at->totalAllocCount++;
-    // return (void*)((char*)block + 16);
+    if (binIdx == 255) {  // Wild bin
+        assert(at->wildBlock != nullptr);
+        DLink* freeStack = &at->freeListBins[255];
+        DLink* link = &at->wildBlock->freeListLink;
+        DetachLink(link);
+        assert(freeStack->prev == freeStack && freeStack->next == freeStack);  // Empty after detach
+        at->freeListBinsCount[255] = 0;
+        ClearAllocFreeBinBit(at, 255);
+        
+        AllocHeader* oldWild = (AllocHeader*)((char*)link - offsetof(FreeAllocHeader, freeListLink));
+        AllocHeader* nextBlock = NextHeaderPtr(oldWild);
+        __builtin_prefetch(nextBlock, 1, 3);
+        assert(at->wildBlock == (FreeAllocHeader*)oldWild);
+        
+        Size oldSize = oldWild->thisSize.size;
+        
+        if (requestedBlockSize > oldSize) return nullptr;
+        
+        if (requestedBlockSize == oldSize) {  // Exact match: Consume entire wild
+            oldWild->thisSize.state = (U32)AllocState::USED;
+            at->wildBlock = nullptr;
+            at->freeMemSize -= requestedBlockSize;
+            AllocStats* stats = &at->stats;
+            ++stats->binAllocCount[255];
+            ++stats->binReuseCount[255];
+            nextBlock->prevSize.state = (U32)AllocState::USED;
+            return (void*)((char*)oldWild + HEADER_SIZE);
+        } else {  // Split
+            Size newWildSize = oldSize - requestedBlockSize;
+            assert(newWildSize >= MIN_BLOCK_SIZE && newWildSize % ALIGNMENT == 0);
+            
+            AllocHeader* allocated = oldWild;
+            allocated->thisSize.size = requestedBlockSize;
+            allocated->thisSize.state = (U32)AllocState::USED;
+            
+            FreeAllocHeader* newWild = (FreeAllocHeader*)((char*)allocated + requestedBlockSize);
+            newWild->thisSize.size = newWildSize;
+            newWild->thisSize.state = (U32)AllocState::WILD_BLOCK;
+            newWild->prevSize = allocated->thisSize;
+            
+            nextBlock->prevSize = newWild->thisSize;
+            
+            at->wildBlock = newWild;
+            PushLink(freeStack, &newWild->freeListLink);
+            ++at->freeListBinsCount[255];
+            SetAllocFreeBinBit(at, 255);
+            
+            at->freeMemSize -= requestedBlockSize;
+            AllocStats* stats = &at->stats;
+            ++stats->binAllocCount[255];
+            ++stats->binSplitCount[255];
+            
+            return (void*)((char*)allocated + HEADER_SIZE);
+        }
+    }
     
-    return 0;
+    assert(false && "Unreachable");
+    return nullptr;
 }
 
-inline void FreeMem(void* ptr) noexcept {
-    (void)ptr;
+// In FreeMem (replace existing function starting at 3102):
+/// \brief Frees allocated memory and coalesces with adjacent free blocks.
+/// 
+/// Algorithm:
+/// 1. Locate the block from the pointer; return if null.
+/// 2. Perform left coalescing in a loop: while the previous block is free and leftMerges < sideCoalescing, unlink it from its bin, merge it into the current block by adjusting sizes and shifting the block pointer left, update merge stats.
+/// 3. Perform right coalescing in a loop: while the next block is free or wild and rightMerges < sideCoalescing, unlink it, merge into current by adjusting sizes, update next-next prevSize; if it was wild, flag mergedToWild and break the loop.
+/// 4. If mergedToWild, set the block state to WILD_BLOCK and update wild pointer; else, set to FREE and push to the appropriate bin.
+/// 5. Update global free memory size, free count stats, and final next block's prevSize.
+///
+/// This handles chains of adjacent free blocks up to the limit per side.
+/// 
+/// \param ptr Pointer returned by TryMalloc (must not be nullptr).
+/// \param sideCoalescing Maximum number of merges per side (0 = no coalescing, defaults to UINT_MAX for unlimited).
+inline void FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept {
+    using namespace internal;
 
-    // using namespace internal;
-    // if (ptr == nullptr) return;
-    // AllocTable* at = &gKernel.allocTable;
-    // AllocHeader* header = (AllocHeader*)((char*)ptr - 16);
-    // assert(header->thisSize.state == (U32)AllocState::USED);
-    // Size freed_size = header->thisSize.size;
-    // AllocHeader* prev = (AllocHeader*)((char*)header - header->prevSize.size);
-    // AllocHeader* next = NextHeaderPtr(header);
-    // if ((U32)next->thisSize.state == (U32)AllocState::FREE || (U32)next->thisSize.state == (U32)AllocState::WILD_BLOCK) {
-    //     unsigned next_bin = internal::GetFreeListBinIndex(next);
-    //     DetachLink(&((FreeAllocHeader*)next)->freeListLink);
-    //     at->freeListBinsCount[next_bin]--;
-    //     if (at->freeListBinsCount[next_bin] == 0) internal::ClearAllocFreeBinBit(at, next_bin);
-    //     header->thisSize.size += next->thisSize.size;
-    //     AllocHeader* next_next = NextHeaderPtr(header);
-    //     next_next->prevSize = header->thisSize;
-    // }
-    // if ((U32)prev->thisSize.state == (U32)AllocState::FREE || (U32)prev->thisSize.state == (U32)AllocState::WILD_BLOCK) {
-    //     unsigned prev_bin = internal::GetFreeListBinIndex(prev);
-    //     DetachLink(&((FreeAllocHeader*)prev)->freeListLink);
-    //     at->freeListBinsCount[prev_bin]--;
-    //     if (at->freeListBinsCount[prev_bin] == 0) internal::ClearAllocFreeBinBit(at, prev_bin);
-    //     prev->thisSize.size += header->thisSize.size;
-    //     AllocHeader* new_next = NextHeaderPtr(prev);
-    //     new_next->prevSize = prev->thisSize;
-    //     header = prev;
-    // }
-    // header->thisSize.state = (U32)AllocState::FREE;
-    // if (NextHeaderPtr(header) == at->largeBlockSentinel) {
-    //     header->thisSize.state = (U32)AllocState::WILD_BLOCK;
-    //     at->wildBlock = (FreeAllocHeader*)header;
-    // }
-    // unsigned free_bin = internal::GetFreeListBinIndex(header);
-    // FreeAllocHeader* free_head = (FreeAllocHeader*)header;
-    // InitLink(&free_head->freeListLink);
-    // InsertNextLink(&at->freeListBins[free_bin], &free_head->freeListLink);
-    // at->freeListBinsCount[free_bin]++;
-    // internal::SetAllocFreeBinBit(at, free_bin);
-    // at->freeMemSize += freed_size;
-    // at->totalFreeCount++;
+    if (ptr == nullptr) return;
+
+    AllocTable* at = &gKernel.allocTable;
+    FreeAllocHeader* block = (FreeAllocHeader*)((char*)ptr - HEADER_SIZE);
+    assert(block->thisSize.state == (U32)AllocState::USED);
+
+    AllocHeader* nextBlock = NextHeaderPtr(block);
+    Size blockSize = block->thisSize.size;
+    unsigned origBinIdx = GetFreeListBinIndex(block);  // For stats
+
+    // Step 2: Left coalescing loop - merge previous free blocks backwards
+    unsigned leftMerges = 0;
+    while (leftMerges < sideCoalescing) {
+        AllocHeader* prevBlock = PrevHeaderPtr(block);
+        if (prevBlock->thisSize.state != (U32)AllocState::FREE) break;  // Stop if not free
+
+        FreeAllocHeader* prevFree = (FreeAllocHeader*)prevBlock;
+        int prevBin = GetFreeListBinIndex(prevFree);
+
+        // Unlink the previous free block from its bin
+        DetachLink(&prevFree->freeListLink);
+        --at->freeListBinsCount[prevBin];
+        if (at->freeListBinsCount[prevBin] == 0) ClearAllocFreeBinBit(at, prevBin);
+
+        // Merge: extend prev into current by adding sizes, shift block to prev
+        prevBlock->thisSize.size += blockSize;
+        block = (FreeAllocHeader*)prevBlock;
+        blockSize = block->thisSize.size;
+
+        // Update stats for this merge
+        AllocStats* stats = &at->stats;
+        ++stats->binMergeCount[prevBin];
+
+        ++leftMerges;
+    }
+
+    // Step 3: Right coalescing loop - merge next free/wild blocks forwards
+    unsigned rightMerges = 0;
+    bool mergedToWild = false;
+    while (rightMerges < sideCoalescing) {
+        nextBlock = NextHeaderPtr(block);  // Refresh next after any prior merges
+        AllocState nextState = (AllocState)nextBlock->thisSize.state;
+        if (nextState != AllocState::FREE && nextState != AllocState::WILD_BLOCK) break;  // Stop if not free/wild
+
+        FreeAllocHeader* nextFree = (FreeAllocHeader*)nextBlock;
+        Size nextSize = nextBlock->thisSize.size;
+
+        if (nextState == AllocState::FREE) {
+            int nextBin = GetFreeListBinIndex(nextFree);
+
+            // Unlink the next free block from its bin
+            DetachLink(&nextFree->freeListLink);
+            --at->freeListBinsCount[nextBin];
+            if (at->freeListBinsCount[nextBin] == 0) ClearAllocFreeBinBit(at, nextBin);
+
+            // Update stats for this merge
+            AllocStats* stats = &at->stats;
+            ++stats->binMergeCount[nextBin];
+        } else {  // Wild block
+            assert(nextFree == at->wildBlock);
+
+            // Unlink the wild block
+            DetachLink(&nextFree->freeListLink);
+            at->freeListBinsCount[255] = 0;
+            ClearAllocFreeBinBit(at, 255);
+
+            // Update stats and flag
+            AllocStats* stats = &at->stats;
+            ++stats->binMergeCount[255];
+            mergedToWild = true;
+        }
+
+        // Merge: extend current into next by adding sizes
+        block->thisSize.size += nextSize;
+        blockSize = block->thisSize.size;
+
+        // Update the block after next's prevSize to point to the expanded current
+        AllocHeader* nextNext = NextHeaderPtr(nextBlock);
+        nextNext->prevSize = block->thisSize;
+
+        ++rightMerges;
+
+        // If we merged the wild block, stop further right coalescing
+        if (mergedToWild) break;
+    }
+
+    // Step 4: Set final state based on whether we merged to wild
+    if (mergedToWild) {
+        block->thisSize.state = (U32)AllocState::WILD_BLOCK;
+        at->wildBlock = block;
+        // Wild doesn't get pushed to a bin
+    } else {
+        block->thisSize.state = (U32)AllocState::FREE;
+        int newBinIdx = (blockSize / ALIGNMENT) - 1;
+        DLink* newStack = &at->freeListBins[newBinIdx];
+        PushLink(newStack, &block->freeListLink);
+        ++at->freeListBinsCount[newBinIdx];
+        if (at->freeListBinsCount[newBinIdx] == 1) SetAllocFreeBinBit(at, newBinIdx);
+
+        // Update pool stats for the new free block
+        AllocStats* stats = &at->stats;
+        ++stats->binPoolCount[newBinIdx];
+    }
+
+    // Step 5: Update global stats and final metadata
+    at->freeMemSize += blockSize;  // Add the total merged size to free memory
+    AllocStats* stats = &at->stats;
+    ++stats->binFreeCount[origBinIdx];
+
+    // Ensure the final next block's prevSize is updated
+    nextBlock = NextHeaderPtr(block);
+    nextBlock->prevSize = block->thisSize;
+}
+
+// Move/place these definitions before FreeMem, e.g., around line 3273, and qualify with internal::
+inline internal::AllocHeader* NextHeaderPtr(internal::AllocHeader* h) noexcept {
+    return (internal::AllocHeader*)((char*)h + h->thisSize.size);
+}
+
+inline internal::AllocHeader* PrevHeaderPtr(internal::AllocHeader* h) noexcept {
+    return (internal::AllocHeader*)((char*)h - h->prevSize.size);
 }
 
 } // namespace ak

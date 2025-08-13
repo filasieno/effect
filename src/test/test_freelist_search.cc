@@ -13,11 +13,7 @@ static char bitFieldStorage[256] = {0};
 DefineTask MainTask() noexcept {
 	char* bitField = (char*)(((uintptr_t)&bitFieldStorage) & ~63ull);
     
-    // Test 1: allocSize=0, requiredBin=0, bit 0 set
-    std::print("Test 1: allocSize=0, requiredBin=0, bit 0 set\n");
-    ResetBitField(bitField);
-    internal::SetFreeListBit(bitField, 0);
-    assert(internal::FindFreeListBucket(0, bitField) == 0);
+    // Note that an allocation size of 0 is illegal
 
     // Test 2: allocSize=1, requiredBin=0, bit 0 not set, bit 1 set
     std::print("Test 2: allocSize=1, requiredBin=0, bit 0 not set, bit 1 set\n");
