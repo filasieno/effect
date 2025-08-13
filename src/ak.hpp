@@ -205,7 +205,9 @@ namespace internal {
         AllocSizeRecord prevSize;
     };
 
-    struct FreeAllocHeader : public AllocHeader {
+    struct FreeAllocHeader {
+        AllocSizeRecord thisSize;
+        AllocSizeRecord prevSize;
         DLink freeListLink;
     };
     static_assert(sizeof(FreeAllocHeader) == 32);
@@ -2927,7 +2929,7 @@ inline void DebugPrintAllocBlocks() noexcept
     PrintHeader();
     PrintHeaderSeparator();
     AllocHeader* head = (AllocHeader*) gKernel.allocTable.beginSentinel;
-    AllocHeader* end  = (AllocHeader*) NextHeaderPtr(gKernel.allocTable.endSentinel);
+    AllocHeader* end  = (AllocHeader*) NextHeaderPtr((AllocHeader*)gKernel.allocTable.endSentinel);
     
     for (; head != end; head = NextHeaderPtr(head)) {
         PrintRow(head);
@@ -3035,7 +3037,7 @@ inline void* TryMalloc(Size size) noexcept {
                 --at->freeListBinsCount[254];
                 if (at->freeListBinsCount[254] == 0) ClearAllocFreeBinBit(at, 254);
                 
-                AllocHeader* nextBlock = NextHeaderPtr(block);
+                AllocHeader* nextBlock = NextHeaderPtr((AllocHeader*)block);
                 __builtin_prefetch(nextBlock, 1, 3);
                 
 #ifdef IS_DEBUG_MODE
@@ -3168,18 +3170,18 @@ inline void FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept {
     FreeAllocHeader* block = (FreeAllocHeader*)((char*)ptr - HEADER_SIZE);
     assert(block->thisSize.state == (U32)AllocState::USED);
 
-    AllocHeader* nextBlock = NextHeaderPtr(block);
+    AllocHeader* nextBlock = NextHeaderPtr((AllocHeader*)block);
     Size blockSize = block->thisSize.size;
-    unsigned origBinIdx = GetFreeListBinIndex(block);  // For stats
+    unsigned origBinIdx = GetFreeListBinIndex((AllocHeader*)block);  // For stats
 
     // Step 2: Left coalescing loop - merge previous free blocks backwards
     unsigned leftMerges = 0;
     while (leftMerges < sideCoalescing) {
-        AllocHeader* prevBlock = PrevHeaderPtr(block);
+        AllocHeader* prevBlock = PrevHeaderPtr((AllocHeader*)block);
         if (prevBlock->thisSize.state != (U32)AllocState::FREE) break;  // Stop if not free
 
         FreeAllocHeader* prevFree = (FreeAllocHeader*)prevBlock;
-        int prevBin = GetFreeListBinIndex(prevFree);
+        int prevBin = GetFreeListBinIndex((AllocHeader*)prevFree);
 
         // Unlink the previous free block from its bin
         DetachLink(&prevFree->freeListLink);
@@ -3202,7 +3204,7 @@ inline void FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept {
     unsigned rightMerges = 0;
     bool mergedToWild = false;
     while (rightMerges < sideCoalescing) {
-        nextBlock = NextHeaderPtr(block);  // Refresh next after any prior merges
+        nextBlock = NextHeaderPtr((AllocHeader*)block);  // Refresh next after any prior merges
         AllocState nextState = (AllocState)nextBlock->thisSize.state;
         if (nextState != AllocState::FREE && nextState != AllocState::WILD_BLOCK) break;  // Stop if not free/wild
 
@@ -3210,7 +3212,7 @@ inline void FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept {
         Size nextSize = nextBlock->thisSize.size;
 
         if (nextState == AllocState::FREE) {
-            int nextBin = GetFreeListBinIndex(nextFree);
+            int nextBin = GetFreeListBinIndex((AllocHeader*)nextFree);
 
             // Unlink the next free block from its bin
             DetachLink(&nextFree->freeListLink);
@@ -3272,7 +3274,7 @@ inline void FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept {
     ++stats->binFreeCount[origBinIdx];
 
     // Ensure the final next block's prevSize is updated
-    nextBlock = NextHeaderPtr(block);
+    nextBlock = NextHeaderPtr((AllocHeader*)block);
     nextBlock->prevSize = block->thisSize;
 }
 
