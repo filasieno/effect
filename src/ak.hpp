@@ -2555,7 +2555,6 @@ namespace internal {
     constexpr const char* DEBUG_ALLOC_COLOR_RED    = "\033[1;31m"; 
     constexpr const char* DEBUG_ALLOC_COLOR_HDR    = "\033[36m"; 
 
-    
     inline static AllocHeader* NextHeaderPtr(AllocHeader* h) {
         size_t sz = (size_t)h->thisSize.size;
         if (sz == 0) return h;
@@ -2839,22 +2838,22 @@ namespace internal {
 #else
         // Fallback: branchless, fully unrolled scan of 4x64-bit words
         const uint64_t* words = (const uint64_t*)bitField; // 4 x 64-bit words
-        const unsigned word_idx = requiredBin >> 6;        // 0..3
-        const unsigned bit_in_word = requiredBin & 63u;    // 0..63
+        const unsigned wordIdx = requiredBin >> 6;        // 0..3
+        const unsigned bitInWord = requiredBin & 63u;    // 0..63
 
-        const uint64_t startMask = ~0ull << bit_in_word;   // valid when selecting the starting word
+        const uint64_t startMask = ~0ull << bitInWord;   // valid when selecting the starting word
 
         // Enable masks for words >= word_idx (0xFFFFFFFFFFFFFFFF or 0x0)
-        const uint64_t en0 = (uint64_t)-(0u >= word_idx);
-        const uint64_t en1 = (uint64_t)-(1u >= word_idx);
-        const uint64_t en2 = (uint64_t)-(2u >= word_idx);
-        const uint64_t en3 = (uint64_t)-(3u >= word_idx);
+        const uint64_t en0 = (uint64_t)-(0u >= wordIdx);
+        const uint64_t en1 = (uint64_t)-(1u >= wordIdx);
+        const uint64_t en2 = (uint64_t)-(2u >= wordIdx);
+        const uint64_t en3 = (uint64_t)-(3u >= wordIdx);
 
         // Equal masks for exactly the starting word
-        const uint64_t eq0 = (uint64_t)-(0u == word_idx);
-        const uint64_t eq1 = (uint64_t)-(1u == word_idx);
-        const uint64_t eq2 = (uint64_t)-(2u == word_idx);
-        const uint64_t eq3 = (uint64_t)-(3u == word_idx);
+        const uint64_t eq0 = (uint64_t)-(0u == wordIdx);
+        const uint64_t eq1 = (uint64_t)-(1u == wordIdx);
+        const uint64_t eq2 = (uint64_t)-(2u == wordIdx);
+        const uint64_t eq3 = (uint64_t)-(3u == wordIdx);
 
         // Per-word effective masks: for starting word use startMask, otherwise ~0ull; then gate with enable mask
         const uint64_t mask0 = en0 & ((eq0 & startMask) | (~eq0 & ~0ull));
@@ -2982,9 +2981,10 @@ inline void* TryMalloc(Size size) noexcept {
         AllocHeader* nextBlock = NextHeaderPtr(block);
         __builtin_prefetch(nextBlock, 1, 3);
         
-#ifdef IS_DEBUG_MODE
-        ClearLink(link);
-#endif
+        if constexpr (IS_DEBUG_MODE) {
+            ClearLink(link);
+        }
+
         Size blockSize = block->thisSize.size;
         
         if (blockSize == requestedBlockSize) {  // Exact match
@@ -3040,10 +3040,10 @@ inline void* TryMalloc(Size size) noexcept {
                 AllocHeader* nextBlock = NextHeaderPtr((AllocHeader*)block);
                 __builtin_prefetch(nextBlock, 1, 3);
                 
-#ifdef IS_DEBUG_MODE
-                ClearLink(link);
-#endif
-                
+                if constexpr (IS_DEBUG_MODE) {
+                    ClearLink(link);
+                }         
+
                 if (blockSize == requestedBlockSize) {  // Exact
                     block->thisSize.state = (U32)AllocState::USED;
                     at->freeMemSize -= requestedBlockSize;
@@ -3069,15 +3069,16 @@ inline void* TryMalloc(Size size) noexcept {
                     nextBlock->prevSize = newFree->thisSize;
                     
                     // For medium remainder, push back to medium bin (254)
-                    DLink* newStack = &at->freeListBins[254];
+                    U64 newBinIdx = GetSmallBinIndexFromSize((U64)newFreeSize);
+                    DLink* newStack = &at->freeListBins[newBinIdx];
                     PushLink(newStack, &newFree->freeListLink);
-                    ++at->freeListBinsCount[254];
-                    if (at->freeListBinsCount[254] == 1) SetAllocFreeBinBit(at, 254);
+                    ++at->freeListBinsCount[newBinIdx];
+                    SetAllocFreeBinBit(at, newBinIdx);
                     
                     AllocStats* stats = &at->stats;
                     ++stats->binAllocCount[254];
                     ++stats->binSplitCount[254];
-                    ++stats->binPoolCount[254];
+                    ++stats->binPoolCount[newBinIdx];
                     at->freeMemSize -= requestedBlockSize;
                     
                     return (void*)((char*)block + HEADER_SIZE);
@@ -3103,44 +3104,34 @@ inline void* TryMalloc(Size size) noexcept {
         
         Size oldSize = oldWild->thisSize.size;
         
-        if (requestedBlockSize > oldSize) return nullptr;
+        if (requestedBlockSize >= (oldSize + 32)) return nullptr; // not enough space
         
-        if (requestedBlockSize == oldSize) {  // Exact match: Consume entire wild
-            oldWild->thisSize.state = (U32)AllocState::USED;
-            at->wildBlock = nullptr;
-            at->freeMemSize -= requestedBlockSize;
-            AllocStats* stats = &at->stats;
-            ++stats->binAllocCount[255];
-            ++stats->binReuseCount[255];
-            nextBlock->prevSize.state = (U32)AllocState::USED;
-            return (void*)((char*)oldWild + HEADER_SIZE);
-        } else {  // Split
-            Size newWildSize = oldSize - requestedBlockSize;
-            assert(newWildSize >= MIN_BLOCK_SIZE && newWildSize % ALIGNMENT == 0);
-            
-            AllocHeader* allocated = oldWild;
-            allocated->thisSize.size = requestedBlockSize;
-            allocated->thisSize.state = (U32)AllocState::USED;
-            
-            FreeAllocHeader* newWild = (FreeAllocHeader*)((char*)allocated + requestedBlockSize);
-            newWild->thisSize.size = newWildSize;
-            newWild->thisSize.state = (U32)AllocState::WILD_BLOCK;
-            newWild->prevSize = allocated->thisSize;
-            
-            nextBlock->prevSize = newWild->thisSize;
-            
-            at->wildBlock = newWild;
-            PushLink(freeStack, &newWild->freeListLink);
-            ++at->freeListBinsCount[255];
-            SetAllocFreeBinBit(at, 255);
-            
-            at->freeMemSize -= requestedBlockSize;
-            AllocStats* stats = &at->stats;
-            ++stats->binAllocCount[255];
-            ++stats->binSplitCount[255];
-            
-            return (void*)((char*)allocated + HEADER_SIZE);
-        }
+        Size newWildSize = oldSize - requestedBlockSize;
+        assert(newWildSize >= MIN_BLOCK_SIZE && newWildSize % ALIGNMENT == 0);
+        
+        AllocHeader* allocated = oldWild;
+        allocated->thisSize.size = requestedBlockSize;
+        allocated->thisSize.state = (U32)AllocState::USED;
+        
+        FreeAllocHeader* newWild = (FreeAllocHeader*)((char*)allocated + requestedBlockSize);
+        newWild->thisSize.size = newWildSize;
+        newWild->thisSize.state = (U32)AllocState::WILD_BLOCK;
+        newWild->prevSize = allocated->thisSize;
+        
+        nextBlock->prevSize = newWild->thisSize;
+        
+        at->wildBlock = newWild;
+        PushLink(freeStack, &newWild->freeListLink);
+        ++at->freeListBinsCount[255];
+        SetAllocFreeBinBit(at, 255);
+        
+        at->freeMemSize -= requestedBlockSize;
+        AllocStats* stats = &at->stats;
+        ++stats->binAllocCount[255];
+        ++stats->binSplitCount[255];
+        
+        return (void*)((char*)allocated + HEADER_SIZE);
+    
     }
     
     assert(false && "Unreachable");
@@ -3278,13 +3269,5 @@ inline void FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept {
     nextBlock->prevSize = block->thisSize;
 }
 
-// Move/place these definitions before FreeMem, e.g., around line 3273, and qualify with internal::
-inline internal::AllocHeader* NextHeaderPtr(internal::AllocHeader* h) noexcept {
-    return (internal::AllocHeader*)((char*)h + h->thisSize.size);
-}
-
-inline internal::AllocHeader* PrevHeaderPtr(internal::AllocHeader* h) noexcept {
-    return (internal::AllocHeader*)((char*)h - h->prevSize.size);
-}
 
 } // namespace ak

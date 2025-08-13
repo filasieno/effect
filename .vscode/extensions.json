@@ -1,9 +1,10 @@
 {
     "recommendations": [
+        "ms-vscode.cpptools",
+        "ms-vscode.hexeditor",
         "github.vscode-pull-request-github",
         "github.vscode-github-actions",
         "github.vscode-codeql",
         "shd101wyy.markdown-preview-enhanced",
-        "llvm-vs-code-extensions.vscode-clangd"
     ]
 }
