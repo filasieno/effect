@@ -81,7 +81,7 @@ else
 endif
 	printf -- '$(ANSI_YELLOW)---------- Finished test:$(ANSI_RESET) %s\n' '$<'
 
-build/precompiled.pch: src/precompiled.hpp | build/.
+build/precompiled.pch: src/ak/precompiled.hpp | build/.
 	$(call trace,CXX -o $@ -c $<)
 	$(COMPILE.cc) -x c++-header -MMD -MP -MF build/precompiled.d -o $@ -c $<
 

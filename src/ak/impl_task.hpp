@@ -120,7 +120,7 @@ namespace ak {
         }
 
         do {
-            Link* next = DequeueLink(&awaitingTerminationList);
+            utl::DLink* next = DequeueLink(&awaitingTerminationList);
             TaskContext* ctx = GetLinkedTaskContext(next);
             DebugTaskCount();
             assert(ctx->state == TaskState::WAITING);
@@ -303,3 +303,15 @@ namespace ak {
     inline ResumeTaskOp ResumeTask(TaskHdl hdl) noexcept { return ResumeTaskOp(hdl); }
 
 }
+
+// Private API Implementation
+// ----------------------------------------------------------------------------------------------------------------
+
+namespace ak { namespace priv {
+
+    inline TaskContext* GetLinkedTaskContext(const utl::DLink* link) noexcept {
+        unsigned long long promise_off = ((unsigned long long)link) - offsetof(TaskContext, waitLink);
+        return (TaskContext*)promise_off;
+    }
+
+}} // namespace ak::priv

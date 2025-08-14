@@ -1,13 +1,6 @@
 #pragma once
 
-#include <cassert>
-#include <coroutine>
-#include <print>
-#include <cstdint>
-#include <cstring>
-#include <immintrin.h>
-#include "liburing.h"
-
+#include "ak/precompiled.hpp"
 #include "ak/defs.hpp"
 #include "ak/utl.hpp"
 #include "ak/api.hpp"

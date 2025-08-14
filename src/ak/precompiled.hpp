@@ -1,5 +1,4 @@
-#ifndef PRECOMPILED_HPP
-#define PRECOMPILED_HPP
+#pragma once
 
 #include <cassert>     // IWYU pragma: keep
 #include <coroutine>   // IWYU pragma: keep
@@ -9,4 +8,3 @@
 #include <immintrin.h> // IWYU pragma: keep - AVX2 intrinsics
 #include "liburing.h"  // IWYU pragma: keep
 
-#endif

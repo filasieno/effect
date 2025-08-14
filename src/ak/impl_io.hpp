@@ -2,25 +2,12 @@
 
 #include "ak/api_priv.hpp"
 
-namespace ak {
+namespace ak { namespace priv {
 
+    template <typename Prep>
+    inline ExecIOOp PrepareIO(Prep prep) noexcept;
 
-
-    namespace priv {
-        template <typename Prep>
-        inline ExecIOOp PrepareIO(Prep prep) noexcept;
-    }
-}    
-
-// Support Functions
-// ----------------------------------------------------------------------------------------------------------------
-
-namespace ak  {
-    namespace priv {
-        void DebugTaskCount() noexcept;
-        void CheckInvariants() noexcept;
-    }
-}
+} }    
 
 // Implementation
 // ----------------------------------------------------------------------------------------------------------------

@@ -3,6 +3,7 @@
 #include <coroutine>
 #include <cassert>
 #include <immintrin.h>
+#include "liburing.h"
 
 #include "ak/defs.hpp"
 #include "ak/utl.hpp"
@@ -201,12 +202,7 @@ namespace ak
     };
 
     // Global kernel instance declaration (defined in ak.hpp)
-    extern struct Kernel gKernel;
-
-    // Define the global Kernel instance in ak namespace
-    #ifdef AK_IMPLEMENTATION
-    alignas(64) struct Kernel gKernel;
-    #endif
+    alignas(64) inline Kernel gKernel;
     
     // Main Routine
     struct KernelConfig {
@@ -343,30 +339,3 @@ namespace ak
     };
 
 }
-
-namespace ak 
-{
-
-    namespace priv 
-    {
-
-        TaskHdl ScheduleNextTask() noexcept;
-
-        void CheckInvariants() noexcept;
-        void DebugTaskCount() noexcept;
-
-    } // namespace priv
-    
-    
-
-    // TaskContext Utlities
-    // ----------------------------------------------------------------------------------------------------------------
-
-    inline static TaskContext* GetLinkedTaskContext(const utl::DLink* link) noexcept {
-        unsigned long long promise_off = ((unsigned long long)link) - offsetof(TaskContext, waitLink);
-        return (TaskContext*)promise_off;
-    }
-
-  
-
-} // namespace ak

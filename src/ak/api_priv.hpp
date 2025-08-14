@@ -12,7 +12,8 @@ namespace ak { namespace priv {
     AllocHeader* PrevAllocHeaderPtr(AllocHeader* h) noexcept;
 
     // Scheduling routines
-    TaskHdl ScheduleNextTask() noexcept;
+    TaskHdl      ScheduleNextTask() noexcept;
+    TaskContext* GetLinkedTaskContext(const utl::DLink* link) noexcept;
     
     // Debug routines
     void DebugTaskCount() noexcept;
