@@ -103,8 +103,8 @@ inline DLink* PopLink(DLink* stack) {
 
 } // namespace utl
 
-namespace internal {
-    // For backward compatibility, alias DLink and functions in internal namespace
+namespace priv {
+    // For backward compatibility, alias DLink and functions in priv namespace
     using DLink = utl::DLink;
     using utl::InitLink;
     using utl::IsLinkDetached;
@@ -116,6 +116,6 @@ namespace internal {
     using utl::InsertNextLink;
     using utl::PushLink;
     using utl::PopLink;
-} // namespace internal
+} // namespace priv
 
 } // namespace ak

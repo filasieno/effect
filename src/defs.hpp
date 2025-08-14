@@ -16,7 +16,7 @@ namespace ak {
     using U32  = __u32; 
     using Size = __SIZE_TYPE__; 
 
-    namespace internal {
+    namespace priv {
 
         #ifdef NDEBUG
             constexpr bool IS_DEBUG_MODE    = false;
@@ -26,5 +26,5 @@ namespace ak {
         
         constexpr bool TRACE_DEBUG_CODE = false;
 
-    } // namespace ak::internal
+    } // namespace ak::priv
 } // namespace ak

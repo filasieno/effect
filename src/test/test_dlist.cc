@@ -5,18 +5,16 @@
 
 using namespace ak;
 
-using namespace ak::utl;
-
 struct Data;
 
 struct Data {
-    DLink node;
+    utl::DLink node;
     int  value;
 };
 
 int main() {
-  // This is a placeholder for the main function.
-  // You can add your test cases or logic here.
+  using namespace utl;
+  
   Data d1;
   d1.value = 100;
   InitLink(&d1.node);

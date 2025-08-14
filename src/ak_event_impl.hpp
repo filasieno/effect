@@ -1,42 +1,13 @@
 #pragma once
-
-#include "dlist.hpp"
-#include "types.hpp"
+#include "core.hpp"
 
 namespace ak {
-
-    struct Event {  
-        utl::DLink waitingList;
-    };
-
-    struct WaitOp {
-        WaitOp(Event* event) : evt(event) {}
-
-        constexpr bool    await_ready() const noexcept;
-        constexpr TaskHdl await_suspend(TaskHdl hdl) const noexcept;
-        constexpr void    await_resume() const noexcept;
-
-        Event* evt;
-    };
-
-    void   InitEvent(Event* event);
-    int    SignalOne(Event* event);
-    int    SignalSome(Event* event, int n);
-    int    SignalAll(Event* event);
-    WaitOp WaitEvent(Event* event);
-}
-
-
-// ------------------------------------------------------------------------------------------------
-// Implementation
-// ------------------------------------------------------------------------------------------------
-namespace ak {
-    inline constexpr bool WaitOp::await_ready() const noexcept { 
-        return false; 
-    }
+    
+    // WaitOp
+    // ----------------------------------------------------------------------------------------------------------------
 
     inline constexpr TaskHdl WaitOp::await_suspend(TaskHdl hdl) const noexcept {
-        using namespace internal;
+        using namespace priv;
         using namespace utl;
 
         TaskContext* ctx = &hdl.promise();
@@ -53,16 +24,17 @@ namespace ak {
         return ScheduleNextTask();
     }
 
-    inline constexpr void WaitOp::await_resume() const noexcept { }
+    // Event routines implementation
+    // ----------------------------------------------------------------------------------------------------------------
 
     inline void InitEvent(Event* event) {
-        using namespace ak::utl;
+        using namespace utl;
         InitLink(&event->waitingList);
     }
 
     inline int SignalOne(Event* event) {
-        using namespace ak::utl;
-        using namespace ak::internal;
+        using namespace utl;
+        using namespace priv;
         assert(event != nullptr);
         
         if (IsLinkDetached(&event->waitingList)) return 0;
@@ -81,8 +53,8 @@ namespace ak {
     }
 
     inline int SignalSome(Event* event, int n) {
-        using namespace ak::utl;
-        using namespace ak::internal;
+        using namespace utl;
+        using namespace priv;
         assert(event != nullptr);
         assert(n >= 0);
         int cc = 0;
@@ -103,8 +75,8 @@ namespace ak {
     }
 
     inline int SignalAll(Event* event) {
-        using namespace ak::utl;
-        using namespace ak::internal;
+        using namespace utl;
+        using namespace priv;
         assert(event != nullptr);
         int signalled = 0;
         while (!IsLinkDetached(&event->waitingList)) {
@@ -125,7 +97,7 @@ namespace ak {
     }
 
     inline WaitOp WaitEvent(Event* event) {
-        using namespace ak::utl;
+        using namespace utl;
         assert(event != nullptr);
         return WaitOp{event};
     }

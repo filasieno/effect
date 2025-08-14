@@ -8,13 +8,14 @@
 #include <immintrin.h>
 #include "liburing.h"
 
-
 #include "defs.hpp"
 #include "dlist.hpp"
 #include "types.hpp"
 #include "alloc.hpp"
 #include "core.hpp"
 #include "kernel.hpp"
+#include "ak_io_impl.hpp"
+#include "ak_event_impl.hpp"
 
 namespace ak {
 
@@ -23,7 +24,7 @@ namespace ak {
 // Task::AwaitTaskEffect
 // ----------------------------------------------------------------------------------------------------------------
 
-namespace internal 
+namespace priv 
 {
     struct RunSchedulerTaskOp {
         constexpr bool await_ready() const noexcept;
@@ -66,7 +67,7 @@ namespace internal
     void                 DestroySchedulerTask(TaskHdl hdl) noexcept;
 }
 
-namespace internal {
+namespace priv {
 
 
     inline constexpr bool RunSchedulerTaskOp::await_ready() const noexcept { 
@@ -76,7 +77,7 @@ namespace internal {
     inline constexpr void RunSchedulerTaskOp::await_resume() const noexcept {}
 
     inline TaskHdl RunSchedulerTaskOp::await_suspend(KernelTaskHdl currentTaskHdl) const noexcept {
-        using namespace internal;
+        using namespace priv;
 
         (void)currentTaskHdl;
         TaskContext& schedulerPromise = gKernel.schedulerTaskHdl.promise();
@@ -109,7 +110,7 @@ namespace internal {
     }
 
     inline KernelTaskHdl TerminateSchedulerOp::await_suspend(TaskHdl hdl) const noexcept {
-        using namespace internal;
+        using namespace priv;
 
         assert(gKernel.currentTaskHdl == gKernel.schedulerTaskHdl);
         assert(gKernel.currentTaskHdl == hdl);
@@ -133,7 +134,7 @@ namespace internal {
     }
 
     inline void DestroySchedulerTask(TaskHdl hdl) noexcept {
-        using namespace internal;
+        using namespace priv;
         TaskContext* promise = &hdl.promise();
 
         // Remove from Task list
@@ -194,7 +195,7 @@ namespace internal {
     /// \return the next Task to be resumed
     /// \internal
     inline TaskHdl ScheduleNextTask() noexcept {
-        using namespace internal;
+        using namespace priv;
 
         // If we have a ready task, resume it
         while (true) {
@@ -282,7 +283,7 @@ namespace internal {
 
     template <typename... Args>
     inline DefineTask SchedulerTaskProc(DefineTask(*mainProc)(Args ...) noexcept, Args... args) noexcept {
-        using namespace internal;
+        using namespace priv;
 
         TaskHdl mainTask = mainProc(args...);
         assert(!mainTask.done());
@@ -387,7 +388,7 @@ namespace internal {
 
 
     inline int InitKernel(KernelConfig* config) noexcept {
-        using namespace internal;
+        using namespace priv;
         
         if (InitAllocTable(&gKernel.allocTable, config->mem, config->memSize) != 0) {
             return -1;
@@ -476,27 +477,9 @@ namespace internal {
 /// \param UserProc the user's main task
 /// \return 0 on success
 /// \ingroup Kernel
-template <typename... Args>
-inline int RunMain(KernelConfig* config, DefineTask(*mainProc)(Args ...) noexcept , Args... args) noexcept {  
-    using namespace internal;
 
-    if (InitKernel(config) < 0) {
-        return -1;
-    }
 
-    KernelTaskHdl hdl = KernelTaskProc(mainProc, std::forward<Args>(args) ...);
-    gKernel.kernelTask = hdl;
-    hdl.resume();
 
-    FiniKernel();
-
-    return 0;
-}
-
-// Define the global Kernel instance in ak namespace
-#ifdef AK_IMPLEMENTATION
-alignas(64) struct ak::Kernel gKernel;
-#endif
 
 // -----------------------------------------------------------------------------
 // DebugAPI 
@@ -576,645 +559,10 @@ inline int GetCurrentTaskEnqueuedIOOps() noexcept {
     return GetTaskContext()->enqueuedIO;
 }
 
-namespace internal {
-    
-    // todo
-    struct IODrainOp {
-        constexpr bool await_ready() const noexcept { 
-            // todo: 
-            return false;
-        }
-        
-        constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) noexcept {
-            // todo: 
-            return currentTaskHdl;
-        }
-
-        constexpr int await_resume() const noexcept { 
-            // todo: 
-            return 0;
-        }
-    };
-
-    struct IOWaitOneOp {
-        constexpr bool await_ready() const noexcept { 
-            return false;
-        }
-        
-        constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) noexcept {
-            // if suspend is called we know that the operation has been submitted
-            using namespace internal;
-
-            // Move the current Task from RUNNING to IO_WAITING
-            TaskContext* ctx = &currentTaskHdl.promise();
-            assert(ctx->state == TaskState::RUNNING);
-            ctx->state = TaskState::IO_WAITING;
-            ++gKernel.ioWaitingCount;
-            ClearTaskHdl(&gKernel.currentTaskHdl);
-            CheckInvariants();
-            DebugTaskCount();
-
-            // Move the scheduler task from READY to RUNNING
-            TaskContext* schedCtx = &gKernel.schedulerTaskHdl.promise();
-            assert(schedCtx->state == TaskState::READY);
-            schedCtx->state = TaskState::RUNNING;
-            DetachLink(&schedCtx->waitLink);
-            --gKernel.readyCount;
-            gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
-            CheckInvariants();
-            DebugTaskCount();
-
-            return gKernel.schedulerTaskHdl;
-        }
-
-        constexpr int await_resume() const noexcept { return gKernel.currentTaskHdl.promise().ioResult; }
-    };
-
-    template <typename Prep>
-    inline internal::IOWaitOneOp PrepareIO(Prep prep) noexcept {
-        using namespace internal;
-        
-        TaskContext* ctx = &gKernel.currentTaskHdl.promise();
-
-        // Ensure free submission slot 
-        unsigned int free_slots = io_uring_sq_space_left(&gKernel.ioRing);
-        while (free_slots < 1) {
-            int ret = io_uring_submit(&gKernel.ioRing);
-            if (ret < 0) {
-                abort();
-                // unreachable
-            }
-            free_slots = io_uring_sq_space_left(&gKernel.ioRing);
-        }
-
-        // Enqueue operation
-        io_uring_sqe* sqe = io_uring_get_sqe(&gKernel.ioRing);
-        io_uring_sqe_set_data(sqe, (void*) ctx);
-        prep(sqe);  // Call the preparation function
-        ctx->ioResult = 0;
-        ++ctx->enqueuedIO;
-        return {};
-    }
-  
-}
-
-
-// File Operations
-inline internal::IOWaitOneOp IOOpen(const char* path, int flags, mode_t mode) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_openat(sqe, AT_FDCWD, path, flags, mode);
-    });
-}
-
-inline internal::IOWaitOneOp IOOpenAt(int dfd, const char* path, int flags, mode_t mode) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_openat(sqe, dfd, path, flags, mode);
-    });
-}
-
-inline internal::IOWaitOneOp IOOpenAtDirect(int dfd, const char* path, int flags, mode_t mode, unsigned file_index) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_openat_direct(sqe, dfd, path, flags, mode, file_index);
-    });
-}
-
-inline internal::IOWaitOneOp IOClose(int fd) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_close(sqe, fd);
-    });
-}
-
-inline internal::IOWaitOneOp IOCloseDirect(unsigned file_index) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_close_direct(sqe, file_index);
-    });
-}
-
-// Read Operations
-inline internal::IOWaitOneOp IORead(int fd, void* buf, unsigned nbytes, __u64 offset) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_read(sqe, fd, buf, nbytes, offset);
-    });
-}
-
-inline internal::IOWaitOneOp IOReadMultishot(int fd, unsigned nbytes, __u64 offset, int buf_group) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_read_multishot(sqe, fd, nbytes, offset, buf_group);
-    });
-}
-
-inline internal::IOWaitOneOp IOReadFixed(int fd, void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_read_fixed(sqe, fd, buf, nbytes, offset, buf_index);
-    });
-}
-
-inline internal::IOWaitOneOp IOReadV(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_readv(sqe, fd, iovecs, nr_vecs, offset);
-    });
-}
-
-inline internal::IOWaitOneOp IOReadV2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_readv2(sqe, fd, iovecs, nr_vecs, offset, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOReadVFixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_readv_fixed(sqe, fd, iovecs, nr_vecs, offset, flags, buf_index);
-    });
-}
-
-// Write Operations
-inline internal::IOWaitOneOp IOWrite(int fd, const void* buf, unsigned nbytes, __u64 offset) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_write(sqe, fd, buf, nbytes, offset);
-    });
-}
-
-inline internal::IOWaitOneOp IOWriteFixed(int fd, const void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_write_fixed(sqe, fd, buf, nbytes, offset, buf_index);
-    });
-}
-
-inline internal::IOWaitOneOp IOWriteV(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_writev(sqe, fd, iovecs, nr_vecs, offset);
-    });
-}
-
-inline internal::IOWaitOneOp IOWriteV2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_writev2(sqe, fd, iovecs, nr_vecs, offset, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOWriteVFixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_writev_fixed(sqe, fd, iovecs, nr_vecs, offset, flags, buf_index);
-    });
-}
-
-// Socket Operations
-inline internal::IOWaitOneOp IOAccept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_accept(sqe, fd, addr, addrlen, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOAcceptDirect(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags, unsigned int file_index) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_accept_direct(sqe, fd, addr, addrlen, flags, file_index);
-    });
-}
-
-inline internal::IOWaitOneOp IOMultishotAccept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_multishot_accept(sqe, fd, addr, addrlen, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOMultishotAcceptDirect(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_multishot_accept_direct(sqe, fd, addr, addrlen, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOConnect(int fd, const struct sockaddr* addr, socklen_t addrlen) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_connect(sqe, fd, addr, addrlen);
-    });
-}
-
-inline internal::IOWaitOneOp IOSend(int sockfd, const void* buf, size_t len, int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_send(sqe, sockfd, buf, len, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOSendZC(int sockfd, const void* buf, size_t len, int flags, unsigned zc_flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_send_zc(sqe, sockfd, buf, len, flags, zc_flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOSendZCFixed(int sockfd, const void* buf, size_t len, int flags, unsigned zc_flags, unsigned buf_index) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_send_zc_fixed(sqe, sockfd, buf, len, flags, zc_flags, buf_index);
-    });
-}
-
-inline internal::IOWaitOneOp IOSendMsg(int fd, const struct msghdr* msg, unsigned flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_sendmsg(sqe, fd, msg, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOSendMsgZC(int fd, const struct msghdr* msg, unsigned flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_sendmsg_zc(sqe, fd, msg, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOSendMsgZCFixed(int fd, const struct msghdr* msg, unsigned flags, unsigned buf_index) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_sendmsg_zc_fixed(sqe, fd, msg, flags, buf_index);
-    });
-}
-
-inline internal::IOWaitOneOp IORecv(int sockfd, void* buf, size_t len, int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_recv(sqe, sockfd, buf, len, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IORecvMultishot(int sockfd, void* buf, size_t len, int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_recv_multishot(sqe, sockfd, buf, len, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IORecvMsg(int fd, struct msghdr* msg, unsigned flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_recvmsg(sqe, fd, msg, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IORecvMsgMultishot(int fd, struct msghdr* msg, unsigned flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_recvmsg_multishot(sqe, fd, msg, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOSocket(int domain, int type, int protocol, unsigned int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_socket(sqe, domain, type, protocol, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOSocketDirect(int domain, int type, int protocol, unsigned file_index, unsigned int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_socket_direct(sqe, domain, type, protocol, file_index, flags);
-    });
-}
-
-// Directory and Link Operations
-inline internal::IOWaitOneOp IOMkdir(const char* path, mode_t mode) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_mkdir(sqe, path, mode);
-    });
-}
-
-inline internal::IOWaitOneOp IOMkdirAt(int dfd, const char* path, mode_t mode) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_mkdirat(sqe, dfd, path, mode);
-    });
-}
-
-inline internal::IOWaitOneOp IOSymlink(const char* target, const char* linkpath) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_symlink(sqe, target, linkpath);
-    });
-}
-
-inline internal::IOWaitOneOp IOSymlinkAt(const char* target, int newdirfd, const char* linkpath) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_symlinkat(sqe, target, newdirfd, linkpath);
-    });
-}
-
-inline internal::IOWaitOneOp IOLink(const char* oldpath, const char* newpath, int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_link(sqe, oldpath, newpath, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOLinkAt(int olddfd, const char* oldpath, int newdfd, const char* newpath, int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_linkat(sqe, olddfd, oldpath, newdfd, newpath, flags);
-    });
-}
-
-// File Management Operations
-inline internal::IOWaitOneOp IOUnlink(const char* path, int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_unlink(sqe, path, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOUnlinkAt(int dfd, const char* path, int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_unlinkat(sqe, dfd, path, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IORename(const char* oldpath, const char* newpath) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_rename(sqe, oldpath, newpath);
-    });
-}
-
-inline internal::IOWaitOneOp IORenameAt(int olddfd, const char* oldpath, int newdfd, const char* newpath, unsigned int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_renameat(sqe, olddfd, oldpath, newdfd, newpath, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOSync(int fd, unsigned fsync_flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_fsync(sqe, fd, fsync_flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOSyncFileRange(int fd, unsigned len, __u64 offset, int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_sync_file_range(sqe, fd, len, offset, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOFAllocate(int fd, int mode, __u64 offset, __u64 len) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_fallocate(sqe, fd, mode, offset, len);
-    });
-}
-
-inline internal::IOWaitOneOp IOOpenAt2(int dfd, const char* path, struct open_how* how) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_openat2(sqe, dfd, path, how);
-    });
-}
-
-inline internal::IOWaitOneOp IOOpenAt2Direct(int dfd, const char* path, struct open_how* how, unsigned file_index) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_openat2_direct(sqe, dfd, path, how, file_index);
-    });
-}
-
-inline internal::IOWaitOneOp IOStatx(int dfd, const char* path, int flags, unsigned mask, struct statx* statxbuf) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_statx(sqe, dfd, path, flags, mask, statxbuf);
-    });
-}
-
-inline internal::IOWaitOneOp IOFAdvise(int fd, __u64 offset, __u32 len, int advice) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_fadvise(sqe, fd, offset, len, advice);
-    });
-}
-
-inline internal::IOWaitOneOp IOFAdvise64(int fd, __u64 offset, off_t len, int advice) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_fadvise64(sqe, fd, offset, len, advice);
-    });
-}
-
-inline internal::IOWaitOneOp IOMAdvise(void* addr, __u32 length, int advice) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_madvise(sqe, addr, length, advice);
-    });
-}
-
-inline internal::IOWaitOneOp IOMAdvise64(void* addr, off_t length, int advice) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_madvise64(sqe, addr, length, advice);
-    });
-}
-
-// Extended Attributes Operations
-inline internal::IOWaitOneOp IOGetXAttr(const char* name, char* value, const char* path, unsigned int len) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_getxattr(sqe, name, value, path, len);
-    });
-}
-
-inline internal::IOWaitOneOp IOSetXAttr(const char* name, const char* value, const char* path, int flags, unsigned int len) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_setxattr(sqe, name, value, path, flags, len);
-    });
-}
-
-inline internal::IOWaitOneOp IOFGetXAttr(int fd, const char* name, char* value, unsigned int len) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_fgetxattr(sqe, fd, name, value, len);
-    });
-}
-
-inline internal::IOWaitOneOp IOFSetXAttr(int fd, const char* name, const char* value, int flags, unsigned int len) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_fsetxattr(sqe, fd, name, value, flags, len);
-    });
-}
-
-// Buffer Operations
-inline internal::IOWaitOneOp IOProvideBuffers(void* addr, int len, int nr, int bgid, int bid) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_provide_buffers(sqe, addr, len, nr, bgid, bid);
-    });
-}
-
-inline internal::IOWaitOneOp IORemoveBuffers(int nr, int bgid) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_remove_buffers(sqe, nr, bgid);
-    });
-}
-
-// Polling Operations
-inline internal::IOWaitOneOp IOPollAdd(int fd, unsigned poll_mask) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_poll_add(sqe, fd, poll_mask);
-    });
-}
-
-inline internal::IOWaitOneOp IOPollMultishot(int fd, unsigned poll_mask) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_poll_multishot(sqe, fd, poll_mask);
-    });
-}
-
-inline internal::IOWaitOneOp IOPollRemove(__u64 user_data) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_poll_remove(sqe, user_data);
-    });
-}
-
-inline internal::IOWaitOneOp IOPollUpdate(__u64 old_user_data, __u64 new_user_data, unsigned poll_mask, unsigned flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_poll_update(sqe, old_user_data, new_user_data, poll_mask, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOEpollCtl(int epfd, int fd, int op, struct epoll_event* ev) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_epoll_ctl(sqe, epfd, fd, op, ev);
-    });
-}
-
-inline internal::IOWaitOneOp IOEpollWait(int fd, struct epoll_event* events, int maxevents, unsigned flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_epoll_wait(sqe, fd, events, maxevents, flags);
-    });
-}
-
-// Timeout Operations
-inline internal::IOWaitOneOp IOTimeout(struct __kernel_timespec* ts, unsigned count, unsigned flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_timeout(sqe, ts, count, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOTimeoutRemove(__u64 user_data, unsigned flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_timeout_remove(sqe, user_data, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOTimeoutUpdate(struct __kernel_timespec* ts, __u64 user_data, unsigned flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_timeout_update(sqe, ts, user_data, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOLinkTimeout(struct __kernel_timespec* ts, unsigned flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_link_timeout(sqe, ts, flags);
-    });
-}
-
-// Message Ring Operations
-inline internal::IOWaitOneOp IOMsgRing(int fd, unsigned int len, __u64 data, unsigned int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_msg_ring(sqe, fd, len, data, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOMsgRingCqeFlags(int fd, unsigned int len, __u64 data, unsigned int flags, unsigned int cqe_flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_msg_ring_cqe_flags(sqe, fd, len, data, flags, cqe_flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOMsgRingFd(int fd, int source_fd, int target_fd, __u64 data, unsigned int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_msg_ring_fd(sqe, fd, source_fd, target_fd, data, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOMsgRingFdAlloc(int fd, int source_fd, __u64 data, unsigned int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_msg_ring_fd_alloc(sqe, fd, source_fd, data, flags);
-    });
-}
-
-// Process Operations
-inline internal::IOWaitOneOp IOWaitId(idtype_t idtype, id_t id, siginfo_t* infop, int options, unsigned int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_waitid(sqe, idtype, id, infop, options, flags);
-    });
-}
-
-// Futex Operations
-inline internal::IOWaitOneOp IOFutexWake(uint32_t* futex, uint64_t val, uint64_t mask, uint32_t futex_flags, unsigned int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_futex_wake(sqe, futex, val, mask, futex_flags, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOFutexWait(uint32_t* futex, uint64_t val, uint64_t mask, uint32_t futex_flags, unsigned int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_futex_wait(sqe, futex, val, mask, futex_flags, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOFutexWaitV(struct futex_waitv* futex, uint32_t nr_futex, unsigned int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_futex_waitv(sqe, futex, nr_futex, flags);
-    });
-}
-
-// File Descriptor Management
-inline internal::IOWaitOneOp IOFixedFdInstall(int fd, unsigned int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_fixed_fd_install(sqe, fd, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOFilesUpdate(int* fds, unsigned nr_fds, int offset) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_files_update(sqe, fds, nr_fds, offset);
-    });
-}
-
-// Shutdown Operation
-inline internal::IOWaitOneOp IOShutdown(int fd, int how) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_shutdown(sqe, fd, how);
-    });
-}
-
-// File Truncation
-inline internal::IOWaitOneOp IOFTruncate(int fd, loff_t len) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_ftruncate(sqe, fd, len);
-    });
-}
-
-// Command Operations
-inline internal::IOWaitOneOp IOCmdSock(int cmd_op, int fd, int level, int optname, void* optval, int optlen) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_cmd_sock(sqe, cmd_op, fd, level, optname, optval, optlen);
-    });
-}
-
-inline internal::IOWaitOneOp IOCmdDiscard(int fd, uint64_t offset, uint64_t nbytes) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_cmd_discard(sqe, fd, offset, nbytes);
-    });
-}
-
-// Special Operations
-inline internal::IOWaitOneOp IONop() noexcept {
-    return internal::PrepareIO([](io_uring_sqe* sqe) {
-        io_uring_prep_nop(sqe);
-    });
-}
-
-// Splice Operations
-inline internal::IOWaitOneOp IOSplice(int fd_in, int64_t off_in, int fd_out, int64_t off_out, unsigned int nbytes, unsigned int splice_flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_splice(sqe, fd_in, off_in, fd_out, off_out, nbytes, splice_flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOTee(int fd_in, int fd_out, unsigned int nbytes, unsigned int splice_flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_tee(sqe, fd_in, fd_out, nbytes, splice_flags);
-    });
-}
-
-// Cancel Operations
-inline internal::IOWaitOneOp IOCancel64(__u64 user_data, int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_cancel64(sqe, user_data, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOCancel(void* user_data, int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_cancel(sqe, user_data, flags);
-    });
-}
-
-inline internal::IOWaitOneOp IOCancelFd(int fd, unsigned int flags) noexcept {
-    return internal::PrepareIO([=](io_uring_sqe* sqe) {
-        io_uring_prep_cancel_fd(sqe, fd, flags);
-    });
-}
 
 #include "alloc.hpp"
-inline void DebugDumpAllocTable(internal::AllocTable* at) noexcept {
+
+inline void DebugDumpAllocTable(priv::AllocTable* at) noexcept {
 
     // Basic layout and sizes
     std::print("AllocTable: {}\n", (void*)at);
@@ -1272,7 +620,7 @@ inline void DebugDumpAllocTable(internal::AllocTable* at) noexcept {
     std::print("\n");
 }
 
-namespace internal {
+namespace priv {
 
     static inline void SetAllocFreeBinBit(AllocTable* at, unsigned binIdx) {       
         assert(at != nullptr);
@@ -1377,7 +725,7 @@ namespace internal {
 
 }
 
-namespace internal {
+namespace priv {
     constexpr const char* DEBUG_ALLOC_COLOR_RESET  = "\033[0m";
     constexpr const char* DEBUG_ALLOC_COLOR_WHITE  = "\033[37m"; 
     constexpr const char* DEBUG_ALLOC_COLOR_GREEN  = "\033[1;32m"; 
@@ -1390,13 +738,13 @@ namespace internal {
     inline static AllocHeader* NextHeaderPtr(AllocHeader* h) {
         size_t sz = (size_t)h->thisSize.size;
         if (sz == 0) return h;
-        return (internal::AllocHeader*)((char*)h + sz);
+        return (priv::AllocHeader*)((char*)h + sz);
     }
 
     inline static AllocHeader* PrevHeaderPtr(AllocHeader* h) {
         size_t sz = (size_t)h->prevSize.size;
         if (sz == 0) return h;
-        return (internal::AllocHeader*)((char*)h - sz);
+        return (priv::AllocHeader*)((char*)h - sz);
     }
     
     inline const char* StateText(AllocState s) {
@@ -1750,9 +1098,9 @@ namespace internal {
     }
 }
 
-inline void DebugPrintAllocBlocks(internal::AllocTable* at) noexcept 
+inline void DebugPrintAllocBlocks(priv::AllocTable* at) noexcept 
 {
-    using namespace internal;
+    using namespace priv;
     
     
     PrintTopBorder();
@@ -1785,8 +1133,8 @@ constexpr Size ALIGNMENT = 32;
 /// 
 /// Returns nullptr if no suitable block found (heap doesn't grow).
 /// For async version that suspends on failure, use co_await AllocMem(size).
-inline void* TryMalloc(internal::AllocTable* at, Size size) noexcept {
-    using namespace internal;
+inline void* TryMalloc(priv::AllocTable* at, Size size) noexcept {
+    using namespace priv;
     
     // Compute aligned block size
     Size maybeBlock = HEADER_SIZE + size;
@@ -1982,8 +1330,8 @@ inline void* TryMalloc(internal::AllocTable* at, Size size) noexcept {
 /// 
 /// \param ptr Pointer returned by TryMalloc (must not be nullptr).
 /// \param sideCoalescing Maximum number of merges per side (0 = no coalescing, defaults to UINT_MAX for unlimited).
-inline void FreeMem(internal::AllocTable* at, void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept {
-    using namespace internal;
+inline void FreeMem(priv::AllocTable* at, void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept {
+    using namespace priv;
 
     if (ptr == nullptr) return;
 
@@ -2099,6 +1447,25 @@ inline void FreeMem(internal::AllocTable* at, void* ptr, unsigned sideCoalescing
 }
 
 
+// Kernel API implementation
+// ----------------------------------------------------------------------------------------------------------------
+template <typename... Args>
+inline int RunMain(KernelConfig* config, DefineTask(*mainProc)(Args ...) noexcept , Args... args) noexcept {
+    using namespace priv;
+
+    if (InitKernel(config) < 0) {
+        return -1;
+    }
+
+    KernelTaskHdl hdl = KernelTaskProc(mainProc, std::forward<Args>(args) ...);
+    gKernel.kernelTask = hdl;
+    hdl.resume();
+
+    FiniKernel();
+
+    return 0;
+}
+
 } // namespace ak
 
-#include "event.hpp"
+

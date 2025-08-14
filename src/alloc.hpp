@@ -5,7 +5,7 @@
 
 namespace ak {
 
-    namespace internal {
+    namespace priv {
 
         enum class AllocState {
             INVALID              = 0b0000,
@@ -80,13 +80,13 @@ namespace ak {
         };
 
         int InitAllocTable(AllocTable* at, void* mem, Size size) noexcept;
-    } // namespace internal
+    } // namespace priv
 
 } // namespace ak
 
 namespace ak 
 {
-    namespace internal 
+    namespace priv 
     {
         
     }

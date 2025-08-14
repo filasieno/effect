@@ -1,4 +1,5 @@
 #pragma once
+
 #include <coroutine>
 #include <cassert>
 #include "dlist.hpp"
@@ -11,6 +12,7 @@ namespace ak
     struct JoinTaskOp;
     struct SuspendOp;
     struct GetCurrentTaskOp;
+    struct ExecIOOp;
 
     struct DefineTask {
         using promise_type = TaskContext;
@@ -61,23 +63,23 @@ namespace ak
     // Kernel now belongs to ak namespace directly
     struct Kernel {
         // Allocation table
-        alignas(64) internal::AllocTable allocTable;
+        alignas(64) priv::AllocTable allocTable;
         
         // Task management
-        TaskHdl                 currentTaskHdl;
-        TaskHdl                 schedulerTaskHdl;
-        utl::DLink              zombieList;
-        utl::DLink              readyList;
-        utl::DLink              taskList;
-        void*                   mem;
-        Size                    memSize;
-        internal::KernelTaskHdl kernelTask;
-        int                     taskCount;
-        int                     readyCount;
-        int                     waitingCount;
-        int                     ioWaitingCount;
-        int                     zombieCount;
-        int                     interrupted;
+        TaskHdl             currentTaskHdl;
+        TaskHdl             schedulerTaskHdl;
+        utl::DLink          zombieList;
+        utl::DLink          readyList;
+        utl::DLink          taskList;
+        void*               mem;
+        Size                memSize;
+        priv::KernelTaskHdl kernelTask;
+        int                 taskCount;
+        int                 readyCount;
+        int                 waitingCount;
+        int                 ioWaitingCount;
+        int                 zombieCount;
+        int                 interrupted;
 
         // IOManagement
         io_uring ioRing;
@@ -87,14 +89,20 @@ namespace ak
     // Global kernel instance declaration (defined in ak.hpp)
     extern struct Kernel gKernel;
 
+    // Define the global Kernel instance in ak namespace
+    #ifdef AK_IMPLEMENTATION
+    alignas(64) struct Kernel gKernel;
+    #endif
+    
+    // Main Routine
     struct KernelConfig {
         void*    mem;
         Size     memSize;
         unsigned ioEntryCount;
     };
 
-    // Kernel routines
-
+    template <typename... Args>
+    int RunMain(KernelConfig* config, DefineTask(*mainProc)(Args ...) noexcept , Args... args) noexcept;
 
     // Task routines
     void                       ClearTaskHdl(TaskHdl* hdl) noexcept;
@@ -110,7 +118,70 @@ namespace ak
     ResumeTaskOp               ResumeTask(TaskHdl hdl) noexcept;
 
     // IO Routines
-    
+    ExecIOOp IOOpen(const char* path, int flags, mode_t mode) noexcept;
+    ExecIOOp IOOpenAt(int dfd, const char* path, int flags, mode_t mode) noexcept;
+    ExecIOOp IOOpenAtDirect(int dfd, const char* path, int flags, mode_t mode, unsigned file_index) noexcept;
+    ExecIOOp IOClose(int fd) noexcept;
+    ExecIOOp IOCloseDirect(unsigned file_index) noexcept;
+    ExecIOOp IORead(int fd, void* buf, unsigned nbytes, __u64 offset) noexcept;
+    ExecIOOp IOReadMultishot(int fd, unsigned nbytes, __u64 offset, int buf_group) noexcept;
+    ExecIOOp IOReadFixed(int fd, void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept;
+    ExecIOOp IOReadV(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept;
+    ExecIOOp IOReadV2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept;
+    ExecIOOp IOReadVFixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept;
+    ExecIOOp IOWrite(int fd, const void* buf, unsigned nbytes, __u64 offset) noexcept;
+    ExecIOOp IOWriteFixed(int fd, const void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept;
+    ExecIOOp IOWriteV(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept;
+    ExecIOOp IOWriteV2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept;
+    ExecIOOp IOWriteVFixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept;
+    ExecIOOp IOAccept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept;
+    ExecIOOp IOAcceptDirect(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags, unsigned int file_index) noexcept;
+    ExecIOOp IOMultishotAccept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept;
+    ExecIOOp IOMultishotAcceptDirect(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept;
+    ExecIOOp IOConnect(int fd, const struct sockaddr* addr, socklen_t addrlen) noexcept;
+    ExecIOOp IOSend(int sockfd, const void* buf, size_t len, int flags) noexcept;
+    ExecIOOp IOSendZC(int sockfd, const void* buf, size_t len, int flags, unsigned zc_flags) noexcept;
+    ExecIOOp IOSendZCFixed(int sockfd, const void* buf, size_t len, int flags, unsigned zc_flags, unsigned buf_index) noexcept;
+    ExecIOOp IOSendMsg(int fd, const struct msghdr* msg, unsigned flags) noexcept;
+    ExecIOOp IOSendMsgZC(int fd, const struct msghdr* msg, unsigned flags) noexcept;
+    ExecIOOp IOSendMsgZCFixed(int fd, const struct msghdr* msg, unsigned flags, unsigned buf_index) noexcept;
+    ExecIOOp IORecv(int sockfd, void* buf, size_t len, int flags) noexcept;
+    ExecIOOp IORecvMultishot(int sockfd, void* buf, size_t len, int flags) noexcept;
+    ExecIOOp IORecvMsg(int fd, struct msghdr* msg, unsigned flags) noexcept;
+    ExecIOOp IORecvMsgMultishot(int fd, struct msghdr* msg, unsigned flags) noexcept;
+    ExecIOOp IOSocket(int domain, int type, int protocol, unsigned int flags) noexcept;
+    ExecIOOp IOSocketDirect(int domain, int type, int protocol, unsigned file_index, unsigned int flags) noexcept;
+    ExecIOOp IOMkdir(const char* path, mode_t mode) noexcept;
+    ExecIOOp IOMkdirAt(int dfd, const char* path, mode_t mode) noexcept;
+    ExecIOOp IOSymlink(const char* target, const char* linkpath) noexcept;
+    ExecIOOp IOSymlinkAt(const char* target, int newdirfd, const char* linkpath) noexcept;
+    ExecIOOp IOLink(const char* oldpath, const char* newpath, int flags) noexcept;
+    ExecIOOp IOLinkAt(int olddfd, const char* oldpath, int newdfd, const char* newpath, int flags) noexcept;
+    ExecIOOp IOUnlink(const char* path, int flags) noexcept;
+    ExecIOOp IOUnlinkAt(int dfd, const char* path, int flags) noexcept;
+    ExecIOOp IORename(const char* oldpath, const char* newpath) noexcept;
+    ExecIOOp IORenameAt(int olddfd, const char* oldpath, int newdfd, const char* newpath, unsigned int flags) noexcept;
+
+    // Concurrency Tools
+    struct Event {  
+        utl::DLink waitingList;
+    };
+
+    struct WaitOp {
+        WaitOp(Event* event) : evt(event) {}
+
+        constexpr bool    await_ready() const noexcept { return false; }
+        constexpr TaskHdl await_suspend(TaskHdl hdl) const noexcept;
+        constexpr void    await_resume() const noexcept {}
+
+        Event* evt;
+    };
+
+    void   InitEvent(Event* event);
+    int    SignalOne(Event* event);
+    int    SignalSome(Event* event, int n);
+    int    SignalAll(Event* event);
+    WaitOp WaitEvent(Event* event);
 
 }
 
@@ -143,14 +214,14 @@ namespace ak {
     };
 
     struct GetCurrentTaskOp {
-        constexpr bool    await_ready() const noexcept {return false; }
+        constexpr bool    await_ready() const noexcept { return false; }
         constexpr TaskHdl await_suspend(TaskHdl hdl) noexcept;
         constexpr TaskHdl await_resume() const noexcept { return hdl; }
 
         TaskHdl hdl;
     };
 
-    namespace internal 
+    namespace priv 
     {
 
         TaskHdl ScheduleNextTask() noexcept;
@@ -158,7 +229,7 @@ namespace ak {
         void CheckInvariants() noexcept;
         void DebugTaskCount() noexcept;
 
-    } // namespace internal
+    } // namespace priv
     
     // Task API Implementation
     // ----------------------------------------------------------------------------------------------------------------
@@ -189,7 +260,7 @@ namespace ak {
     // ----------------------------------------------------------------------------------------------------------------
 
     inline TaskHdl SuspendOp::await_suspend(TaskHdl currentTask) const noexcept {
-        using namespace internal;
+        using namespace priv;
         using namespace utl;
 
         assert(gKernel.currentTaskHdl);
@@ -217,7 +288,7 @@ namespace ak {
     // ----------------------------------------------------------------------------------------------------------------
 
     inline TaskHdl ResumeTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept {
-        using namespace internal;
+        using namespace priv;
         using namespace utl;
 
         assert(gKernel.currentTaskHdl == currentTaskHdl);
@@ -252,7 +323,7 @@ namespace ak {
 
     inline constexpr TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept
     {
-        using namespace internal;
+        using namespace priv;
         using namespace utl;
 
         TaskContext* currentTaskCtx = &currentTaskHdl.promise();
@@ -340,7 +411,7 @@ namespace ak {
     // ----------------------------------------------------------------------------------------------------------------
 
     inline void TaskContext::InitialSuspendTaskOp::await_suspend(TaskHdl hdl) const noexcept {
-        using namespace internal;
+        using namespace priv;
         using namespace utl;
 
         TaskContext* promise = &hdl.promise();
@@ -362,11 +433,11 @@ namespace ak {
         assert(promise->state == TaskState::READY);
         assert(!IsLinkDetached(&promise->waitLink));
         CheckInvariants();
-        internal::DebugTaskCount();
+        priv::DebugTaskCount();
     }
 
     inline TaskHdl TaskContext::FinalSuspendTaskOp::await_suspend(TaskHdl hdl) const noexcept {
-        using namespace internal;
+        using namespace priv;
         using namespace utl;
 
         // Check preconditions
@@ -388,7 +459,7 @@ namespace ak {
 
     // TaskContext ctor/dtor definitions
     inline TaskContext::~TaskContext() {
-        using namespace internal;
+        using namespace priv;
         assert(state == TaskState::DELETING);
         assert(IsLinkDetached(&taskListLink));
         assert(IsLinkDetached(&waitLink));
@@ -398,7 +469,7 @@ namespace ak {
 
     template <typename... Args>
     inline TaskContext::TaskContext(Args&&... ) {
-        using namespace internal;
+        using namespace priv;
 
         InitLink(&taskListLink);
         InitLink(&waitLink);
@@ -427,7 +498,7 @@ namespace ak {
 
 
     inline void TaskContext::return_void() noexcept {
-        using namespace internal;
+        using namespace priv;
 
         CheckInvariants();
 

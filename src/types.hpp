@@ -46,9 +46,9 @@ using TaskHdl = std::coroutine_handle<TaskContext>;
 template <typename... Args>
 using TaskFn = DefineTask(*)(Args...);
 
-namespace internal {
+namespace priv {
     struct KernelTaskPromise;
     using KernelTaskHdl = std::coroutine_handle<KernelTaskPromise>;
-} // namespace internal
+} // namespace priv
 
 } // namespace ak
