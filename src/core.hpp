@@ -21,6 +21,72 @@ namespace ak
         TaskHdl hdl;
     };
 
+    struct TaskContext {
+        using Link = utl::DLink;
+
+        struct InitialSuspendTaskOp {
+            constexpr bool await_ready() const noexcept { return false; }
+            void           await_suspend(TaskHdl hdl) const noexcept;
+            constexpr void await_resume() const noexcept {}
+        };
+
+        struct FinalSuspendTaskOp {
+            constexpr bool await_ready() const noexcept { return false; }
+            TaskHdl        await_suspend(TaskHdl hdl) const noexcept;
+            constexpr void await_resume() const noexcept {}
+        };
+
+        void* operator new(std::size_t n) noexcept;
+        void  operator delete(void* ptr, std::size_t sz);
+
+        template <typename... Args>
+        TaskContext(Args&&...);
+
+        ~TaskContext();
+
+        TaskHdl        get_return_object() noexcept    { return TaskHdl::from_promise(*this);}
+        constexpr auto initial_suspend() noexcept      { return InitialSuspendTaskOp{}; }
+        constexpr auto final_suspend() noexcept        { return FinalSuspendTaskOp{}; }
+        void           return_void() noexcept;
+        void           unhandled_exception() noexcept  { assert(false); }
+
+        TaskState state;
+        int       ioResult;
+        unsigned  enqueuedIO;
+        Link      waitLink;                // Used to enqueue tasks waiting for Critical Section
+        Link      taskListLink;            // Global Task list
+        Link      awaitingTerminationList; // The list of all tasks waiting for this task
+    };
+
+    // Kernel now belongs to ak namespace directly
+    struct Kernel {
+        // Allocation table
+        alignas(64) internal::AllocTable allocTable;
+        
+        // Task management
+        TaskHdl                 currentTaskHdl;
+        TaskHdl                 schedulerTaskHdl;
+        utl::DLink              zombieList;
+        utl::DLink              readyList;
+        utl::DLink              taskList;
+        void*                   mem;
+        Size                    memSize;
+        internal::KernelTaskHdl kernelTask;
+        int                     taskCount;
+        int                     readyCount;
+        int                     waitingCount;
+        int                     ioWaitingCount;
+        int                     zombieCount;
+        int                     interrupted;
+
+        // IOManagement
+        io_uring ioRing;
+        unsigned ioEntryCount;
+    };
+
+    // Global kernel instance declaration (defined in ak.hpp)
+    extern struct Kernel gKernel;
+
     struct KernelConfig {
         void*    mem;
         Size     memSize;
@@ -28,7 +94,7 @@ namespace ak
     };
 
     // Kernel routines
-    
+
 
     // Task routines
     void                       ClearTaskHdl(TaskHdl* hdl) noexcept;
@@ -42,6 +108,9 @@ namespace ak
     TaskState                  GetTaskState(TaskHdl hdl) noexcept;
     bool                       IsTaskDone(TaskHdl hdl) noexcept;
     ResumeTaskOp               ResumeTask(TaskHdl hdl) noexcept;
+
+    // IO Routines
+    
 
 }
 
@@ -81,120 +150,18 @@ namespace ak {
         TaskHdl hdl;
     };
 
-   
-}
-
-
-namespace ak {
-
     namespace internal 
     {
 
         TaskHdl ScheduleNextTask() noexcept;
 
-        struct Kernel {
-            alignas(64) AllocTable allocTable;
-            
-            // Hot scheduling data (first cache line)
-            TaskHdl currentTaskHdl;
-            TaskHdl schedulerTaskHdl;
-            DLink   readyList;
-            DLink   taskList;
-            void*   mem;
-            Size    memSize;
-            
-            alignas(64) 
-            io_uring ioRing;
-            unsigned ioEntryCount;
-            
-            alignas(64) 
-            KernelTaskHdl kernelTask;
-            DLink         zombieList;
-        
-            alignas(64) 
-            int taskCount;
-            int readyCount;
-            int waitingCount;
-            int ioWaitingCount;
-            int zombieCount;
-            int interrupted;
-        };
-        
-        extern struct Kernel gKernel;
-
         void CheckInvariants() noexcept;
         void DebugTaskCount() noexcept;
 
     } // namespace internal
-
-
-    struct TaskContext {
-        using Link = utl::DLink;
-        
-        struct InitialSuspendTaskOp {
-            constexpr bool await_ready() const noexcept { return false; }
-            void           await_suspend(TaskHdl hdl) const noexcept;
-            constexpr void await_resume() const noexcept {}
-        };
     
-        struct FinalSuspendTaskOp {
-            constexpr bool await_ready() const noexcept { return false; }
-            TaskHdl        await_suspend(TaskHdl hdl) const noexcept;
-            constexpr void await_resume() const noexcept {}
-        };
-
-        void* operator new(std::size_t n) noexcept {
-            void* mem = std::malloc(n);
-            if (!mem) return nullptr;
-            return mem;
-        }
-
-        void  operator delete(void* ptr, std::size_t sz) {
-            (void)sz;
-            std::free(ptr);
-        }
-
-        template <typename... Args>
-        TaskContext(Args&&... ) {
-            using namespace internal;
-
-            InitLink(&taskListLink);
-            InitLink(&waitLink);
-            InitLink(&awaitingTerminationList);
-            state = TaskState::CREATED;
-            enqueuedIO = 0;
-            ioResult = -1;
-
-            // Check post-conditions
-            assert(IsLinkDetached(&taskListLink));
-            assert(IsLinkDetached(&waitLink));
-            assert(state == TaskState::CREATED);
-            CheckInvariants();
-        }
-
-        ~TaskContext() {
-            using namespace internal;
-            assert(state == TaskState::DELETING);
-            assert(IsLinkDetached(&taskListLink));
-            assert(IsLinkDetached(&waitLink));
-            DebugTaskCount();
-            CheckInvariants();
-        }
-
-        TaskHdl        get_return_object() noexcept    { return TaskHdl::from_promise(*this);}
-        constexpr auto initial_suspend() noexcept      { return InitialSuspendTaskOp{}; }
-        constexpr auto final_suspend() noexcept        { return FinalSuspendTaskOp{}; }
-        void           return_void() noexcept;
-        void           unhandled_exception() noexcept  { assert(false); }
-
-        TaskState state;
-        int       ioResult;
-        unsigned  enqueuedIO;
-        Link      waitLink;                // Used to enqueue tasks waiting for Critical Section
-        Link      taskListLink;            // Global Task list
-        Link      awaitingTerminationList; // The list of all tasks waiting for this task
-    };
-
+    // Task API Implementation
+    // ----------------------------------------------------------------------------------------------------------------
 
     inline void ClearTaskHdl(TaskHdl* hdl) noexcept { *hdl = TaskHdl{}; }
 
@@ -202,7 +169,7 @@ namespace ak {
 
     inline TaskContext* GetTaskContext(TaskHdl hdl) noexcept { return &hdl.promise(); }
 
-    inline TaskContext* GetTaskContext() noexcept { return &internal::gKernel.currentTaskHdl.promise(); }
+    inline TaskContext* GetTaskContext() noexcept { return &gKernel.currentTaskHdl.promise(); }
 
     inline constexpr GetCurrentTaskOp GetCurrentTask() noexcept { return {}; }
 
@@ -217,7 +184,6 @@ namespace ak {
     inline bool IsTaskDone(TaskHdl hdl) noexcept { return hdl.done(); }
 
     inline ResumeTaskOp ResumeTask(TaskHdl hdl) noexcept { return ResumeTaskOp(hdl); }
-
 
     // SuspendOp implmentation
     // ----------------------------------------------------------------------------------------------------------------
@@ -362,6 +328,14 @@ namespace ak {
         }
     }
 
+    // TaskContext Utlities
+    // ----------------------------------------------------------------------------------------------------------------
+
+    inline static TaskContext* GetLinkedTaskContext(const utl::DLink* link) noexcept {
+        unsigned long long promise_off = ((unsigned long long)link) - offsetof(TaskContext, waitLink);
+        return (TaskContext*)promise_off;
+    }
+
     // TaskContext implementation 
     // ----------------------------------------------------------------------------------------------------------------
 
@@ -410,6 +384,70 @@ namespace ak {
         CheckInvariants();
 
         return ScheduleNextTask();
+    }
+
+    // TaskContext ctor/dtor definitions
+    inline TaskContext::~TaskContext() {
+        using namespace internal;
+        assert(state == TaskState::DELETING);
+        assert(IsLinkDetached(&taskListLink));
+        assert(IsLinkDetached(&waitLink));
+        DebugTaskCount();
+        CheckInvariants();
+    }
+
+    template <typename... Args>
+    inline TaskContext::TaskContext(Args&&... ) {
+        using namespace internal;
+
+        InitLink(&taskListLink);
+        InitLink(&waitLink);
+        InitLink(&awaitingTerminationList);
+        state = TaskState::CREATED;
+        enqueuedIO = 0;
+        ioResult = -1;
+
+        // Check post-conditions
+        assert(IsLinkDetached(&taskListLink));
+        assert(IsLinkDetached(&waitLink));
+        assert(state == TaskState::CREATED);
+        CheckInvariants();
+    }
+
+    inline void* TaskContext::operator new(std::size_t n) noexcept {
+        void* mem = std::malloc(n);
+        if (!mem) return nullptr;
+        return mem;
+    }
+
+    inline void TaskContext::operator delete(void* ptr, std::size_t sz) {
+        (void)sz;
+        std::free(ptr);
+    }
+
+
+    inline void TaskContext::return_void() noexcept {
+        using namespace internal;
+
+        CheckInvariants();
+
+        // Wake up all tasks waiting for this task
+        if (IsLinkDetached(&awaitingTerminationList)) {
+            return;
+        }
+
+        do {
+            Link* next = DequeueLink(&awaitingTerminationList);
+            TaskContext* ctx = GetLinkedTaskContext(next);
+            DebugTaskCount();
+            assert(ctx->state == TaskState::WAITING);
+            --gKernel.waitingCount;
+            ctx->state = TaskState::READY;
+            EnqueueLink(&gKernel.readyList, &ctx->waitLink);
+            ++gKernel.readyCount;
+            DebugTaskCount();
+
+        } while (!IsLinkDetached(&awaitingTerminationList));
     }
 
 

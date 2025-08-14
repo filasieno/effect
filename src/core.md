@@ -53,6 +53,7 @@ Returns true if the TaskHdl points to a valid task (non-null address).
 **Brief:** Returns the TaskPromise associated with the target TaskHdl
 
 **Parameters:**
+
 - `hdl` - the task handle
 
 **Returns:** the TaskPromise associated with the target TaskHdl
@@ -128,6 +129,7 @@ Provides co_await syntax support for joining tasks.
 **Brief:** Resturns the current TaskState.
 
 **Parameters:**
+
 - `hdl` - a handle to the target Task.
 
 **Returns:** the current TaskState

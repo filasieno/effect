@@ -67,13 +67,7 @@ namespace internal
 }
 
 namespace internal {
-    static TaskContext*  GetLinkedTaskContext(const DLink* link) noexcept;
-    
-    // Definitions
-    inline static TaskContext* GetLinkedTaskContext(const DLink* link) noexcept {
-        unsigned long long promise_off = ((unsigned long long)link) - offsetof(TaskContext, waitLink);
-        return (TaskContext*)promise_off;
-    }
+
 
     inline constexpr bool RunSchedulerTaskOp::await_ready() const noexcept { 
         return false; 
@@ -499,35 +493,10 @@ inline int RunMain(KernelConfig* config, DefineTask(*mainProc)(Args ...) noexcep
     return 0;
 }
 
-inline void TaskContext::return_void() noexcept {
-    using namespace internal;
-
-    CheckInvariants();
-
-    // Wake up all tasks waiting for this task
-    if (IsLinkDetached(&awaitingTerminationList)) {
-        return;
-    }
-
-    do {
-        Link* next = DequeueLink(&awaitingTerminationList);
-        TaskContext* ctx = GetLinkedTaskContext(next);
-        DebugTaskCount();
-        assert(ctx->state == TaskState::WAITING);
-        --gKernel.waitingCount;
-        ctx->state = TaskState::READY;
-        EnqueueLink(&gKernel.readyList, &ctx->waitLink);
-        ++gKernel.readyCount;
-        DebugTaskCount();
-
-    } while (!IsLinkDetached(&awaitingTerminationList));
-}
-
-namespace internal {
-#ifdef AK_IMPLEMENTATION    
-    alignas(64) struct Kernel gKernel;
+// Define the global Kernel instance in ak namespace
+#ifdef AK_IMPLEMENTATION
+alignas(64) struct ak::Kernel gKernel;
 #endif
-}
 
 // -----------------------------------------------------------------------------
 // DebugAPI 

@@ -53,13 +53,13 @@ namespace ak {
 
         struct AllocTable {
             // FREE LIST MANAGEMENT
-            alignas(64) __m256i freeListbinMask;                         
-            alignas(64) DLink freeListBins[ALLOCATOR_BIN_COUNT];
-            alignas(64) U32 freeListBinsCount[ALLOCATOR_BIN_COUNT];
+            alignas(64) __m256i    freeListbinMask;                         
+            alignas(64) utl::DLink freeListBins[ALLOCATOR_BIN_COUNT];
+            alignas(64) U32        freeListBinsCount[ALLOCATOR_BIN_COUNT];
 
             // HEAP BOUNDARY MANAGEMENT
             alignas(8) char* heapBegin;
-            alignas(8) const char* heapEnd;
+            alignas(8) char* heapEnd;
             alignas(8) char* memBegin;
             alignas(8) char* memEnd;
             
