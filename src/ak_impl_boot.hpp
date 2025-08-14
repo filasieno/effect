@@ -34,13 +34,24 @@ namespace ak {
             constexpr void           unhandled_exception() noexcept { std::abort(); } 
         };
         
-        // Kernel task routines
+        // Boot routines
+        template <typename... Args>
+        DefineKernelTask KernelTaskProc(DefineTask(*mainProc)(Args ...) noexcept, Args ... args) noexcept;
 
+        template <typename... Args>
+        DefineTask SchedulerTaskProc(DefineTask(*mainProc)(Args ...) noexcept, Args... args) noexcept;
+        
+        int  InitKernel(KernelConfig* config) noexcept;
+        void FiniKernel() noexcept;
+        
 
         // Scheduler task routines
         constexpr RunSchedulerTaskOp   RunSchedulerTask() noexcept;
         constexpr TerminateSchedulerOp TerminateSchedulerTask() noexcept;
         constexpr void                 DestroySchedulerTask(TaskHdl hdl) noexcept;
+
+
+    
     }       
 }
 
@@ -68,11 +79,187 @@ namespace ak { namespace priv {
 } }
 
 
-
-
 // ================================================================================================================
 // Implementation
 // ================================================================================================================
+
+namespace ak { 
+
+    // Boot routines:
+    // ----------------------------------------------------------------------------------------------------------------
+    // The entry point creates the boot KernelTask
+    // The KernelTask creates the Scheduler Task
+    // The SChedulerTask executues the users mainProc
+
+    template <typename... Args>
+    inline int RunMain(KernelConfig* config, DefineTask(*mainProc)(Args ...) noexcept , Args... args) noexcept {
+        using namespace priv;
+
+        if (InitKernel(config) < 0) {
+            return -1;
+        }
+
+        KernelTaskHdl hdl = KernelTaskProc(mainProc, std::forward<Args>(args) ...);
+        gKernel.kernelTask = hdl;
+        hdl.resume();
+
+        FiniKernel();
+
+        return 0;
+    }
+
+    namespace priv {
+
+        template <typename... Args>
+        inline DefineKernelTask KernelTaskProc(DefineTask(*mainProc)(Args ...) noexcept, Args ... args) noexcept {
+
+            TaskHdl schedulerHdl = SchedulerTaskProc(mainProc, std::forward<Args>(args) ... );
+            gKernel.schedulerTaskHdl = schedulerHdl;
+
+            co_await RunSchedulerTask();
+            DestroySchedulerTask(schedulerHdl);
+            DebugTaskCount();
+
+            co_return;
+        }
+
+        template <typename... Args>
+        inline DefineTask SchedulerTaskProc(DefineTask(*mainProc)(Args ...) noexcept, Args... args) noexcept {
+            using namespace priv;
+
+            TaskHdl mainTask = mainProc(args...);
+            assert(!mainTask.done());
+            assert(GetTaskState(mainTask) == TaskState::READY);
+
+            while (true) {
+                // Sumbit IO operations
+                unsigned ready = io_uring_sq_ready(&gKernel.ioRing);
+                if (ready > 0) {
+                    int ret = io_uring_submit(&gKernel.ioRing);
+                    if (ret < 0) {
+                        std::print("io_uring_submit failed\n");
+                        fflush(stdout);
+                        abort();
+                    }
+                }
+
+                // If we have a ready task, resume it
+                if (gKernel.readyCount > 0) {
+                    DLink* nextNode = gKernel.readyList.prev;
+                    TaskContext* nextPromise = GetLinkedTaskContext(nextNode);
+                    TaskHdl nextTask = TaskHdl::from_promise(*nextPromise);
+                    assert(nextTask != gKernel.schedulerTaskHdl);
+                    co_await ResumeTaskOp(nextTask);
+                    assert(gKernel.currentTaskHdl);
+                    continue;
+                }
+
+                // Zombie bashing
+                while (gKernel.zombieCount > 0) {
+                    DebugTaskCount();
+
+                    DLink* zombieNode = DequeueLink(&gKernel.zombieList);
+                    TaskContext& zombiePromise = *GetLinkedTaskContext(zombieNode);
+                    assert(zombiePromise.state == TaskState::ZOMBIE);
+
+                    // Remove from zombie list
+                    --gKernel.zombieCount;
+                    DetachLink(&zombiePromise.waitLink);
+
+                    // Remove from task list
+                    DetachLink(&zombiePromise.taskListLink);
+                    --gKernel.taskCount;
+
+                    // Delete
+                    zombiePromise.state = TaskState::DELETING;
+                    TaskHdl zombieTaskHdl = TaskHdl::from_promise(zombiePromise);
+                    zombieTaskHdl.destroy();
+
+                    DebugTaskCount();
+                }
+
+                bool waitingCC = gKernel.ioWaitingCount;
+                if (waitingCC) {
+                    // Process all available completions
+                    struct io_uring_cqe *cqe;
+                    unsigned head;
+                    unsigned completed = 0;
+                    io_uring_for_each_cqe(&gKernel.ioRing, head, cqe) {
+                        // Return Result to the target Awaitable 
+                        TaskContext* ctx = (TaskContext*) io_uring_cqe_get_data(cqe);
+                        assert(ctx->state == TaskState::IO_WAITING);
+
+                        // Move the target task from IO_WAITING to READY
+                        --gKernel.ioWaitingCount;
+                        ctx->state = TaskState::READY;
+                        ++gKernel.readyCount;
+                        EnqueueLink(&gKernel.readyList, &ctx->waitLink);
+                        
+                        // Complete operation
+                        ctx->ioResult = cqe->res;
+                        --ctx->enqueuedIO;
+                        ++completed;
+                    }
+                    // Mark all as seen
+                    io_uring_cq_advance(&gKernel.ioRing, completed);
+                }
+
+                if (gKernel.readyCount == 0 && gKernel.ioWaitingCount == 0) {
+                    break;
+                }
+            }
+            co_await TerminateSchedulerTask();
+
+            assert(false); // Unreachale
+            co_return;
+        }
+
+    } // namespace priv
+
+} // namespace ak
+
+
+namespace ak { 
+
+    namespace priv {
+
+        inline int InitKernel(KernelConfig* config) noexcept {
+            using namespace priv;
+            
+            if (InitAllocTable(&gKernel.allocTable, config->mem, config->memSize) != 0) {
+                return -1;
+            }
+
+            int res = io_uring_queue_init(config->ioEntryCount, &gKernel.ioRing, 0);
+            if (res < 0) {
+                std::print("io_uring_queue_init failed\n");
+                return -1;
+            }
+
+            gKernel.mem = config->mem;
+            gKernel.memSize = config->memSize;
+            gKernel.taskCount = 0;
+            gKernel.readyCount = 0;
+            gKernel.waitingCount = 0;
+            gKernel.ioWaitingCount = 0;
+            gKernel.zombieCount = 0;
+            gKernel.interrupted = 0;
+
+            ClearTaskHdl(&gKernel.currentTaskHdl);
+            ClearTaskHdl(&gKernel.schedulerTaskHdl);
+
+            InitLink(&gKernel.zombieList);
+            InitLink(&gKernel.readyList);
+            InitLink(&gKernel.taskList);
+            
+            return 0;
+        }
+
+        inline void FiniKernel() noexcept {
+            io_uring_queue_exit(&gKernel.ioRing);
+        }
+    }
+}
 
 namespace ak { namespace priv {
 
@@ -257,5 +444,7 @@ inline TaskHdl ScheduleNextTask() noexcept {
     // unreachable
     abort();
 }
+
+
 
 } } // namespace ak::priv
