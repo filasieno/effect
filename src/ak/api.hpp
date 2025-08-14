@@ -67,19 +67,19 @@ namespace ak
             constexpr void await_resume() const noexcept {}
         };
 
-        void* operator new(std::size_t n) noexcept;
-        void  operator delete(void* ptr, std::size_t sz);
+        static void* operator new(std::size_t n) noexcept;
+        static void  operator delete(void* ptr, std::size_t sz);
+        static TaskHdl        get_return_object_on_allocation_failure() noexcept { return {}; }
 
         template <typename... Args>
         TaskContext(Args&&...);
-
         ~TaskContext();
-
-        TaskHdl        get_return_object() noexcept    { return TaskHdl::from_promise(*this);}
-        constexpr auto initial_suspend() noexcept      { return InitialSuspendTaskOp{}; }
-        constexpr auto final_suspend() noexcept        { return FinalSuspendTaskOp{}; }
-        void           return_void() noexcept;
-        void           unhandled_exception() noexcept  { assert(false); }
+        
+        TaskHdl        get_return_object() noexcept { return TaskHdl::from_promise(*this);}
+        constexpr auto initial_suspend() noexcept { return InitialSuspendTaskOp{}; }
+        constexpr auto final_suspend() noexcept { return FinalSuspendTaskOp{}; }
+        void           return_value(int value) noexcept;
+        void           unhandled_exception() noexcept  { std::abort(); /* unreachable */ }
 
         TaskState state;
         int       ioResult;
@@ -184,12 +184,14 @@ namespace ak
         // Task management
         TaskHdl             currentTaskHdl;
         TaskHdl             schedulerTaskHdl;
+        TaskHdl             mainTaskHdl;
         utl::DLink          zombieList;
         utl::DLink          readyList;
         utl::DLink          taskList;
         void*               mem;
         Size                memSize;
         priv::KernelTaskHdl kernelTask;
+        int                 mainTaskReturnValue;
         int                 taskCount;
         int                 readyCount;
         int                 waitingCount;
@@ -198,7 +200,7 @@ namespace ak
         int                 interrupted;
         
         // Kernnel Storage 
-        char                bootTaskFrame[48];
+        char                bootTaskFrame[64];
 
         // IOManagement
         io_uring ioRing;
@@ -307,7 +309,7 @@ namespace ak
 
         constexpr bool await_ready() const noexcept { return false; }
         TaskHdl        await_suspend(TaskHdl currentTaskHdl) const noexcept;
-        constexpr void await_resume() const noexcept {}
+        constexpr int  await_resume() const noexcept { return joinedTaskHdl.promise().ioResult; }
 
         TaskHdl joinedTaskHdl;
     };

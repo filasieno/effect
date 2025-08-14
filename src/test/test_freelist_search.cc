@@ -216,7 +216,7 @@ DefineTask MainTask() noexcept {
     ResetBitField(bitField);
     assert(FindAllocFreeListBinIndex(bitField, 1ULL << 30) == 255);
 
-    co_return;
+    co_return 0;
 }
 
 char buffer[8192];

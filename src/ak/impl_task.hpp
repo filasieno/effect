@@ -109,10 +109,18 @@ namespace ak {
     }
 
 
-    inline void TaskContext::return_void() noexcept {
+    inline void TaskContext::return_value(int value) noexcept {
         using namespace priv;
 
         CheckInvariants();
+
+        TaskHdl currentTaskHdl = gKernel.currentTaskHdl;
+        TaskContext* ctx = &currentTaskHdl.promise();
+        ctx->ioResult = value;
+        if (currentTaskHdl == gKernel.mainTaskHdl) {
+            std::print("MainTask done; returning: {}\n", value);
+            gKernel.mainTaskReturnValue = value;
+        }
 
         // Wake up all tasks waiting for this task
         if (IsLinkDetached(&awaitingTerminationList)) {
@@ -131,6 +139,7 @@ namespace ak {
             DebugTaskCount();
 
         } while (!IsLinkDetached(&awaitingTerminationList));
+
     }
 
 

@@ -18,7 +18,7 @@ DefineTask MainTask(const char* name) noexcept {
     res = co_await IOUnlink(path, 0);
 	std::print("Unlink res: {}\n", res);
 	
-  	co_return;
+  	co_return 0;
 }
 
 char buffer[8192];

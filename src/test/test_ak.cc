@@ -21,12 +21,12 @@ DefineTask aTask(const char* name) noexcept {
 	std::print("Hello from {}: Step 5\n", name);
 	co_await SuspendTask();
 
-	co_return;
+	co_return 0;
 }
 
 DefineTask bTask(const char* name) noexcept { 
 	std::print("Hello from {}\n", name);
-	co_return;
+	co_return 0;
 }
 
 DefineTask MainTask(const char* name) noexcept {
@@ -35,7 +35,7 @@ DefineTask MainTask(const char* name) noexcept {
 	auto b = bTask("B-TASK");
 	co_await a;
 	co_await JoinTask(b);
-	co_return;
+	co_return 0;
 }
 
 char buffer[8192];

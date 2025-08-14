@@ -7,7 +7,7 @@ namespace ak {
     {
         struct RunSchedulerTaskOp;
         struct TerminateSchedulerOp;
-
+        
         struct DefineKernelTask {
             using promise_type = KernelTaskPromise;
 
@@ -19,19 +19,22 @@ namespace ak {
 
         struct KernelTaskPromise {
             using InitialSuspend = std::suspend_always;
-            using FinalSuspend = std::suspend_never;
+            using FinalSuspend   = std::suspend_never;
 
-            static void* operator new(std::size_t) noexcept;
-            static void  operator delete(void*, std::size_t) noexcept {};
+            static void*         operator new(std::size_t) noexcept;
+            static void          operator delete(void*, std::size_t) noexcept {};
+            static KernelTaskHdl get_return_object_on_allocation_failure() noexcept { std::abort(); /* unreachable */ }
 
             template <typename... Args>
-            KernelTaskPromise(DefineTask(*)(Args ...) noexcept, Args... ) noexcept {}
-
+            KernelTaskPromise(DefineTask(*)(Args ...) noexcept, Args... ) noexcept : returnValue(0) {}
+            
             KernelTaskHdl            get_return_object() noexcept { return KernelTaskHdl::from_promise(*this); }
             constexpr InitialSuspend initial_suspend() noexcept { return {}; }
             constexpr FinalSuspend   final_suspend() noexcept { return {}; }
-            constexpr void           return_void() noexcept {}
+            constexpr void           return_void() noexcept { }
             constexpr void           unhandled_exception() noexcept { std::abort(); } 
+
+            int returnValue;
         };
         
         // Boot routines
@@ -97,10 +100,9 @@ namespace ak {
         KernelTaskHdl hdl = KernelTaskProc(mainProc, std::forward<Args>(args) ...);
         gKernel.kernelTask = hdl;
         hdl.resume();
-
         FiniKernel();
 
-        return 0;
+        return gKernel.mainTaskReturnValue;
     }
 
     namespace priv {
@@ -123,6 +125,7 @@ namespace ak {
             using namespace priv;
 
             TaskHdl mainTask = mainProc(args...);
+            gKernel.mainTaskHdl = mainTask;
             assert(!mainTask.done());
             assert(GetTaskState(mainTask) == TaskState::READY);
 
@@ -204,9 +207,8 @@ namespace ak {
                 }
             }
             co_await TerminateSchedulerTask();
-
-            assert(false); // Unreachale
-            co_return;
+   
+            std::abort(); // Unreachable
         }
 
 

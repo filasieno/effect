@@ -12,7 +12,7 @@ DefineTask ReaderTask(Event* canRead, Event* canWrite, int *readSignal, int* wri
 	while (true) {
 		assert(check < 12);
 
-    // Begin wait read signal
+    	// Begin wait read signal
 		std::print("read signal: {}\n", *readSignal); 
 		if (*readSignal == 0) {
 			std::print("ReaderTask about to await ...\n");
@@ -24,23 +24,23 @@ DefineTask ReaderTask(Event* canRead, Event* canWrite, int *readSignal, int* wri
 			assert(*readSignal == 1);
 			*readSignal = 0;
 		}
-    // End wait read signal
+    	// End wait read signal
 
-    // Read value
+    	// Read value
 		outValue = *value;
-    std::print("Read: {}\n", outValue);
-    if (outValue == 0) {
-      std::print("ReaderTask done\n");
-      co_return;
-    }
+	    std::print("Read: {}\n", outValue);
+    	if (outValue == 0) {
+			std::print("ReaderTask done\n");
+			co_return 0;
+		}
 
-    // Begin Signal writer
+    	// Begin Signal writer
 		assert(*writeSignal == 0);
 		*writeSignal = 1;
 		int cc = SignalOne(canWrite);
 		assert(*writeSignal == 1); 
 		std::print("`writeSignal` to {} writers\n", cc); 
-    // End Signal writer
+	    // End Signal writer
 
 		++check;
 	}
@@ -62,13 +62,13 @@ DefineTask WriterTask(Event* canRead, Event* canWrite, int *readSignal, int* wri
 		int cc = SignalOne(canRead);
 		assert(*readSignal == 1);
 		std::print("`readSignal` fired {} readers\n", cc);
-    // End signal
+    	// End signal
 
 		// on zero value break
 		if (i == 0) {
-      std::print("WriterTask done\n");
-      co_return;
-    }
+			std::print("WriterTask done\n");
+			co_return 0;
+		}
 		--i;
 
 		// Begin wait write signal
@@ -83,7 +83,7 @@ DefineTask WriterTask(Event* canRead, Event* canWrite, int *readSignal, int* wri
 			assert(*writeSignal == 1);
 			*writeSignal = 0;
 		}
-    // End wait write signal
+    	// End wait write signal
 		++check;
 	}
 }
@@ -108,7 +108,7 @@ DefineTask MainTask(const char* name) noexcept {
 	std::print("State of reader: {}; State of writer: {}\n", ToString(GetTaskState(reader)), ToString(GetTaskState(writer)));
 	std::fflush(stdout);
 	
-	co_return;
+	co_return 0;
 }
 
 

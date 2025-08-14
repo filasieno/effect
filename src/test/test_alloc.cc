@@ -8,7 +8,7 @@ using namespace ak;
 DefineTask MainTask() noexcept {
     priv::DebugDumpAllocTable();
     priv::DebugPrintAllocBlocks();
-  	co_return;
+  	co_return 0;
 }
 
 char buffer[8192];
