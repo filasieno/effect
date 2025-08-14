@@ -21,11 +21,11 @@ namespace ak {
             using InitialSuspend = std::suspend_always;
             using FinalSuspend = std::suspend_never;
 
+            static void* operator new(std::size_t) noexcept;
+            static void  operator delete(void*, std::size_t) noexcept {};
+
             template <typename... Args>
             KernelTaskPromise(DefineTask(*)(Args ...) noexcept, Args... ) noexcept {}
-            
-            void* operator new(std::size_t n) noexcept;
-            void  operator delete(void* ptr, std::size_t sz);
 
             KernelTaskHdl            get_return_object() noexcept { return KernelTaskHdl::from_promise(*this); }
             constexpr InitialSuspend initial_suspend() noexcept { return {}; }
@@ -49,14 +49,9 @@ namespace ak {
         constexpr RunSchedulerTaskOp   RunSchedulerTask() noexcept;
         constexpr TerminateSchedulerOp TerminateSchedulerTask() noexcept;
         constexpr void                 DestroySchedulerTask(TaskHdl hdl) noexcept;
-
-
     
     }       
 }
-
-
-
 
 // ================================================================================================================
 // Ops definition details
@@ -214,14 +209,6 @@ namespace ak {
             co_return;
         }
 
-    } // namespace priv
-
-} // namespace ak
-
-
-namespace ak { 
-
-    namespace priv {
 
         inline int InitKernel(KernelConfig* config) noexcept {
             using namespace priv;
@@ -267,14 +254,9 @@ namespace ak { namespace priv {
 // ----------------------------------------------------------------------------------------------------------------
 
 inline void* KernelTaskPromise::operator new(std::size_t n) noexcept {
-    void* mem = std::malloc(n);
-    if (!mem) return nullptr;
-    return mem;
-}
-
-inline void KernelTaskPromise::operator delete(void* ptr, std::size_t sz) {
-    (void)sz;
-    std::free(ptr);
+    std::print("KernelTaskPromise::operator new with size: {}\n", n);
+    assert(n <= sizeof(gKernel.bootTaskFrame));
+    return (void*)gKernel.bootTaskFrame;
 }
 
 // RunSchedulerTaskOp

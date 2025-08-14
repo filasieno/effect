@@ -196,6 +196,9 @@ namespace ak
         int                 ioWaitingCount;
         int                 zombieCount;
         int                 interrupted;
+        
+        // Kernnel Storage 
+        char                bootTaskFrame[48];
 
         // IOManagement
         io_uring ioRing;
