@@ -18,6 +18,7 @@ namespace ak
     struct GetCurrentTaskOp;
     struct ExecIOOp;
     struct WaitOp;
+    struct ExitOp;
 
     /// \brief Idenfies the state of a task
     /// \ingroup Task
@@ -232,6 +233,7 @@ namespace ak
     TaskState                  GetTaskState(TaskHdl hdl) noexcept;
     bool                       IsTaskDone(TaskHdl hdl) noexcept;
     ResumeTaskOp               ResumeTask(TaskHdl hdl) noexcept;
+    constexpr ExitOp           ExitTask(int value = 0) noexcept;
 
     // IO Routines
     ExecIOOp IOOpen(const char* path, int flags, mode_t mode) noexcept;
@@ -343,5 +345,19 @@ namespace ak
         constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) noexcept;
         constexpr int     await_resume() const noexcept { return gKernel.currentTaskHdl.promise().ioResult; }
     };
+
+    struct ExitOp {
+        explicit ExitOp(int value = 0) : returnValue(value) {}
+        constexpr bool    await_ready() const noexcept { return false; }
+        constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) noexcept { 
+            std::print("unimplemented ExitOp\n");
+            std::fflush(stdout);
+            std::abort(); 
+        }
+        constexpr int     await_resume() const noexcept { return returnValue; }
+
+        int returnValue;
+    };
+
 
 }
