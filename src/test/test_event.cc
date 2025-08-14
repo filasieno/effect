@@ -37,7 +37,7 @@ DefineTask ReaderTask(Event* canRead, Event* canWrite, int *readSignal, int* wri
     	// Begin Signal writer
 		assert(*writeSignal == 0);
 		*writeSignal = 1;
-		int cc = SignalOne(canWrite);
+		int cc = SignalEventOne(canWrite);
 		assert(*writeSignal == 1); 
 		std::print("`writeSignal` to {} writers\n", cc); 
 	    // End Signal writer
@@ -59,7 +59,7 @@ DefineTask WriterTask(Event* canRead, Event* canWrite, int *readSignal, int* wri
 		// Begin signal
 		assert(*readSignal == 0); 
 		*readSignal = 1;
-		int cc = SignalOne(canRead);
+		int cc = SignalEventOne(canRead);
 		assert(*readSignal == 1);
 		std::print("`readSignal` fired {} readers\n", cc);
     	// End signal

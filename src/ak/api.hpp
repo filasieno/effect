@@ -17,7 +17,7 @@ namespace ak
     struct SuspendOp;
     struct GetCurrentTaskOp;
     struct ExecIOOp;
-    struct WaitOp;
+    struct WaitEventOp;
     struct ExitOp;
 
     /// \brief Idenfies the state of a task
@@ -285,11 +285,11 @@ namespace ak
         utl::DLink waitingList;
     };
 
-    void   InitEvent(Event* event);
-    int    SignalOne(Event* event);
-    int    SignalSome(Event* event, int n);
-    int    SignalAll(Event* event);
-    WaitOp WaitEvent(Event* event);
+    void        InitEvent(Event* event);
+    int         SignalEvent(Event* event);
+    int         SignalEventSome(Event* event, int n);
+    int         SignalEventAll(Event* event);
+    WaitEventOp WaitEvent(Event* event);
 
 }
 
@@ -330,8 +330,8 @@ namespace ak
         TaskHdl hdl;
     };
 
-    struct WaitOp {
-        WaitOp(Event* event) : evt(event) {}
+    struct WaitEventOp {
+        WaitEventOp(Event* event) : evt(event) {}
 
         constexpr bool    await_ready() const noexcept { return false; }
         constexpr TaskHdl await_suspend(TaskHdl hdl) const noexcept;
@@ -348,13 +348,21 @@ namespace ak
 
     struct ExitOp {
         explicit ExitOp(int value = 0) : returnValue(value) {}
+        ExitOp(ExitOp&&) = default;
+        ExitOp(const ExitOp&) = delete;
+        ExitOp& operator=(const ExitOp&) = delete;
+        ExitOp& operator=(ExitOp&&) = default;
+        ~ExitOp() = default;
+
         constexpr bool    await_ready() const noexcept { return false; }
-        constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) noexcept { 
+        constexpr int     await_resume() const noexcept { return returnValue; }
+        
+        TaskHdl await_suspend(TaskHdl currentTaskHdl) noexcept { 
+            (void)currentTaskHdl;
             std::print("unimplemented ExitOp\n");
             std::fflush(stdout);
             std::abort(); 
         }
-        constexpr int     await_resume() const noexcept { return returnValue; }
 
         int returnValue;
     };

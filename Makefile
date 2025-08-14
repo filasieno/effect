@@ -209,11 +209,11 @@ doxygen: | build/doc/.
 
 #----------------------------------------
 
-all:: build/test_dlist build/test_ak doxygen
-
 test:: test_dlist
 test:: test_ak
 test:: test_event
 test:: test_file_io
 test:: test_alloc
 test:: test_freelist_search
+
+all:: test doxygen

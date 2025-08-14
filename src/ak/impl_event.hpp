@@ -6,7 +6,7 @@ namespace ak {
     // WaitOp
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline constexpr TaskHdl WaitOp::await_suspend(TaskHdl hdl) const noexcept {
+    inline constexpr TaskHdl WaitEventOp::await_suspend(TaskHdl hdl) const noexcept {
         using namespace priv;
         using namespace utl;
 
@@ -32,7 +32,7 @@ namespace ak {
         InitLink(&event->waitingList);
     }
 
-    inline int SignalOne(Event* event) {
+    inline int SignalEventOne(Event* event) {
         using namespace utl;
         using namespace priv;
         assert(event != nullptr);
@@ -52,7 +52,7 @@ namespace ak {
         return 1;
     }
 
-    inline int SignalSome(Event* event, int n) {
+    inline int SignalEventSome(Event* event, int n) {
         using namespace utl;
         using namespace priv;
         assert(event != nullptr);
@@ -74,7 +74,7 @@ namespace ak {
         return cc;
     }
 
-    inline int SignalAll(Event* event) {
+    inline int SignalEventAll(Event* event) {
         using namespace utl;
         using namespace priv;
         assert(event != nullptr);
@@ -96,10 +96,9 @@ namespace ak {
         return signalled;
     }
 
-    inline WaitOp WaitEvent(Event* event) {
-        using namespace utl;
+    inline WaitEventOp WaitEvent(Event* event) {
         assert(event != nullptr);
-        return WaitOp{event};
+        return WaitEventOp{event};
     }
 
 }
