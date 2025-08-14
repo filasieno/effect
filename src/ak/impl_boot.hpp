@@ -226,7 +226,7 @@ namespace ak {
         inline int InitKernel(KernelConfig* config) noexcept {
             using namespace priv;
             
-            if (InitAllocTable(&gKernel.allocTable, config->mem, config->memSize) != 0) {
+            if (InitAllocTable(config->mem, config->memSize) != 0) {
                 return -1;
             }
 

@@ -8,9 +8,9 @@ namespace ak
     namespace priv 
     {
         // Allocator routines
-        int   InitAllocTable(AllocTable* at, void* mem, Size size) noexcept;
-        void* TryMalloc(AllocTable* at, Size size) noexcept;
-        void  FreeMem(AllocTable* at, void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept;
+        int   InitAllocTable(void* mem, Size size) noexcept;
+        void* TryMalloc(Size size) noexcept;
+        void  FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept;
 
 
         // Scheduling routines

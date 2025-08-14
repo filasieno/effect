@@ -2,44 +2,19 @@
 
 #include "ak/api_priv.hpp"
 
-namespace ak {
+namespace ak { namespace priv {
+    // FreeBin binmask utilities
+    static void SetAllocFreeBinBit(unsigned binIdx);
+    static bool GetAllocFreeBinBit(unsigned binIdx);
+    static void ClearAllocFreeBinBit(unsigned binIdx);
+}}
 
-    namespace priv {
+namespace ak { namespace priv {
 
-        static inline void SetAllocFreeBinBit(AllocTable* at, unsigned binIdx) {       
-            assert(at != nullptr);
-            assert(binIdx < 256);
-            const unsigned lane = binIdx >> 6;         // 0..3
-            const unsigned bit  = binIdx & 63u;        // 0..63
-            alignas(32) uint64_t lanes[4];
-            std::memcpy(lanes, &at->freeListbinMask, 32);
-            lanes[lane] |= (1ull << bit);
-            std::memcpy(&at->freeListbinMask, lanes, 32);
-        }
+   
 
-        static inline bool GetAllocFreeBinBit(AllocTable* at, unsigned binIdx) {       
-            assert(at != nullptr);
-            assert(binIdx < 256);
-            const unsigned lane = binIdx >> 6;         // 0..3
-            const unsigned bit  = binIdx & 63u;        // 0..63
-            alignas(32) uint64_t lanes[4];
-            std::memcpy(lanes, &at->freeListbinMask, 32);
-            return ((lanes[lane] >> bit) & 1ull) != 0ull;
-        }
-
-        static inline void ClearAllocFreeBinBit(AllocTable* at, unsigned binIdx) {       
-            assert(at != nullptr);
-            assert(binIdx < 256);
-            const unsigned lane = binIdx >> 6;         // 0..3
-            const unsigned bit  = binIdx & 63u;        // 0..63
-            alignas(32) uint64_t lanes[4];
-            std::memcpy(lanes, &at->freeListbinMask, 32);
-            lanes[lane] &= ~(1ull << bit);
-            std::memcpy(&at->freeListbinMask, lanes, 32);
-        }
-
-        inline int InitAllocTable(AllocTable* at, void* mem, Size size) noexcept {
-            
+        inline int InitAllocTable(void* mem, Size size) noexcept {
+            AllocTable* at = &gKernel.allocTable;
             
             constexpr U64 SENTINEL_SIZE = sizeof(FreeAllocHeader);
 
@@ -98,7 +73,7 @@ namespace ak {
                 InitLink(&at->freeListBins[i]);
             }
 
-            SetAllocFreeBinBit(at, 255);
+            SetAllocFreeBinBit(255);
             DLink* freeList = &at->freeListBins[255];
             InitLink(&wildBlock->freeListLink);
             InsertNextLink(freeList, &wildBlock->freeListLink);
@@ -107,9 +82,6 @@ namespace ak {
             return 0;
         }
 
-    }
-
-    namespace priv {
         constexpr const char* DEBUG_ALLOC_COLOR_RESET  = "\033[0m";
         constexpr const char* DEBUG_ALLOC_COLOR_WHITE  = "\033[37m"; 
         constexpr const char* DEBUG_ALLOC_COLOR_GREEN  = "\033[1;32m"; 
@@ -519,8 +491,9 @@ namespace ak {
     /// 
     /// Returns nullptr if no suitable block found (heap doesn't grow).
     /// For async version that suspends on failure, use co_await AllocMem(size).
-    inline void* TryMalloc(priv::AllocTable* at, Size size) noexcept {
+    inline void* TryMalloc(Size size) noexcept {
         using namespace priv;
+        AllocTable* at = &gKernel.allocTable;
         
         // Compute aligned block size
         Size maybeBlock = HEADER_SIZE + size;
@@ -531,7 +504,7 @@ namespace ak {
         
         // Find bin
         int binIdx = FindFreeListBucket(requestedBlockSize, (char*)&at->freeListbinMask);
-        assert(GetAllocFreeBinBit(at, binIdx));
+        assert(GetAllocFreeBinBit(binIdx));
         assert(!IsLinkDetached(&at->freeListBins[binIdx]));
         assert(at->freeListBinsCount[binIdx] > 0);
         
@@ -539,7 +512,7 @@ namespace ak {
             DLink* freeStack = &at->freeListBins[binIdx];
             DLink* link = PopLink(freeStack);
             --at->freeListBinsCount[binIdx];
-            if (at->freeListBinsCount[binIdx] == 0) ClearAllocFreeBinBit(at, binIdx);
+            if (at->freeListBinsCount[binIdx] == 0) ClearAllocFreeBinBit(binIdx);
             
             AllocHeader* block = (AllocHeader*)((char*)link - offsetof(FreeAllocHeader, freeListLink));
             AllocHeader* nextBlock = NextHeaderPtr(block);
@@ -579,7 +552,7 @@ namespace ak {
                 DLink* newStack = &at->freeListBins[newBinIdx];
                 PushLink(newStack, &newFree->freeListLink);
                 ++at->freeListBinsCount[newBinIdx];
-                if (at->freeListBinsCount[newBinIdx] == 1) SetAllocFreeBinBit(at, newBinIdx);
+                if (at->freeListBinsCount[newBinIdx] == 1) SetAllocFreeBinBit(newBinIdx);
                 
                 AllocStats* stats = &at->stats;
                 ++stats->binAllocCount[binIdx];
@@ -599,7 +572,7 @@ namespace ak {
                 if (blockSize >= requestedBlockSize) {
                     DetachLink(link);
                     --at->freeListBinsCount[254];
-                    if (at->freeListBinsCount[254] == 0) ClearAllocFreeBinBit(at, 254);
+                    if (at->freeListBinsCount[254] == 0) ClearAllocFreeBinBit(254);
                     
                     AllocHeader* nextBlock = NextHeaderPtr((AllocHeader*)block);
                     __builtin_prefetch(nextBlock, 1, 3);
@@ -637,7 +610,7 @@ namespace ak {
                         DLink* newStack = &at->freeListBins[newBinIdx];
                         PushLink(newStack, &newFree->freeListLink);
                         ++at->freeListBinsCount[newBinIdx];
-                        SetAllocFreeBinBit(at, newBinIdx);
+                        SetAllocFreeBinBit(newBinIdx);
                         
                         AllocStats* stats = &at->stats;
                         ++stats->binAllocCount[254];
@@ -659,7 +632,7 @@ namespace ak {
             DetachLink(link);
             assert(freeStack->prev == freeStack && freeStack->next == freeStack);  // Empty after detach
             at->freeListBinsCount[255] = 0;
-            ClearAllocFreeBinBit(at, 255);
+            ClearAllocFreeBinBit(255);
             
             AllocHeader* oldWild = (AllocHeader*)((char*)link - offsetof(FreeAllocHeader, freeListLink));
             AllocHeader* nextBlock = NextHeaderPtr(oldWild);
@@ -687,7 +660,7 @@ namespace ak {
             at->wildBlock = newWild;
             PushLink(freeStack, &newWild->freeListLink);
             ++at->freeListBinsCount[255];
-            SetAllocFreeBinBit(at, 255);
+            SetAllocFreeBinBit(255);
             
             at->freeMemSize -= requestedBlockSize;
             AllocStats* stats = &at->stats;
@@ -716,8 +689,9 @@ namespace ak {
     /// 
     /// \param ptr Pointer returned by TryMalloc (must not be nullptr).
     /// \param sideCoalescing Maximum number of merges per side (0 = no coalescing, defaults to UINT_MAX for unlimited).
-    inline void FreeMem(priv::AllocTable* at, void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept {
+    inline void FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept {
         using namespace priv;
+        AllocTable* at = &gKernel.allocTable;
 
         if (ptr == nullptr) return;
 
@@ -740,7 +714,7 @@ namespace ak {
             // Unlink the previous free block from its bin
             DetachLink(&prevFree->freeListLink);
             --at->freeListBinsCount[prevBin];
-            if (at->freeListBinsCount[prevBin] == 0) ClearAllocFreeBinBit(at, prevBin);
+            if (at->freeListBinsCount[prevBin] == 0) ClearAllocFreeBinBit(prevBin);
 
             // Merge: extend prev into current by adding sizes, shift block to prev
             prevBlock->thisSize.size += blockSize;
@@ -771,7 +745,7 @@ namespace ak {
                 // Unlink the next free block from its bin
                 DetachLink(&nextFree->freeListLink);
                 --at->freeListBinsCount[nextBin];
-                if (at->freeListBinsCount[nextBin] == 0) ClearAllocFreeBinBit(at, nextBin);
+                if (at->freeListBinsCount[nextBin] == 0) ClearAllocFreeBinBit(nextBin);
 
                 // Update stats for this merge
                 AllocStats* stats = &at->stats;
@@ -782,7 +756,7 @@ namespace ak {
                 // Unlink the wild block
                 DetachLink(&nextFree->freeListLink);
                 at->freeListBinsCount[255] = 0;
-                ClearAllocFreeBinBit(at, 255);
+                ClearAllocFreeBinBit(255);
 
                 // Update stats and flag
                 AllocStats* stats = &at->stats;
@@ -815,7 +789,7 @@ namespace ak {
             DLink* newStack = &at->freeListBins[newBinIdx];
             PushLink(newStack, &block->freeListLink);
             ++at->freeListBinsCount[newBinIdx];
-            if (at->freeListBinsCount[newBinIdx] == 1) SetAllocFreeBinBit(at, newBinIdx);
+            if (at->freeListBinsCount[newBinIdx] == 1) SetAllocFreeBinBit(newBinIdx);
 
             // Update pool stats for the new free block
             AllocStats* stats = &at->stats;
@@ -835,3 +809,36 @@ namespace ak {
 } // namespace ak
 
 
+namespace ak { namespace priv {
+
+    // TODO: remove memcpys using just casts
+    inline void SetAllocFreeBinBit(unsigned binIdx) {       
+        assert(binIdx < 256);
+        const unsigned lane = binIdx >> 6;         // 0..3
+        const unsigned bit  = binIdx & 63u;        // 0..63
+        alignas(32) uint64_t lanes[4];
+        std::memcpy(lanes, &gKernel.allocTable.freeListbinMask, 32);
+        lanes[lane] |= (1ull << bit);
+        std::memcpy(&gKernel.allocTable.freeListbinMask, lanes, 32);
+    }
+
+    inline bool GetAllocFreeBinBit(unsigned binIdx) {       
+        assert(binIdx < 256);
+        const unsigned lane = binIdx >> 6;         // 0..3
+        const unsigned bit  = binIdx & 63u;        // 0..63
+        alignas(32) uint64_t lanes[4];
+        std::memcpy(lanes, &gKernel.allocTable.freeListbinMask, 32);
+        return ((lanes[lane] >> bit) & 1ull) != 0ull;
+    }
+
+    inline void ClearAllocFreeBinBit(unsigned binIdx) {       
+        assert(binIdx < 256);
+        const unsigned lane = binIdx >> 6;         // 0..3
+        const unsigned bit  = binIdx & 63u;        // 0..63
+        alignas(32) uint64_t lanes[4];
+        std::memcpy(lanes, &gKernel.allocTable.freeListbinMask, 32);
+        lanes[lane] &= ~(1ull << bit);
+        std::memcpy(&gKernel.allocTable.freeListbinMask, lanes, 32);
+    }
+
+}}
