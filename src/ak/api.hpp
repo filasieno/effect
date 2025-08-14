@@ -166,7 +166,6 @@ namespace ak
         constexpr U64 ALLOC_STATE_IS_FREE_MASK     = 1;
         constexpr U64 ALLOC_STATE_IS_SENTINEL_MASK = 4;    
 
-        int InitAllocTable(AllocTable* at, void* mem, Size size) noexcept;
     } // namespace priv
 
 

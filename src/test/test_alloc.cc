@@ -6,8 +6,8 @@
 using namespace ak;
 
 DefineTask MainTask() noexcept {
-    DebugDumpAllocTable(&gKernel.allocTable);
-    DebugPrintAllocBlocks(&gKernel.allocTable);
+    priv::DebugDumpAllocTable(&gKernel.allocTable);
+    priv::DebugPrintAllocBlocks(&gKernel.allocTable);
   	co_return;
 }
 
@@ -15,8 +15,8 @@ char buffer[8192];
 
 int main() {
 	KernelConfig config = {
-		.mem = buffer,
-		.memSize = sizeof(buffer),
+		.mem          = buffer,
+		.memSize      = sizeof(buffer),
 		.ioEntryCount = 256
 	};
 	if (RunMain(&config, MainTask) != 0) {
