@@ -3,11 +3,7 @@
 
 namespace ak {
 
-    struct ExecIOOp {
-        constexpr bool    await_ready() const noexcept { return false; }
-        constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) noexcept;
-        constexpr int     await_resume() const noexcept { return gKernel.currentTaskHdl.promise().ioResult; }
-    };
+
 
     namespace priv {
         template <typename Prep>

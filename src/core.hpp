@@ -13,6 +13,7 @@ namespace ak
     struct SuspendOp;
     struct GetCurrentTaskOp;
     struct ExecIOOp;
+    struct WaitOp;
 
     struct DefineTask {
         using promise_type = TaskContext;
@@ -167,16 +168,6 @@ namespace ak
         utl::DLink waitingList;
     };
 
-    struct WaitOp {
-        WaitOp(Event* event) : evt(event) {}
-
-        constexpr bool    await_ready() const noexcept { return false; }
-        constexpr TaskHdl await_suspend(TaskHdl hdl) const noexcept;
-        constexpr void    await_resume() const noexcept {}
-
-        Event* evt;
-    };
-
     void   InitEvent(Event* event);
     int    SignalOne(Event* event);
     int    SignalSome(Event* event, int n);
@@ -185,7 +176,8 @@ namespace ak
 
 }
 
-namespace ak {
+namespace ak 
+{
     // Declarations for ops 
     struct ResumeTaskOp {
         explicit ResumeTaskOp(TaskHdl hdl) : hdl(hdl) {};
@@ -220,6 +212,27 @@ namespace ak {
 
         TaskHdl hdl;
     };
+
+    struct WaitOp {
+        WaitOp(Event* event) : evt(event) {}
+
+        constexpr bool    await_ready() const noexcept { return false; }
+        constexpr TaskHdl await_suspend(TaskHdl hdl) const noexcept;
+        constexpr void    await_resume() const noexcept {}
+
+        Event* evt;
+    };
+
+    struct ExecIOOp {
+        constexpr bool    await_ready() const noexcept { return false; }
+        constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) noexcept;
+        constexpr int     await_resume() const noexcept { return gKernel.currentTaskHdl.promise().ioResult; }
+    };
+
+}
+
+namespace ak 
+{
 
     namespace priv 
     {
