@@ -8,1005 +8,134 @@
 #include <immintrin.h>
 #include "liburing.h"
 
+
+#include "defs.hpp"
+#include "dlist.hpp"
+#include "types.hpp"
+#include "alloc.hpp"
+#include "core.hpp"
+#include "kernel.hpp"
+
 namespace ak {
-namespace internal {
-#ifdef NDEBUG
-    constexpr bool IS_DEBUG_MODE    = false;
-#else
-    constexpr bool IS_DEBUG_MODE    = true;   
-#endif
-    constexpr bool TRACE_DEBUG_CODE = false;
-}
 
-// -----------------------------------------------------------------------------
 
-/// \defgroup Task Task API
-/// \brief Task API defines the API for creating and managing tasks.
-
-/// \defgroup Kernel Kernel API
-/// \brief Kernel API defines system level APIs.
-
-// -----------------------------------------------------------------------------
-
-using U64  = __u64;  
-using U32  = __u32; 
-using Size = __SIZE_TYPE__; 
-
-/// \brief Idenfies the state of a task
-/// \ingroup Task
-enum class TaskState
-{
-    INVALID = 0, ///< Invalid OR uninitialized state
-    CREATED,     ///< Task has been created (BUT NOT REGISTERED WITH THE RUNTINME)
-    READY,       ///< Ready for execution
-    RUNNING,     ///< Currently running
-    IO_WAITING,  ///< Waiting for IO
-    WAITING,     ///< Waiting for Critical Section
-    ZOMBIE,      ///< Already dead
-    DELETING     ///< Currently being deleted
-};
-
-inline const char* ToString(TaskState state) noexcept 
-{
-    switch (state) {
-        case TaskState::INVALID:    return "INVALID";
-        case TaskState::CREATED:    return "CREATED";
-        case TaskState::READY:      return "READY";
-        case TaskState::RUNNING:    return "RUNNING";
-        case TaskState::IO_WAITING: return "IO_WAITING";
-        case TaskState::WAITING:    return "WAITING";
-        case TaskState::ZOMBIE:     return "ZOMBIE";
-        case TaskState::DELETING:   return "DELETING";
-        default: return nullptr;
-    }
-}
-
-struct DefineTask;
-
-struct TaskContext;
-
-/// \brief Coroutine handle for a Task
-/// \ingroup Task
-using TaskHdl = std::coroutine_handle<TaskContext>;
-
-/// \brief Defines a Task function type-erased pointer (no std::function)
-/// \ingroup Task
-template <typename... Args>
-using TaskFn = DefineTask(*)(Args...);
-
-namespace internal {
-
-    struct KernelTaskPromise;
-    using KernelTaskHdl = std::coroutine_handle<KernelTaskPromise>;
-
-    struct DLink {
-        DLink* next;
-        DLink* prev;
-    };
-
-    inline void InitLink(DLink* link) {
-        link->next = link;
-        link->prev = link;
-    }
-
-    inline bool IsLinkDetached(const DLink* link) {
-        assert(link != nullptr);
-        assert(link->next != nullptr);
-        assert(link->prev != nullptr);
-        return link->next == link && link->prev == link;
-    }
-
-    inline void DetachLink(DLink* link) {
-        assert(link != nullptr);
-        assert(link->next != nullptr);
-        assert(link->prev != nullptr);
-        if (IsLinkDetached(link)) return;
-        link->next->prev = link->prev;
-        link->prev->next = link->next;
-        link->next = link;
-        link->prev = link;
-    }
-
-    inline void ClearLink(DLink* link) {
-        link->next = nullptr;
-        link->prev = nullptr;
-    }
-
-    inline void EnqueueLink(DLink* queue, DLink* link) {
-        assert(link != nullptr);
-        assert(queue->next != nullptr);
-        assert(queue->prev != nullptr);
-        assert(IsLinkDetached(link));
-
-        link->next = queue->next;
-        link->prev = queue;
-
-        link->next->prev = link;
-        queue->next = link;
-    }
-
-    inline DLink* DequeueLink(DLink* queue) {
-        assert(queue->next != nullptr);
-        assert(queue->prev != nullptr);
-        if (IsLinkDetached(queue)) return nullptr;
-        DLink* target = queue->prev;
-        DetachLink(target);
-        return target;
-    }
-
-    inline void InsertPrevLink(DLink* queue, DLink* link) {
-        assert(link != nullptr);
-        assert(queue->next != nullptr);
-        assert(queue->prev != nullptr);
-
-        link->next = queue;
-        link->prev = queue->prev;
-
-        link->next->prev = link;
-        link->prev->next = link;
-    }
-
-    inline void InsertNextLink(DLink* queue, DLink* link) {
-        assert(link != nullptr);
-        assert(queue->next != nullptr);
-        assert(queue->prev != nullptr);
-
-        link->next = queue->next;
-        link->prev = queue;
-
-        link->next->prev = link;
-        queue->next = link;
-    }
-
-    inline void PushLink(DLink* stack, DLink* link) {
-        InsertNextLink(stack, link);
-    }
-
-    inline DLink* PopLink(DLink* stack) {
-        assert(stack != nullptr);
-        assert(stack->next != nullptr);
-        assert(stack->prev != nullptr);
-        assert(!IsLinkDetached(stack));
-        
-        DLink* target = stack->next;
-        DetachLink(target);
-        return target;
-    }
-
-
-    /// \brief AllocState is the state of the allocation.
-    /// \ingroup Allocator
-    /// 0 -> invalid
-    /// first bit  -> is free
-    /// second bit -> free
-    /// third bit  -> sentinel
-    enum class AllocState {
-        INVALID              = 0b0000,
-        USED                 = 0b0010,
-        FREE                 = 0b0001,
-        WILD_BLOCK           = 0b0011,
-        BEGIN_SENTINEL       = 0b0100,
-        LARGE_BLOCK_SENTINEL = 0b0110,
-        END_SENTINEL         = 0b1100,
-    };
-    
-    struct AllocSizeRecord {
-        U64 size      : 48;
-        U64 state     : 4;
-        U64 _reserved : 12;
-    };
-
-    constexpr U64 ALLOC_STATE_IS_USED_MASK     = 0;
-    constexpr U64 ALLOC_STATE_IS_FREE_MASK     = 1;
-    constexpr U64 ALLOC_STATE_IS_SENTINEL_MASK = 4;    
-
-    struct AllocHeader {
-        AllocSizeRecord thisSize;
-        AllocSizeRecord prevSize;
-    };
-
-    struct FreeAllocHeader {
-        AllocSizeRecord thisSize;
-        AllocSizeRecord prevSize;
-        DLink freeListLink;
-    };
-    static_assert(sizeof(FreeAllocHeader) == 32);
-
-    static constexpr int ALLOCATOR_BIN_COUNT = 256;
-    
-    struct AllocStats {
-        // User Requested operations
-        Size binAllocCount[ALLOCATOR_BIN_COUNT];
-        Size binReallocCount[ALLOCATOR_BIN_COUNT];
-        Size binFreeCount[ALLOCATOR_BIN_COUNT];
-
-        // Actual System operations
-        Size binSplitCount[ALLOCATOR_BIN_COUNT];
-        Size binMergeCount[ALLOCATOR_BIN_COUNT];
-        Size binReuseCount[ALLOCATOR_BIN_COUNT];
-        Size binPoolCount[ALLOCATOR_BIN_COUNT];
-    };
-    
-    /// \brief AllocTable is the main data structure for our general purpose allocator.
-    /// 
-    /// The allocator is designed for single-threaded operation and implements a segregated 
-    /// free list strategy with 256 bins for efficient memory allocation and deallocation.
-    /// It tracks heap boundaries, free list state, and comprehensive statistics.
-    ///  
-    /// ## Architecture Overview
-    /// 
-    /// The AllocTable serves as the central control structure for the allocator, managing:
-    /// - 256 segregated free list bins for different allocation sizes
-    /// - SIMD-optimized bin mask for fast free bin identification  
-    /// - Heap boundary tracking and memory usage statistics
-    /// - Sentinel blocks for safe memory traversal
-    /// - Performance counters for allocation profiling
-    /// 
-    /// ## Bin Organization (256 bins total)
-    /// 
-    /// 0 is an illegal allocation size. 
-    /// 
-    /// All "physical" allocations:
-    ///  - Have a header of 16 bytes
-    ///  - 16 bytes free lists are used to manage free blocks; therefore the minimum allocated payload will be of 32 bytes, given the header and free list requirements.
-    ///  - are aligned to 16-byte boundaries
-    /// 
-    /// Consider that the minimal "physical" allocation size is 32-bytes, therefore small allocations will
-    /// have a very high overhead.
-    /// 
-    /// It is raccomanded that the user builds pools for such objects; having small objects in the general purpose allocator is not a wise strategy 
-    /// as essentially the user is building a "vector with holes". For instance, by building a pool managed by bit fields 
-    /// the user can more effectively manage the memory as it has more constraints than a general purpose allocator.
-    ///
-    /// Nevertheless, the allocator is designed to be able to handle small allocations, but it is not optimized for it **by design**.
-    ///
-    /// The 256 bins are organized as follows:
-    /// 
-    /// - **Small bins (0-253)**: Fixed-size bins for common allocations
-    ///   
-    ///   - Bin 1: 1–16 bytes   (32 bytes of physical allocation)
-    ///   - Bin 2: 17–48 bytes  (64 bytes of physical allocation)
-    ///   - Bin 3: 49–80 bytes  (96 bytes of physical allocation)
-    ///   ...
-    ///   - Bin 253: 8,065–8,096 bytes (32 * 253 of physical allocation)
-    ///   - Bin 254: >= 8,097 bytes    (32 * 254 of physical allocation)
-    ///   - Bin 255: the wild block.
-    /// 
-    /// - **Medium bin (254)**: Variable-size bin for medium blocks (8,128+ bytes)
-    ///   Used for blocks too large for small bins but not requiring wild block allocation
-    /// 
-    /// - **Wild block bin (255)**: Special bin containing ONLY the wild block which is
-    ///   a large contiguous region used for very large allocations when no suitable
-    ///   free blocks exist in other bins
-    /// 
-    /// Essentially the allocator is designed to track 253 bins each growing by 32 bytes.
-    /// The medium bin is will use a first fit allocation strategy. 
-    /// 
-    /// ## SIMD-Accelerated Bin Selection
-    /// 
-    /// The allocator leverages AVX2 SIMD instructions for extremely fast bin selection.
-    /// - **Wild Block Guarantee**: Bit 255 (wild block) is always set to 1, ensuring
-    ///   that there's always at least one available bin for any allocation size.
-    /// 
-    /// -  **Branchless Performance**: This completely branchless implementation provides:
-    /// - O(1) bin selection regardless of allocation size or number of bins
-    /// - No conditional jumps or pipeline stalls
-    /// - Predictable execution time for all allocation sizes
-    /// - Optimal CPU pipeline utilization compared to O(n) linear search
-    /// 
-    /// ## Allocation Strategy
-    /// 
-    /// This allocator targets O(1) bin selection with a large number of bins to
-    /// reduce fragmentation, and it is designed to run safely under near
-    /// memory-exhaustion conditions:
-    /// 
-    /// - **O(1) bin selection with SIMD**: The target bin is determined in constant
-    ///   time using a single SIMD AND plus trailing-zero-count. The large number of
-    ///   bins (256) provides fine-grained size classes, minimizing internal
-    ///   fragmentation while keeping selection cost constant.
-    /// 
-    /// - **Coroutine-based allocations (co_await)**: Allocations are requested from
-    ///   within coroutines. If sufficient memory is available, allocation completes
-    ///   immediately. If not, the requesting coroutine suspends (via `co_await`) and
-    ///   is resumed automatically when memory becomes available. This avoids
-    ///   allocation failures while maintaining forward progress.
-    /// 
-    /// - **No external coordination structures**: The system avoids auxiliary queues
-    ///   or buffers that would require extra allocations. This eliminates "allocate to
-    ///   allocate" scenarios and reduces memory pressure precisely when memory is
-    ///   scarce.
-    /// 
-    /// - **Fixed-heap operation (initial design)**: The initial implementation assumes
-    ///   a fixed-size heap. Under pressure, operations do not fail; instead,
-    ///   coroutines naturally throttle by suspending until free memory is returned to
-    ///   the allocator.
-    /// 
-    /// Practical flow:
-    ///
-    /// 1. Compute target bin in O(1) with SIMD  
-    /// 2. If a suitable free block exists, allocate and return  
-    /// 3. Otherwise, suspend the coroutine; resume it when memory is freed  
-    /// 4. Coalescing on free improves availability and reduces fragmentation
-    /// 
-    /// ## Wild Block Strategy
-    /// 
-    /// The wild block serves as the allocator's "reservoir" for large allocations:
-    /// 
-    /// - **Purpose**: Handles allocations larger than 8,096 bytes or when no suitable
-    ///   free blocks exist in regular bins
-    /// - **Management**: Maintained as a single large contiguous region in bin 255
-    /// - **Splitting**: When used, the wild block is split and remainder stays as wild block
-    /// - **Coalescing**: Adjacent free blocks are merged back into the wild block when possible
-    /// - **Fragmentation Control**: Minimizes external fragmentation by providing a
-    ///   fallback for unusual allocation sizes
-    /// 
-    /// ## Free List Implementation
-    /// 
-    /// Each bin uses an intrusive doubly-linked list for optimal performance:
-    /// 
-    /// - **Storage**: List pointers stored in the free block's payload area (no overhead)
-    /// - **Structure**: Circular lists with sentinel heads for consistent operations
-    /// - **Performance**: O(1) insertion, removal, and empty checking
-    /// - **Cache Efficiency**: 64-byte alignment prevents false sharing between bins
-    ///
-    /// # Large blocks
-    ///
-    /// Large blocks are allocated are allocated past the  **large block sentinel** but before the **end block sentinel**
-    /// Large blocks do not have a header, but are managed using an external table.
-    /// Usually large blocks are allocated at the beginning of the software operation and stay allocated until the end.
-    ///
-    /// ## Wild block
-    ///
-    /// The wild block is a large contiguous region of memory that is used to allocate
-    /// large blocks.
-    ///
-    /// 
-    /// ## Thread Safety
-    /// 
-    /// **IMPORTANT**: This allocator is designed for single-threaded use only.
-    /// No synchronization primitives are used. For multi-threaded applications,
-    /// either use external locking or consider per-thread allocator instances.
-    /// 
-    /// ## Usage Example
-    /// 
-    /// Synchronous allocation with possible failure:
-    ///
-    /// ```cpp
-    /// // Initialize allocator with 1MB heap
-    /// AllocTable allocTable;
-    /// void* heap = mmap(nullptr, 1024*1024, PROT_READ|PROT_WRITE, 
-    ///                   MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-    /// InitAllocTable(&allocTable, heap, 1024*1024);
-    /// 
-    /// // Allocate 128 bytes (goes to bin 3)
-    /// void* ptr = TryAllocMem(&allocTable, 128);
-    /// assert(ptr != nullptr);
-    /// // Free the allocation (triggers coalescing if possible)
-    /// FreeMem(&allocTable, ptr);
-    /// 
-    /// // Query statistics
-    /// printf("Allocations: %zu, Fragmentation: %.2f%%\n", 
-    ///        allocTable.totalAllocCount,
-    ///        (1.0 - (double)allocTable.freeMemSize / allocTable.memSize) * 100);
-    /// ```
-    ///
-    /// Coroutine-based allocation for systems that run close to memory exhaustion:
-    ///
-    /// ```cpp
-    /// DefineTask ProcessData() {
-    ///     void* buffer = co_await AllocMem(4096);  // Suspend if no memory
-    ///     // ... process data ...
-    ///     FreeAsync(buffer);  // May resume waiting coroutines
-    /// }
-    /// ```
-    /// 
-    /// ## Performance Characteristics
-    /// 
-    /// - **Allocation**: O(1) average case, O(log n) worst case for large allocations
-    /// - **Deallocation**: O(1) with immediate coalescing
-    /// - **Memory Overhead**: ~6.25% (16-byte headers on 32-byte aligned blocks)
-    /// - **Fragmentation**: Minimized through segregated bins and coalescing
-    /// - **Cache Performance**: Optimized with 64-byte alignments and SIMD operations
-    /// 
-    /// ## Statistics and Monitoring
-    /// 
-    /// The AllocTable provides comprehensive statistics for performance analysis:
-    /// 
-    /// ### Global Counters
-    /// - TODO: Outdated
-    /// - `totalAllocCount`: Track allocation frequency and patterns
-    /// - `totalFreeCount`: Monitor deallocation behavior and potential leaks
-    /// - `totalReallocCount`: Identify memory resize patterns
-    /// - `totalSplitCount`: Measure fragmentation from block splitting
-    /// - `totalMergeCount`: Track defragmentation effectiveness
-    /// - `totalReuseCount`: Monitor free list efficiency
-    /// 
-    /// ### Memory Usage Tracking
-    /// - `usedMemSize` / `freeMemSize`: Real-time memory utilization
-    /// - `memSize` vs `requestedMemSize`: Heap growth analysis
-    /// - `maxMemSize`: Memory limit enforcement
-    /// 
-    /// ### Per-Bin Statistics (via AllocStats)
-    /// - `binAllocCount[i]`: Allocation frequency per bin size
-    /// - `binFreeCount[i]`: Deallocation patterns per bin
-    /// - `binSplitCount[i]`: Fragmentation analysis per size class
-    /// - `binMergeCount[i]`: Coalescing effectiveness per bin
-    /// - `binReuseCount[i]`: Free list hit rate per bin
-    /// - `binPoolCount[i]`: Increased every time a block is insered into the pool
-    /// 
-    /// ### Derived Metrics
-    /// ```cpp
-    /// // Memory utilization percentage
-    /// double utilization = (double)usedMemSize / memSize * 100;
-    /// 
-    /// // Average allocation size
-    /// double avgAllocSize = (double)usedMemSize / totalAllocCount;
-    /// 
-    /// // Fragmentation estimate (external)
-    /// double fragmentation = 1.0 - (largestFreeBlock / freeMemSize);
-    /// 
-    /// // Allocation/Free balance (should approach 1.0)
-    /// double balance = (double)totalFreeCount / totalAllocCount;
-    /// ```
-    /// 
-    /// ## Comparison with Other Single-Threaded Allocators
-    /// 
-    /// This allocator is optimized for constant-time bin selection, minimal
-    /// fragmentation, and robust behavior near memory exhaustion via coroutine
-    /// suspension (no external coordination structures).
-    /// 
-    /// - TLSF (Two-Level Segregated Fit):
-    ///   - Strengths: Deterministic O(1) alloc/free, good fragmentation profile.
-    ///   - Compared to this design: Similar asymptotics, but SIMD-based 256-bin
-    ///     selection here achieves lower instruction count on hot paths and finer
-    ///     size classes. Near OOM, TLSF must overprovision or fail; here, coroutines
-    ///     suspend without extra structures, avoiding "allocate to allocate".
-    /// 
-    /// - dlmalloc:
-    ///   - Strengths: Battle-tested, general-purpose.
-    ///   - Compared to this design: Typically higher bin lookup cost and more
-    ///     fragmentation. No built-in coroutine suspension model; requires
-    ///     overprovisioning or failure when memory is tight.
-    /// 
-    /// - jemalloc/tcmalloc (single-threaded use of a single arena):
-    ///   - Strengths: Excellent throughput and fragmentation in general-purpose use.
-    ///   - Compared to this design: Larger machinery, often tuned for multi-threaded
-    ///     workloads. This allocator's fixed-heap, SIMD O(1) selection and
-    ///     coroutine suspension provide more predictable latency and graceful
-    ///     behavior near OOM without extra coordination buffers.
-    /// 
-    /// - rpmalloc/mimalloc (single-threaded mode):
-    ///   - Strengths: Very fast small/medium-size alloc/free paths.
-    ///   - Compared to this design: Small-object fast paths typically rely on
-    ///     caches or slabs that require headroom. Under near-exhaustion, they can
-    ///     require overprovisioning to remain stable. Here, intentional omission of
-    ///     a growable small-object pool avoids extra memory pressure; the system
-    ///     instead throttles via coroutine suspension.
-    /// 
-    /// Key advantages of this near-OOM design:
-    /// - **No overprovisioning required**: The system remains operational by
-    ///   suspending requesters; memory pressure doesn't cascade into failures.
-    /// - **No external coordination allocations**: Wait semantics are intrinsic to
-    ///   coroutines, avoiding additional buffers/queues.
-    /// - **O(1) bin selection at scale**: 256 bins plus branchless SIMD yields
-    ///   constant-time selection with fine granularity to reduce fragmentation.
-    /// - **Fixed-heap predictability**: No OS calls in the hot path; latency is
-    ///   stable even under pressure.
-    /// 
-    /// ## Self-evaluated allocator Rating Card (x86-64, single-threaded)
-    /// 
-    /// - Throughput (steady-state, medium sizes): 9/10 — O(1) SIMD bin select + O(1) free/coalesce
-    /// - Tail Latency Predictability: 9/10 — Branchless hot path
-    /// - Near-OOM Robustness: 10/10 — Coroutine suspension; no overprovisioning required
-    /// - Internal Fragmentation: 8/10 — 256 bins, 32-byte granularity balance
-    /// - External Fragmentation: 8/10 — Immediate coalescing + wild block reservoir
-    /// - Memory Overhead: 8/10 — Compact headers; 32 byte minimum alloc size; 16 byte overhead
-    /// - Determinism (single-threaded): 9/10 — Fixed-heap, constant-time selection
-    /// - Portability: N/A by design — x86-64 AVX2/BMI1 focus
-    /// 
-    /// ## Possible Improvements
-    /// 
-    /// - SIMD lane selection micro-optimizations:
-    ///   - Use lane-zero tests with `_mm256_testz_si256` and BMI1 `tzcnt` per 64-bit lane,
-    ///     then combine via bitwise masks to remain branchless.
-    ///   - Optionally precompute 256 cut-masks (2 KB table) to avoid per-alloc shifts
-    ///     when targetBin frequency is high and predictable.
-    /// 
-    /// - TargetBin clamping and invariants:
-    ///   - Ensure targetBin is clamped to [0, 255] and bit 255 (wild block) stays set.
-    ///   - Add lightweight asserts to validate mask invariants in debug builds.
-    /// 
-    /// - Wait-list policies under pressure:
-    ///   - Introduce size-bucketed wait lists and/or aging to avoid starvation.
-    ///   - Batch wakeups on large frees/merges to reduce scheduler thrash.
-    /// 
-    /// - Large-block policy refinements (future OS-backed mode):
-    ///   - Page-align large blocks and track lifetime classes to reduce external fragmentation.
-    ///   - Consider `madvise`-style hints (when OS backing exists) for long-lived large blocks.
-    /// 
-    /// - Optional fixed small-object fast path (non-growable):
-    ///   - A compile-time-sized, non-growable slab carved at init can provide a fast path
-    ///     for 32–256 B objects without violating near-OOM goals; when exhausted, allocations
-    ///     naturally fall back to the general path and suspension semantics.
-    /// 
-    /// - Instrumentation and observability:
-    ///   - Add tracepoints for suspend/resume, split/merge, and wild-block usage.
-    ///   - Maintain short-term histograms for allocation sizes to guide tuning.
-    ///
-    /// ## FF Allocator vs Prior Art
-    ///
-    /// - Known ideas
-    ///   - O(1) binning (TLSF), boundary tags, wild/reservoir blocks: known.
-    ///   - Bitmaps for size classes: known; some allocators use bit twiddling, but SIMD-accelerated first-fit with 256 bins + branchless masks is not widely documented.
-    ///   - Sleepable allocations: common in kernels (e.g., Linux GFP_KERNEL can sleep; slab allocators wake sleepers), rare in general-purpose user-space allocators.
-    /// - Differentiators
-    ///   - Coroutine-native allocation that suspends under pressure (no external queues); "no allocate-to-allocate."
-    ///   - Fixed-heap operation tuned for near-OOM regimes with built-in backpressure.
-    ///   - Branchless, lane-wise SIMD (AVX2/BMI1) bin selection at 256 bins to reduce fragmentation while keeping O(1).
-    /// "Has anyone done this?"
-    /// - Closest parallels
-    ///   - Kernel allocators that may block on memory, then wake sleepers on free.
-    ///   - Research/industrial allocators with bitmap-based bin finding (some use popcnt/ctz), but few (if any) publicly emphasize SIMD+branchless selection at this granularity.
-    ///   - Task systems with memory-aware throttling/backpressure, but not at the allocator call boundary as an awaitable primitive.
-    /// - Likely novelty
-    ///   - The coroutine-suspending user-space allocator as a first-class API
-    /// - Contributions
-    ///   - O(1) branchless SIMD bin selection with 256 bins and a lane-wise first-set protocol.
-    ///   - Coroutine-native alloc API that suspends and resumes without external coordination or extra allocations.
-    ///   - Robust near‑OOM behavior: no overprovisioning; automatic backpressure; predictable tail latency.
-    /// - Evaluation (x86-64, single-threaded)
-    ///   - Throughput/latency vs TLSF, dlmalloc, mimalloc/rpmalloc (single arena), jemalloc/tcmalloc (single arena).
-    ///   - Fragmentation (internal/external), split/merge counts, largest-free vs total-free under adversarial and realistic traces.
-    ///   - Near‑OOM benchmarks: survival curves, request wait times, fairness, bursty free/wakeup behavior, tail latencies.
-    ///   - Ablations: with/without SIMD, with/without suspension, varying bin counts, wildcard reservoir on/off.
-    /// - Proofs/assurances
-    ///   - Correctness invariants (headers, coalescing, sentinels).
-    ///   - SIMD lane correctness and tzcnt fallbacks not required (x86-64 only, **by design**).
-    ///
-    struct AllocTable {
-        
-        // ==================== FREE LIST MANAGEMENT ====================
-        
-        /// \brief SIMD bit mask for fast bin availability lookup
-        /// 
-        /// 256-bit AVX2 register containing availability bits for all 256 bins.
-        /// Each bit indicates whether the corresponding bin contains free blocks.
-        /// Aligned to 64-byte boundary for optimal SIMD performance.
-        /// Used with SIMD instructions to find the first available bin in O(1) time.
-        alignas(64) __m256i freeListbinMask;                         
-        
-        /// \brief Array of doubly-linked list heads for each bin
-        /// 
-        /// Each DLink serves as the head/sentinel for a bin's free block list.
-        /// Free blocks in each bin are organized as circular doubly-linked lists
-        /// for O(1) insertion and removal. Aligned to 64-byte boundary to prevent
-        /// false sharing and optimize cache performance when accessing multiple bins.
-        alignas(64) DLink freeListBins[ALLOCATOR_BIN_COUNT];
-        
-        /// \brief Size tracking for each bin's free blocks
-        /// 
-        /// Contains the total size (in bytes) of all free blocks in each bin.
-        /// Used for statistics, fragmentation analysis, and allocation strategy
-        /// optimization. Aligned to 64-byte boundary for cache efficiency.
-        alignas(64) U32 freeListBinsCount[ALLOCATOR_BIN_COUNT];
-
-        // ==================== HEAP BOUNDARY MANAGEMENT ====================
-        
-        /// \brief Start of the raw heap memory region
-        /// 
-        /// Points to the beginning of the heap as returned by the system allocator
-        /// (e.g., mmap, sbrk). May not be aligned to allocator requirements.
-        /// This is the address that must be passed to the system deallocator.
-        alignas(8) char* heapBegin;
-        
-        /// \brief End of the heap memory region  
-        /// 
-        /// Points to the first byte beyond the heap. The valid heap range is
-        /// [heapBegin, heapEnd). Used for bounds checking during allocation
-        /// and to determine when heap expansion is needed.
-        alignas(8) const char* heapEnd;
-        
-        /// \brief Start of aligned memory region for allocations
-        /// 
-        /// Points to heapBegin aligned up to 32-byte boundary. All allocator
-        /// blocks are carved from the region [memBegin, memEnd). This ensures
-        /// all allocated blocks maintain proper 32-byte alignment.
-        alignas(8) char* memBegin;
-        
-        /// \brief End of aligned memory region for allocations
-        /// 
-        /// Points to memBegin aligned up to 32-byte boundary. All allocator
-        /// blocks are carved from the region [memBegin, memEnd). This ensures
-        /// all allocated blocks maintain proper 32-byte alignment.
-        alignas(8) char* memEnd;
-        
-        // ==================== MEMORY ACCOUNTING ====================
-        
-        /// \brief Current total heap size
-        /// 
-        Size memSize;
-        
-        /// \brief Currently allocated memory
-        /// 
-        /// Total bytes currently allocated to users (not including headers).
-        /// Updated on each allocation and deallocation for real-time tracking.
-        Size usedMemSize;
-        
-        /// \brief Currently free memory
-        /// 
-        /// Total bytes available for allocation across all bins and wild block.
-        /// Should satisfy: usedMemSize + freeMemSize ≈ memSize (accounting for headers).
-        Size freeMemSize;
-
-        /// \brief Maximum free block size
-        /// 
-        /// The largest free block size in the heap.
-        Size maxFreeBlockSize;
-        
-        // ==================== ALLOCATION STATISTICS ====================
-        
-        AllocStats stats;
-        
-        // ==================== SENTINEL BLOCKS ====================
-        
-        /// \brief Sentinel block at the beginning of heap
-        /// 
-        /// Special marker block placed at memBegin that serves multiple purposes:
-        /// - **Boundary Protection**: Prevents backward traversal beyond heap start
-        /// - **Coalescing Simplification**: Eliminates special cases in merge logic
-        /// - **Traversal Safety**: Provides a consistent starting point for heap walks
-        /// - **Never Allocated**: Marked as permanently allocated to prevent use
-        /// 
-        /// The beginSentinel has zero payload size and is never included in free lists.
-        alignas(8) FreeAllocHeader* beginSentinel;
-        
-        /// \brief Pointer to the wild block
-        /// 
-        /// Points to the large contiguous free region used for allocations
-        /// that cannot be satisfied by regular bins. The wild block characteristics:
-        /// - **Dynamic Size**: Shrinks as allocations are carved from it
-        /// - **Fallback Allocation**: Used when no suitable bins are available
-        /// - **Coalescing Target**: Free blocks adjacent to wild block merge into it
-        /// - **Null When Fragmented**: May be null if heap is highly fragmented
-        /// - **Bin 255 Resident**: Always stored in the last bin when available
-        alignas(8) FreeAllocHeader* wildBlock;
-        
-        /// \brief Sentinel for large block tracking
-        /// 
-        /// Special marker used to manage very large allocations (typically >64KB)
-        /// that bypass the normal binning system. Functions include:
-        /// - **Large Block Chain**: Links together oversized allocations
-        /// - **Direct Allocation Tracking**: Monitors blocks allocated directly from system
-        /// - **Heap Traversal Aid**: Helps navigate around large blocks during walks
-        /// - **Statistics Collection**: Enables separate accounting for large allocations
-        alignas(8) FreeAllocHeader* largeBlockSentinel;
-        
-        /// \brief Sentinel block at the end of heap
-        /// 
-        /// Special marker block placed at heapEnd that provides heap boundary control:
-        /// - **Forward Traversal Limit**: Prevents walking beyond heap end
-        /// - **Coalescing Boundary**: Stops merge operations at heap edge
-        /// - **Growth Point**: Marks where heap expansion occurs
-        /// - **Consistency Check**: Validates heap structure during debugging
-        /// 
-        /// Like beginSentinel, this block is never allocated and has zero payload.
-        alignas(8) FreeAllocHeader* endSentinel;
-        
-        // TODO: 
-
-    };
-
-    struct Kernel {
-        alignas(64) AllocTable allocTable;
-        
-        // Hot scheduling data (first cache line)
-        TaskHdl currentTaskHdl;
-        TaskHdl schedulerTaskHdl;
-        DLink   readyList;
-        DLink   taskList;
-        void*   mem;
-        Size    memSize;
-        
-        alignas(64) 
-        io_uring ioRing;
-        unsigned ioEntryCount;
-        
-        alignas(64) 
-        KernelTaskHdl kernelTask;
-        DLink         zombieList;
-
-        alignas(64) 
-        int taskCount;
-        int readyCount;
-        int waitingCount;
-        int ioWaitingCount;
-        int zombieCount;
-        int interrupted;
-    };
-    
-    extern struct Kernel gKernel;
-
-    struct InitialSuspendTaskOp {
-        constexpr bool await_ready() const noexcept { return false; }
-        void           await_suspend(TaskHdl hdl) const noexcept;
-        constexpr void await_resume() const noexcept {}
-    };
-
-    struct FinalSuspendTaskOp {
-        constexpr bool await_ready() const noexcept { return false; }
-        TaskHdl        await_suspend(TaskHdl hdl) const noexcept;
-        constexpr void await_resume() const noexcept { assert(false); }
-    };
-
-    struct ResumeTaskOp {
-        explicit ResumeTaskOp(TaskHdl hdl) : hdl(hdl) {};
-
-        constexpr bool await_ready() const noexcept { return hdl.done();}
-        TaskHdl        await_suspend(TaskHdl currentTaskHdl) const noexcept;
-        constexpr void await_resume() const noexcept {}
-
-        TaskHdl hdl;
-    };
-
-    struct JoinTaskOp {
-        explicit JoinTaskOp(TaskHdl hdl) : joinedTaskHdl(hdl) {};
-
-        constexpr bool await_ready() const noexcept { return false; }
-        constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) const noexcept;
-        constexpr void await_resume() const noexcept {}
-
-        TaskHdl joinedTaskHdl;
-    };
-
-    struct SuspendOp {
-        constexpr bool await_ready() const noexcept { return false; }
-        TaskHdl        await_suspend(TaskHdl hdl) const noexcept;
-        constexpr void await_resume() const noexcept {};
-    };
-
-    struct GetCurrentTaskOp {
-        constexpr bool    await_ready() const noexcept        { return false; }
-        constexpr TaskHdl await_suspend(TaskHdl hdl) noexcept { this->hdl = hdl; return hdl; }
-        constexpr TaskHdl await_resume() const noexcept       { return hdl; }
-
-        TaskHdl hdl;
-    };
-
-    void CheckInvariants() noexcept;
-    
-    void DebugTaskCount() noexcept;
-    
-}
-
-/// \brief Define a context.
-/// \ingroup Task
-struct TaskContext {
-    using Link = internal::DLink;
-
-    void* operator new(std::size_t n) noexcept {
-        void* mem = std::malloc(n);
-        if (!mem) return nullptr;
-        return mem;
-    }
-
-    void  operator delete(void* ptr, std::size_t sz) {
-        (void)sz;
-        std::free(ptr);
-    }
-
-    template <typename... Args>
-    TaskContext(Args&&... ) {
-        using namespace internal;
-
-        InitLink(&taskListLink);
-        InitLink(&waitLink);
-        InitLink(&awaitingTerminationList);
-        state = TaskState::CREATED;
-        enqueuedIO = 0;
-        ioResult = -1;
-
-        // Check post-conditions
-        assert(IsLinkDetached(&taskListLink));
-        assert(IsLinkDetached(&waitLink));
-        assert(state == TaskState::CREATED);
-        CheckInvariants();
-    }
-
-    ~TaskContext() {
-        using namespace internal;
-        assert(state == TaskState::DELETING);
-        assert(IsLinkDetached(&taskListLink));
-        assert(IsLinkDetached(&waitLink));
-        DebugTaskCount();
-        CheckInvariants();
-    }
-
-    TaskHdl        get_return_object() noexcept    { return TaskHdl::from_promise(*this);}
-    constexpr auto initial_suspend() noexcept      { return internal::InitialSuspendTaskOp{}; }
-    constexpr auto final_suspend() noexcept        { return internal::FinalSuspendTaskOp{}; }
-    void           return_void() noexcept;
-    void           unhandled_exception() noexcept  { assert(false); }
-
-    TaskState state;
-    int       ioResult;
-    unsigned  enqueuedIO;
-    Link      waitLink;                // Used to enqueue tasks waiting for Critical Section
-    Link      taskListLink;            // Global Task list
-    Link      awaitingTerminationList; // The list of all tasks waiting for this task
-};
-
-/// \brief Marks a Task coroutine function
-struct DefineTask {
-    using promise_type = TaskContext;
-
-    DefineTask(const TaskHdl& hdl) : hdl(hdl) {}
-    operator TaskHdl() const noexcept { return hdl; }
-
-    TaskHdl hdl;
-};
-
-
-/// \brief Clears the target TaskHdl
-/// \param hdl the handle to be cleared
-/// \ingroup Task
-inline void ClearTaskHdl(TaskHdl* hdl) noexcept {
-    *hdl = TaskHdl{};
-}
-
-/// \brief Checks is the a TaskHdl is valid
-/// \param hdl the handle to be cleared
-/// \ingroup Task
-inline bool IsTaskHdlValid(TaskHdl hdl) {
-    return hdl.address() != nullptr;
-}
-
-/// \brief Returns the TaskPromise associated with the target TaskHdl
-/// @param hdl 
-/// @return the TaskPromise associated with the target TaskHdl
-/// \ingroup Task
-inline TaskContext* GetTaskContext(TaskHdl hdl) {
-    return &hdl.promise();
-}
-
-/// \brief Returns the TaskPromise associated with the target TaskHdl
-/// @param hdl 
-/// @return the TaskPromise associated with the target TaskHdl
-/// \ingroup Task
-inline TaskContext* GetTaskContext() {
-    return &internal::gKernel.currentTaskHdl.promise();
-}
-
-/// \brief Get the current Task
-/// \return [Async] TaskHdl
-/// \ingroup Task
-inline constexpr auto GetCurrentTask() noexcept {
-    return internal::GetCurrentTaskOp{};
-}
-
-/// \brief Suspends the current Task and resumes the Scheduler.
-/// \return [Async] void
-/// \ingroup Task
-inline constexpr auto SuspendTask() noexcept { return internal::SuspendOp{}; }
-
-/// \brief Suspends the current Task until the target Task completes.
-/// \param hdl a handle to the target Task.
-/// \return [Async] void
-/// \ingroup Task
-inline auto JoinTask(TaskHdl hdl) noexcept {
-	return internal::JoinTaskOp{hdl};
-}
-
-/// \brief Alias for AkJoinTask
-/// \param hdl a handle to the target Task.
-/// \return [Async] void
-/// \ingroup Task
-inline auto operator co_await(TaskHdl hdl) noexcept {
-	return internal::JoinTaskOp{hdl};
-}
-
-/// \brief Resturns the current TaskState.
-/// \param hdl a handle to the target Task.
-/// \return the current TaskState
-/// \ingroup Task
-inline TaskState GetTaskState(TaskHdl hdl) noexcept {
-	return hdl.promise().state;
-}
-
-/// \brief Returns true if the target Task is done.
-/// \param hdl a handle to the target Task
-/// \return `true` if the target Task is done
-/// \ingroup Task
-inline bool IsTaskDone(TaskHdl hdl) noexcept {
-	return hdl.done();
-}
-
-/// \brief Resumes a Task that is in TaskState::READY
-/// \param hdl a handle to the target Task
-/// \return true if the target Task is done
-/// \ingroup Task
-inline auto ResumeTask(TaskHdl hdl) noexcept {
-	return internal::ResumeTaskOp{hdl};
-}
-
-/// \brief Configuration for the Kernel
-/// \ingroup Kernel
-struct KernelConfig {
-    void*    mem;
-    Size     memSize;
-    unsigned ioEntryCount;
-};
 
 // Task::AwaitTaskEffect
 // ----------------------------------------------------------------------------------------------------------------
 
 namespace internal 
 {
+    struct RunSchedulerTaskOp {
+        constexpr bool await_ready() const noexcept;
+        constexpr void await_resume() const noexcept;
+        TaskHdl await_suspend(KernelTaskHdl currentTaskHdl) const noexcept;
+    };
+
+    struct TerminateSchedulerOp {
+        constexpr bool await_ready() const noexcept;
+        KernelTaskHdl  await_suspend(TaskHdl hdl) const noexcept;
+        constexpr void await_resume() const noexcept;
+    };
+
+    struct KernelTaskPromise {
+        template <typename... Args>
+        KernelTaskPromise(DefineTask(*)(Args ...) noexcept, Args... ) noexcept;
+        
+        void* operator new(std::size_t n) noexcept;
+        void  operator delete(void* ptr, std::size_t sz);
+
+        KernelTaskHdl  get_return_object() noexcept;
+        constexpr auto initial_suspend() noexcept;
+        constexpr auto final_suspend() noexcept;
+        constexpr void return_void() noexcept;
+        constexpr void unhandled_exception() noexcept;
+    };
+
+    struct DefineKernelTask {
+        using promise_type = KernelTaskPromise;
+
+        DefineKernelTask(const KernelTaskHdl& hdl) noexcept;
+        operator KernelTaskHdl() const noexcept;
+
+        KernelTaskHdl hdl;
+    };
+
     
+    RunSchedulerTaskOp   RunSchedulerTask() noexcept;
+    TerminateSchedulerOp TerminateSchedulerTask() noexcept;
+    void                 DestroySchedulerTask(TaskHdl hdl) noexcept;
+}
+
+namespace internal {
+    static TaskContext*  GetLinkedTaskContext(const DLink* link) noexcept;
+    
+    // Definitions
     inline static TaskContext* GetLinkedTaskContext(const DLink* link) noexcept {
         unsigned long long promise_off = ((unsigned long long)link) - offsetof(TaskContext, waitLink);
         return (TaskContext*)promise_off;
     }
 
-    inline auto RunSchedulerTask() noexcept {
-        struct RunSchedulerTaskOp {
+    inline constexpr bool RunSchedulerTaskOp::await_ready() const noexcept { 
+        return false; 
+    }
 
-            constexpr bool await_ready() const noexcept  { return false; }
-            constexpr void await_resume() const noexcept {}  
+    inline constexpr void RunSchedulerTaskOp::await_resume() const noexcept {}
 
-            TaskHdl await_suspend(KernelTaskHdl currentTaskHdl) const noexcept {
-                using namespace internal;
+    inline TaskHdl RunSchedulerTaskOp::await_suspend(KernelTaskHdl currentTaskHdl) const noexcept {
+        using namespace internal;
 
-                (void)currentTaskHdl;
-                TaskContext& schedulerPromise = gKernel.schedulerTaskHdl.promise();
+        (void)currentTaskHdl;
+        TaskContext& schedulerPromise = gKernel.schedulerTaskHdl.promise();
 
-                // Check expected state post scheduler construction
+        // Check expected state post scheduler construction
 
-                assert(gKernel.taskCount == 1);
-                assert(gKernel.readyCount == 1);
-                assert(schedulerPromise.state == TaskState::READY);
-                assert(!IsLinkDetached(&schedulerPromise.waitLink));
-                assert(gKernel.currentTaskHdl == TaskHdl());
+        assert(gKernel.taskCount == 1);
+        assert(gKernel.readyCount == 1);
+        assert(schedulerPromise.state == TaskState::READY);
+        assert(!IsLinkDetached(&schedulerPromise.waitLink));
+        assert(gKernel.currentTaskHdl == TaskHdl());
 
-                // Setup SchedulerTask for execution (from READY -> RUNNING)
-                gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
-                schedulerPromise.state = TaskState::RUNNING;
-                DetachLink(&schedulerPromise.waitLink);
-                --gKernel.readyCount;
+        // Setup SchedulerTask for execution (from READY -> RUNNING)
+        gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
+        schedulerPromise.state = TaskState::RUNNING;
+        DetachLink(&schedulerPromise.waitLink);
+        --gKernel.readyCount;
 
-                // Check expected state post task system bootstrap
-                CheckInvariants();
-                return gKernel.schedulerTaskHdl;
-            }        
-        };
+        // Check expected state post task system bootstrap
+        CheckInvariants();
+        return gKernel.schedulerTaskHdl;
+    }
 
+    inline RunSchedulerTaskOp RunSchedulerTask() noexcept {
         return RunSchedulerTaskOp{};
     }
 
-    inline auto TerminateSchedulerTask() noexcept {
+    inline constexpr bool TerminateSchedulerOp::await_ready() const noexcept { 
+        return false; 
+    }
 
-        struct TerminateSchedulerOp {
-            constexpr bool await_ready() const noexcept { return false; }
-            KernelTaskHdl await_suspend(TaskHdl hdl) const noexcept {
-                using namespace internal;
+    inline KernelTaskHdl TerminateSchedulerOp::await_suspend(TaskHdl hdl) const noexcept {
+        using namespace internal;
 
-                assert(gKernel.currentTaskHdl == gKernel.schedulerTaskHdl);
-                assert(gKernel.currentTaskHdl == hdl);
+        assert(gKernel.currentTaskHdl == gKernel.schedulerTaskHdl);
+        assert(gKernel.currentTaskHdl == hdl);
 
-                TaskContext& schedulerPromise = gKernel.schedulerTaskHdl.promise();
-                assert(schedulerPromise.state == TaskState::RUNNING);
-                assert(IsLinkDetached(&schedulerPromise.waitLink));
+        TaskContext& schedulerPromise = gKernel.schedulerTaskHdl.promise();
+        assert(schedulerPromise.state == TaskState::RUNNING);
+        assert(IsLinkDetached(&schedulerPromise.waitLink));
 
-                schedulerPromise.state = TaskState::ZOMBIE;
-                ClearTaskHdl(&gKernel.currentTaskHdl);
-                EnqueueLink(&gKernel.zombieList, &schedulerPromise.waitLink);
-                ++gKernel.zombieCount;
+        schedulerPromise.state = TaskState::ZOMBIE;
+        ClearTaskHdl(&gKernel.currentTaskHdl);
+        EnqueueLink(&gKernel.zombieList, &schedulerPromise.waitLink);
+        ++gKernel.zombieCount;
 
-                return gKernel.kernelTask;
-            }
-            constexpr void await_resume() const noexcept {}
-        };
-        
-        return TerminateSchedulerOp{};
+        return gKernel.kernelTask;
+    }
+
+    inline constexpr void TerminateSchedulerOp::await_resume() const noexcept {}
+
+    inline TerminateSchedulerOp TerminateSchedulerTask() noexcept {
+        return {};
     }
 
     inline void DestroySchedulerTask(TaskHdl hdl) noexcept {
@@ -1025,37 +154,43 @@ namespace internal
         hdl.destroy();
     }
 
-    struct KernelTaskPromise {
-        
-        template <typename... Args>
-        KernelTaskPromise(DefineTask(*)(Args ...) noexcept, Args... ) noexcept {}
-        
-        void* operator new(std::size_t n) noexcept {
-            void* mem = std::malloc(n);
-            if (!mem) return nullptr;
-            return mem;
-        }
+    template <typename... Args>
+    inline KernelTaskPromise::KernelTaskPromise(DefineTask(*)(Args ...) noexcept, Args... ) noexcept {}
 
-        void  operator delete(void* ptr, std::size_t sz) {
-            (void)sz;
-            std::free(ptr);
-        }
+    inline void* KernelTaskPromise::operator new(std::size_t n) noexcept {
+        void* mem = std::malloc(n);
+        if (!mem) return nullptr;
+        return mem;
+    }
 
-        KernelTaskHdl  get_return_object() noexcept   { return KernelTaskHdl::from_promise(*this); }
-        constexpr auto initial_suspend() noexcept     { return std::suspend_always {}; }
-        constexpr auto final_suspend() noexcept       { return std::suspend_never  {}; }
-        constexpr void return_void() noexcept         { }
-        constexpr void unhandled_exception() noexcept { assert(false); }
-    };
+    inline void KernelTaskPromise::operator delete(void* ptr, std::size_t sz) {
+        (void)sz;
+        std::free(ptr);
+    }
 
-    struct DefineKernelTask {
-        using promise_type = KernelTaskPromise;
+    inline KernelTaskHdl KernelTaskPromise::get_return_object() noexcept { 
+        return KernelTaskHdl::from_promise(*this); 
+    }
 
-        DefineKernelTask(const KernelTaskHdl& hdl) noexcept : hdl(hdl) {} 
-        operator KernelTaskHdl() const noexcept { return hdl; }
+    inline constexpr auto KernelTaskPromise::initial_suspend() noexcept { 
+        return std::suspend_always {}; 
+    }
 
-        KernelTaskHdl hdl;
-    };
+    inline constexpr auto KernelTaskPromise::final_suspend() noexcept { 
+        return std::suspend_never {}; 
+    }
+
+    inline constexpr void KernelTaskPromise::return_void() noexcept {}
+
+    inline constexpr void KernelTaskPromise::unhandled_exception() noexcept { 
+        assert(false); 
+    }
+
+    inline DefineKernelTask::DefineKernelTask(const KernelTaskHdl& hdl) noexcept : hdl(hdl) {}
+
+    inline DefineKernelTask::operator KernelTaskHdl() const noexcept { 
+        return hdl; 
+    }
 
     /// \brief Schedules the next task
     /// 
@@ -1255,12 +390,12 @@ namespace internal
         co_return;
     }
 
-    int InitAllocTable(void* mem, Size size) noexcept;
+
 
     inline int InitKernel(KernelConfig* config) noexcept {
         using namespace internal;
         
-        if (InitAllocTable(config->mem, config->memSize) != 0) {
+        if (InitAllocTable(&gKernel.allocTable, config->mem, config->memSize) != 0) {
             return -1;
         }
 
@@ -1293,47 +428,9 @@ namespace internal
         io_uring_queue_exit(&gKernel.ioRing);
     }
 
-    inline void InitialSuspendTaskOp::await_suspend(TaskHdl hdl) const noexcept {
-        TaskContext* promise = &hdl.promise();
+    
 
-        // Check initial preconditions
-        assert(promise->state == TaskState::CREATED);
-        assert(IsLinkDetached(&promise->waitLink));
-        CheckInvariants();
-
-        // Add task to the kernel
-        ++gKernel.taskCount;
-        EnqueueLink(&gKernel.taskList, &promise->taskListLink);
-
-        ++gKernel.readyCount;
-        EnqueueLink(&gKernel.readyList, &promise->waitLink);
-        promise->state = TaskState::READY;
-
-        // Check post-conditions
-        assert(promise->state == TaskState::READY);
-        assert(!IsLinkDetached(&promise->waitLink));
-        CheckInvariants();
-        internal::DebugTaskCount();
-    }
-
-    inline TaskHdl FinalSuspendTaskOp::await_suspend(TaskHdl hdl) const noexcept {
-        // Check preconditions
-        TaskContext* ctx = &hdl.promise();
-        assert(gKernel.currentTaskHdl == hdl);
-        assert(ctx->state == TaskState::RUNNING);
-        assert(IsLinkDetached(&ctx->waitLink));
-        CheckInvariants();
-
-        // Move the current task from RUNNING to ZOMBIE
-        ctx->state = TaskState::ZOMBIE;
-        ++gKernel.zombieCount;
-        EnqueueLink(&gKernel.zombieList, &ctx->waitLink);
-        ClearTaskHdl(&gKernel.currentTaskHdl);
-        CheckInvariants();
-
-        return ScheduleNextTask();
-    }
-
+    
     inline void DebugTaskCount() noexcept {
         if constexpr (TRACE_DEBUG_CODE) {
             int running_count = gKernel.currentTaskHdl != TaskHdl() ? 1 : 0;
@@ -1374,130 +471,7 @@ namespace internal
         }
     }
 
-    inline constexpr TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept
-    {
-        TaskContext* currentTaskCtx = &currentTaskHdl.promise();
 
-        // Check CurrentTask preconditions
-        assert(currentTaskCtx->state == TaskState::RUNNING);
-        assert(IsLinkDetached(&currentTaskCtx->waitLink));
-        assert(gKernel.currentTaskHdl == currentTaskHdl);
-        CheckInvariants();
-
-        TaskContext* joinedTaskCtx = &joinedTaskHdl.promise();                
-        TaskState joinedTaskState = joinedTaskCtx->state;
-        switch (joinedTaskState) {
-            case TaskState::READY:
-            {
-
-                // Move current Task from READY to WAITING
-                currentTaskCtx->state = TaskState::WAITING;
-                ++gKernel.waitingCount;
-                EnqueueLink(&joinedTaskCtx->awaitingTerminationList, &currentTaskCtx->waitLink); 
-                ClearTaskHdl(&gKernel.currentTaskHdl);
-                CheckInvariants();
-                DebugTaskCount();
-
-                // Move the joined TASK from READY to RUNNING
-                joinedTaskCtx->state = TaskState::RUNNING;
-                DetachLink(&joinedTaskCtx->waitLink);
-                --gKernel.readyCount;
-                gKernel.currentTaskHdl = joinedTaskHdl;
-                CheckInvariants();
-                DebugTaskCount();
-                return joinedTaskHdl;
-            }
-
-            case TaskState::IO_WAITING:
-            case TaskState::WAITING:
-            {
-                 // Move current Task from READY to WAITING
-                currentTaskCtx->state = TaskState::WAITING;
-                ++gKernel.waitingCount;
-                EnqueueLink(&joinedTaskCtx->awaitingTerminationList, &currentTaskCtx->waitLink); 
-                ClearTaskHdl(&gKernel.currentTaskHdl);
-                CheckInvariants();
-                DebugTaskCount();
-
-                // Move the Scheduler Task from READY to RUNNING
-                TaskContext* schedCtx = &gKernel.schedulerTaskHdl.promise();
-                assert(schedCtx->state == TaskState::READY);
-                schedCtx->state = TaskState::RUNNING;
-                DetachLink(&schedCtx->waitLink);
-                --gKernel.readyCount;
-                gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
-                CheckInvariants();
-                DebugTaskCount();
-
-                return gKernel.schedulerTaskHdl;
-            }
-            
-            case TaskState::DELETING:
-            case TaskState::ZOMBIE:
-            {
-                return currentTaskHdl;
-            }
-            
-            case TaskState::INVALID:
-            case TaskState::CREATED:
-            case TaskState::RUNNING:
-            default:
-            {
-                // Illegal State
-                abort();
-            }
-        }
-    }
-
-    inline TaskHdl SuspendOp::await_suspend(TaskHdl currentTask) const noexcept {
-        assert(gKernel.currentTaskHdl);
-
-        TaskContext* currentPromise = &currentTask.promise();
-
-        if constexpr (IS_DEBUG_MODE) {
-            assert(gKernel.currentTaskHdl == currentTask);
-            assert(currentPromise->state == TaskState::RUNNING);
-            assert(IsLinkDetached(&currentPromise->waitLink));
-            CheckInvariants();
-        }
-
-        // Move the current task from RUNNINIG to READY
-        currentPromise->state = TaskState::READY;
-        ++gKernel.readyCount;
-        EnqueueLink(&gKernel.readyList, &currentPromise->waitLink);
-        ClearTaskHdl(&gKernel.currentTaskHdl);
-        CheckInvariants();
-
-        return ScheduleNextTask();
-    }
-
-    inline TaskHdl ResumeTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept {
-        assert(gKernel.currentTaskHdl == currentTaskHdl);
-
-        // Check the current Task
-        TaskContext* currentPromise = &gKernel.currentTaskHdl.promise();
-        assert(IsLinkDetached(&currentPromise->waitLink));
-        assert(currentPromise->state == TaskState::RUNNING);
-        CheckInvariants();
-
-        // Suspend the current Task
-        currentPromise->state = TaskState::READY;
-        ++gKernel.readyCount;
-        EnqueueLink(&gKernel.readyList, &currentPromise->waitLink);
-        ClearTaskHdl(&gKernel.currentTaskHdl);
-        CheckInvariants();
-
-        // Move the target task from READY to RUNNING
-        TaskContext* promise = &hdl.promise();
-        promise->state = TaskState::RUNNING;
-        DetachLink(&promise->waitLink);
-        --gKernel.readyCount;
-        gKernel.currentTaskHdl = hdl;
-        CheckInvariants();
-
-        assert(gKernel.currentTaskHdl);
-        return hdl;
-    }
 
 
 
@@ -1553,113 +527,6 @@ namespace internal {
 #ifdef AK_IMPLEMENTATION    
     alignas(64) struct Kernel gKernel;
 #endif
-}
-
-struct Event {  
-    internal::DLink waitingList;
-};
-
-inline void InitEvent(Event* event) {
-    InitLink(&event->waitingList);
-}
-
-inline int SignalOne(Event* event) {
-    using namespace internal;
-    assert(event != nullptr);
-    
-    if (IsLinkDetached(&event->waitingList)) return 0;
-
-    DLink* link = DequeueLink(&event->waitingList);
-    TaskContext* ctx = GetLinkedTaskContext(link);
-    assert(ctx->state == TaskState::WAITING);
-    
-    // Move the target task from WAITING to READY
-    DetachLink(link);
-    --gKernel.waitingCount;
-    ctx->state = TaskState::READY;
-    EnqueueLink(&gKernel.readyList, &ctx->waitLink);
-    ++gKernel.readyCount;
-    return 1;
-}
-
-inline int SignalSome(Event* event, int n) {
-    using namespace internal;
-    assert(event != nullptr);
-    assert(n >= 0);
-    int cc = 0;
-    while (cc < n && !IsLinkDetached(&event->waitingList)) {
-        DLink* link = DequeueLink(&event->waitingList);
-        TaskContext* ctx = GetLinkedTaskContext(link);
-        assert(ctx->state == TaskState::WAITING);
-        
-        // Move the target task from WAITING to READY
-        DetachLink(link);
-        --gKernel.waitingCount;
-        ctx->state = TaskState::READY;
-        EnqueueLink(&gKernel.readyList, &ctx->waitLink);
-        ++gKernel.readyCount;    
-        ++cc;
-    }
-    return cc;
-}
-
-inline int SignalAll(Event* event) {
-    using namespace internal;
-    assert(event != nullptr);
-    int signalled = 0;
-    while (!IsLinkDetached(&event->waitingList)) {
-        DLink* link = DequeueLink(&event->waitingList);
-        TaskContext* ctx = GetLinkedTaskContext(link);
-        assert(ctx->state == TaskState::WAITING);
-        
-        // Move the target task from WAITING to READY
-        DetachLink(link);
-        --gKernel.waitingCount;
-        ctx->state = TaskState::READY;
-        EnqueueLink(&gKernel.readyList, &ctx->waitLink);
-        ++gKernel.readyCount;
-        
-        ++signalled;        
-    }
-    return signalled;
-}
-
-inline auto WaitEvent(Event* event) {
-    using namespace internal;
-    
-    assert(event != nullptr);
-    
-    struct WaitOp {
-        
-        WaitOp(Event* event) : evt(event) {}
-
-        constexpr bool await_ready() const noexcept { 
-            return false; 
-        }
-
-        constexpr TaskHdl await_suspend(TaskHdl hdl) const noexcept {
-            using namespace internal;
-
-            TaskContext* ctx = &hdl.promise();
-            assert(gKernel.currentTaskHdl == hdl);
-            assert(ctx->state == TaskState::RUNNING);
-            
-            // Move state from RUNNING to WAITING  
-            ctx->state = TaskState::WAITING;
-            ++gKernel.waitingCount;
-            EnqueueLink(&evt->waitingList, &ctx->waitLink);
-            ClearTaskHdl(&gKernel.currentTaskHdl);
-            CheckInvariants();
-
-            return ScheduleNextTask();
-        }
-
-        constexpr void await_resume() const noexcept { }
-
-        Event* evt;
-    };
-
-    return WaitOp{event};
 }
 
 // -----------------------------------------------------------------------------
@@ -2377,10 +1244,8 @@ inline internal::IOWaitOneOp IOCancelFd(int fd, unsigned int flags) noexcept {
     });
 }
 
-inline void DebugDumpAllocTable() noexcept {
-    using namespace internal;
-
-    AllocTable* at = (AllocTable*)&gKernel.allocTable;
+#include "alloc.hpp"
+inline void DebugDumpAllocTable(internal::AllocTable* at) noexcept {
 
     // Basic layout and sizes
     std::print("AllocTable: {}\n", (void*)at);
@@ -2472,7 +1337,7 @@ namespace internal {
         std::memcpy(&at->freeListbinMask, lanes, 32);
     }
 
-    inline int InitAllocTable(void* mem, Size size) noexcept {
+    inline int InitAllocTable(AllocTable* at, void* mem, Size size) noexcept {
         
         
         constexpr U64 SENTINEL_SIZE = sizeof(FreeAllocHeader);
@@ -2480,10 +1345,8 @@ namespace internal {
         assert(mem != nullptr);
         assert(size >= 4096);
 
-        AllocTable* at = (AllocTable*)&gKernel.allocTable;
         memset((void*)at, 0, sizeof(AllocTable));
         
-
         // Establish heap boundaries
         char* heapBegin = (char*)(mem);
         char* heapEnd   = heapBegin + size;
@@ -2918,17 +1781,16 @@ namespace internal {
     }
 }
 
-inline void DebugPrintAllocBlocks() noexcept 
+inline void DebugPrintAllocBlocks(internal::AllocTable* at) noexcept 
 {
     using namespace internal;
-    assert(gKernel.allocTable.beginSentinel != nullptr);
-    assert(gKernel.allocTable.endSentinel != nullptr);
+    
     
     PrintTopBorder();
     PrintHeader();
     PrintHeaderSeparator();
-    AllocHeader* head = (AllocHeader*) gKernel.allocTable.beginSentinel;
-    AllocHeader* end  = (AllocHeader*) NextHeaderPtr((AllocHeader*)gKernel.allocTable.endSentinel);
+    AllocHeader* head = (AllocHeader*) at->beginSentinel;
+    AllocHeader* end  = (AllocHeader*) NextHeaderPtr((AllocHeader*)at->endSentinel);
     
     for (; head != end; head = NextHeaderPtr(head)) {
         PrintRow(head);
@@ -2954,9 +1816,8 @@ constexpr Size ALIGNMENT = 32;
 /// 
 /// Returns nullptr if no suitable block found (heap doesn't grow).
 /// For async version that suspends on failure, use co_await AllocMem(size).
-inline void* TryMalloc(Size size) noexcept {
+inline void* TryMalloc(internal::AllocTable* at, Size size) noexcept {
     using namespace internal;
-    AllocTable* at = &gKernel.allocTable;
     
     // Compute aligned block size
     Size maybeBlock = HEADER_SIZE + size;
@@ -3152,12 +2013,11 @@ inline void* TryMalloc(Size size) noexcept {
 /// 
 /// \param ptr Pointer returned by TryMalloc (must not be nullptr).
 /// \param sideCoalescing Maximum number of merges per side (0 = no coalescing, defaults to UINT_MAX for unlimited).
-inline void FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept {
+inline void FreeMem(internal::AllocTable* at, void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept {
     using namespace internal;
 
     if (ptr == nullptr) return;
 
-    AllocTable* at = &gKernel.allocTable;
     FreeAllocHeader* block = (FreeAllocHeader*)((char*)ptr - HEADER_SIZE);
     assert(block->thisSize.state == (U32)AllocState::USED);
 
@@ -3271,3 +2131,5 @@ inline void FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept {
 
 
 } // namespace ak
+
+#include "event.hpp"

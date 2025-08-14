@@ -5,9 +5,9 @@
 
 using namespace ak;
 
-struct Data;
+using namespace ak::utl;
 
-using namespace internal;
+struct Data;
 
 struct Data {
     DLink node;
