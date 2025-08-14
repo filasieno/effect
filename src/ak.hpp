@@ -16,6 +16,7 @@
 #include "kernel.hpp"
 #include "ak_io_impl.hpp"
 #include "ak_event_impl.hpp"
+#include "ak_task_impl.hpp"
 
 namespace ak {
 
@@ -738,13 +739,13 @@ namespace priv {
     inline static AllocHeader* NextHeaderPtr(AllocHeader* h) {
         size_t sz = (size_t)h->thisSize.size;
         if (sz == 0) return h;
-        return (priv::AllocHeader*)((char*)h + sz);
+        return (AllocHeader*)((char*)h + sz);
     }
 
     inline static AllocHeader* PrevHeaderPtr(AllocHeader* h) {
         size_t sz = (size_t)h->prevSize.size;
         if (sz == 0) return h;
-        return (priv::AllocHeader*)((char*)h - sz);
+        return (AllocHeader*)((char*)h - sz);
     }
     
     inline const char* StateText(AllocState s) {
