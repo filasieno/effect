@@ -5,20 +5,23 @@
 namespace ak { namespace priv {
 
     // Allocator routines
-    int   InitAllocTable(void* mem, Size size) noexcept;
-    void* TryMalloc(Size size) noexcept;
-    void  FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept;
+    int          InitAllocTable(void* mem, Size size) noexcept;
+    void*        TryMalloc(Size size) noexcept;
+    void         FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept;
+    AllocHeader* NextAllocHeaderPtr(AllocHeader* h) noexcept;
+    AllocHeader* PrevAllocHeaderPtr(AllocHeader* h) noexcept;
 
     // Scheduling routines
     TaskHdl ScheduleNextTask() noexcept;
     
     // Debug routines
-    void    DebugTaskCount() noexcept;
-    void    DebugIOURingParams(const io_uring_params* p);
-    void    DebugDumpAllocTable(AllocTable* at) noexcept;
-
+    void DebugTaskCount() noexcept;
+    void DebugIOURingParams(const io_uring_params* p);
+    void DebugDumpAllocTable() noexcept;
+    void DebugPrintAllocBlocks() noexcept;
+    
     // Invariant checking routines
-    void    CheckInvariants() noexcept;
+    void CheckInvariants() noexcept;
     
 }} // namespace ak::priv
 

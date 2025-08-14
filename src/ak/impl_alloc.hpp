@@ -3,17 +3,14 @@
 #include "ak/api_priv.hpp"
 
 namespace ak { namespace priv {
-    // FreeBin binmask utilities
-    void SetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
-    bool GetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
-    void ClearAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
+    // FreeBin utilities
+    void     SetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
+    bool     GetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
+    void     ClearAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
+    int      FindAllocFreeListBinIndex(__m256i* bitField, Size allocSize) noexcept;
 
-    int FindAllocFreeListBinIndex(__m256i* bitField, Size allocSize) noexcept;
-    
-    AllocHeader* NextAllocHeaderPtr(AllocHeader* h) noexcept;
-    AllocHeader* PrevAllocHeaderPtr(AllocHeader* h) noexcept;
-    unsigned     GetAllocSmallBinIndexFromSize(uint64_t sz) noexcept;
-    unsigned     GetAllocFreeListBinIndex(const AllocHeader* h) noexcept;
+    unsigned GetAllocSmallBinIndexFromSize(uint64_t sz) noexcept;
+    unsigned GetAllocFreeListBinIndex(const AllocHeader* h) noexcept;
 }}
 
 
@@ -21,195 +18,7 @@ namespace ak { namespace priv {
 // Private Allocator API implementation
 // ----------------------------------------------------------------------------------------------------------------
 namespace ak { namespace priv {
-
-    constexpr const char* DEBUG_ALLOC_COLOR_RESET  = "\033[0m";
-    constexpr const char* DEBUG_ALLOC_COLOR_WHITE  = "\033[37m"; 
-    constexpr const char* DEBUG_ALLOC_COLOR_GREEN  = "\033[1;32m"; 
-    constexpr const char* DEBUG_ALLOC_COLOR_YELLOW = "\033[1;33m"; 
-    constexpr const char* DEBUG_ALLOC_COLOR_CYAN   = "\033[36m"; 
-    constexpr const char* DEBUG_ALLOC_COLOR_MAG    = "\033[35m"; 
-    constexpr const char* DEBUG_ALLOC_COLOR_RED    = "\033[1;31m"; 
-    constexpr const char* DEBUG_ALLOC_COLOR_HDR    = "\033[36m"; 
-
-    static inline constexpr const char* StateColor(AllocState s) {
-        switch (s) {
-            case AllocState::USED:               
-                return DEBUG_ALLOC_COLOR_CYAN;
-            case AllocState::FREE:   
-            case AllocState::WILD_BLOCK: 
-                return DEBUG_ALLOC_COLOR_GREEN;
-            case AllocState::BEGIN_SENTINEL:
-            case AllocState::LARGE_BLOCK_SENTINEL:
-            case AllocState::END_SENTINEL: 
-                return DEBUG_ALLOC_COLOR_YELLOW;
-            case AllocState::INVALID: 
-                return DEBUG_ALLOC_COLOR_RED;
-            default: 
-                return DEBUG_ALLOC_COLOR_RESET;
-        }
-    }
-
-    // Fixed column widths (constants) in requested order
-    constexpr int DEBUG_COL_W_OFF     = 18; // 0x + 16 hex
-    constexpr int DEBUG_COL_W_SIZE    = 12;
-    constexpr int DEBUG_COL_W_STATE   = 10;
-    constexpr int DEBUG_COL_W_PSIZE   = 12;
-    constexpr int DEBUG_COL_W_PSTATE  = 10;
-    constexpr int DEBUG_COL_W_FL_PREV = 18;
-    constexpr int DEBUG_COL_W_FL_NEXT = 18;
-
-    static inline void PrintRun(const char* s, int n, const char* color = DEBUG_ALLOC_COLOR_WHITE) {
-        for (int i = 0; i < n; ++i) std::print("{}{}", color, s);
-    }
-
-    static inline void PrintTopBorder() {
-        std::print("{}┌{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_OFF + 2);
-        std::print("{}┬{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_SIZE + 2);
-        std::print("{}┬{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_STATE + 2);
-        std::print("{}┬{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_PSIZE + 2);
-        std::print("{}┬{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_PSTATE + 2);
-        std::print("{}┬{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_FL_PREV + 2);
-        std::print("{}┬{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_FL_NEXT + 2);
-        std::print("{}┐{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-    }
-
-    static inline void PrintHeaderSeparator() {
-        std::print("{}├{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_OFF + 2);
-        std::print("{}┼{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_SIZE + 2);
-        std::print("{}┼{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_STATE + 2);
-        std::print("{}┼{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_PSIZE + 2);
-        std::print("{}┼{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_PSTATE + 2);
-        std::print("{}┼{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_FL_PREV + 2);
-        std::print("{}┼{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_FL_NEXT + 2);
-        std::print("{}┤{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-    }
-
-    static inline void PrintBottomBorder() {
-        std::print("{}└{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_OFF + 2);
-        std::print("{}┴{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_SIZE + 2);
-        std::print("{}┴{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_STATE + 2);
-        std::print("{}┴{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_PSIZE + 2);
-        std::print("{}┴{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_PSTATE + 2);
-        std::print("{}┴{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_FL_PREV + 2);
-        std::print("{}┴{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        PrintRun("─", DEBUG_COL_W_FL_NEXT + 2);
-        std::print("{}┘{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-    }
-
-    static inline void PrintHeader() {
-        std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<18} "  , DEBUG_ALLOC_COLOR_HDR,   "Offset");
-        std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<12} "  , DEBUG_ALLOC_COLOR_HDR,   "Size");
-        std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<10} "  , DEBUG_ALLOC_COLOR_HDR,   "State");
-        std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<12} "  , DEBUG_ALLOC_COLOR_HDR,   "PrevSize");
-        std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<10} "  , DEBUG_ALLOC_COLOR_HDR,   "PrevState");
-        std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<18} "  , DEBUG_ALLOC_COLOR_HDR,   "FreeListPrev");
-        std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<18} "  , DEBUG_ALLOC_COLOR_HDR,   "FreeListNext");
-        std::print("{}│{}\n"     , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-    }
-
-    static inline void PrintRow(const AllocHeader* h) {
-        const AllocTable* at = &gKernel.allocTable;
-        uintptr_t beginAddr = (uintptr_t)at->beginSentinel;
-        uintptr_t off = (uintptr_t)h - beginAddr;
-        uint64_t  sz  = (uint64_t)h->thisSize.size;
-        uint64_t  psz = (uint64_t)h->prevSize.size;
-        AllocState st = (AllocState)h->thisSize.state;
-        AllocState pst = (AllocState)h->prevSize.state;
-
-        const char* stateText = ToString(st);
-        const char* previousStateText = ToString(pst);
-        const char* stateColor = StateColor(st);
-
-        std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<18} ", stateColor, (unsigned long long)off);
-        std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<12} ", stateColor, (unsigned long long)sz);
-        std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<10} ", stateColor, stateText);
-        std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<12} ", stateColor, (unsigned long long)psz);
-        std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<10} ", stateColor, previousStateText);
-        std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        
-        // Print FreeListPrev
-        if (h->thisSize.state == (U32)AllocState::FREE) {
-            std::print("{} {:<18} ", stateColor, "TODO");
-        } else if (h->thisSize.state == (U32)AllocState::WILD_BLOCK) {
-            FreeAllocHeader* freeBlock = (FreeAllocHeader*)h;
-            if (freeBlock->freeListLink.prev == &at->freeListBins[255]) {
-                std::print("{} {:<18} ", DEBUG_ALLOC_COLOR_GREEN, "WILD LIST");
-            } else {
-                std::print("{} {:<18} ", DEBUG_ALLOC_COLOR_RED, "INVALID");
-            }
-        } else {
-            std::print("{} {:<18} ", stateColor, "");
-        }
-
-        std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-
-        // Print FreeList Next
-        if (h->thisSize.state == (U32)AllocState::FREE) {
-            std::print("{} {:<18} ", stateColor, "TODO");
-        } else if (h->thisSize.state == (U32)AllocState::WILD_BLOCK) {
-            FreeAllocHeader* freeBlock = (FreeAllocHeader*)h;
-            if (freeBlock->freeListLink.next == &at->freeListBins[255]) {
-                std::print("{} {:<18} ", DEBUG_ALLOC_COLOR_GREEN, "WILD LIST");
-            } else {
-                std::print("{} {:<18} ", DEBUG_ALLOC_COLOR_RED, "INVALID");
-            }
-        } else {
-            std::print("{} {:<18} ", stateColor, "");
-        }
-
-
-        std::print("{}│{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-    }
-
-    inline void DebugPrintAllocBlocks() noexcept 
-    {
-        using namespace priv;
-        AllocTable* at = &gKernel.allocTable;
-        
-        PrintTopBorder();
-        PrintHeader();
-        PrintHeaderSeparator();
-        AllocHeader* head = (AllocHeader*) at->beginSentinel;
-        AllocHeader* end  = (AllocHeader*) NextAllocHeaderPtr((AllocHeader*)at->endSentinel);
-        
-        for (; head != end; head = NextAllocHeaderPtr(head)) {
-            PrintRow(head);
-        }
-
-        PrintBottomBorder();
-    }    
+   
     
     /// \brief Find the smallest free list that can store the allocSize
     /// 
@@ -331,20 +140,6 @@ namespace ak { namespace priv {
 #endif
 
     }
-
-}
-
-
-// Constants for allocator (add at top of allocator section, around line 212)
-static constexpr Size HEADER_SIZE = 16;
-static constexpr Size MIN_BLOCK_SIZE = 32;
-static constexpr Size ALIGNMENT = 32;
-
-
-} // namespace ak
-
-
-namespace ak { namespace priv {
 
     inline int InitAllocTable(void* mem, Size size) noexcept {
         AllocTable* at = &gKernel.allocTable;
@@ -483,21 +278,19 @@ namespace ak { namespace priv {
             }
         }
     }
-
-
 }}
-
-
-
-
-
-
 
 
 // Public Allocator API Implementation
 // ----------------------------------------------------------------------------------------------------------------
 namespace ak {
 
+    namespace priv {
+        static constexpr Size HEADER_SIZE    = 16;
+        static constexpr Size MIN_BLOCK_SIZE = 32;
+        static constexpr Size ALIGNMENT      = 32;
+    }
+    
     inline const char* ToString(AllocState s) noexcept {
         switch (s) {
             case AllocState::USED:                 return "USED";
