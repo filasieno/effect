@@ -11,16 +11,16 @@
 #include "defs.hpp"
 #include "dlist.hpp"
 #include "types.hpp"
-#include "alloc.hpp"
-#include "core.hpp"
-#include "kernel.hpp"
-#include "ak_io_impl.hpp"
-#include "ak_event_impl.hpp"
-#include "ak_task_impl.hpp"
+
+#include "ak_api.hpp"
+
+#include "ak_impl_task.hpp"
+#include "ak_impl_alloc.hpp"
+#include "ak_impl_boot.hpp"
+#include "ak_impl_io.hpp"
+#include "ak_impl_event.hpp"
 
 namespace ak {
-
-
 
 // Task::AwaitTaskEffect
 // ----------------------------------------------------------------------------------------------------------------
@@ -561,7 +561,7 @@ inline int GetCurrentTaskEnqueuedIOOps() noexcept {
 }
 
 
-#include "alloc.hpp"
+#include "ak_impl_alloc.hpp"
 
 inline void DebugDumpAllocTable(priv::AllocTable* at) noexcept {
 
