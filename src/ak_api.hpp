@@ -2,8 +2,8 @@
 
 #include <coroutine>
 #include <cassert>
-#include "dlist.hpp"
-#include "types.hpp"
+#include "ak_defs.hpp"
+#include "ak_utl.hpp"
 
 namespace ak 
 {
@@ -15,6 +15,25 @@ namespace ak
     struct ExecIOOp;
     struct WaitOp;
 
+    /// \brief Idenfies the state of a task
+    /// \ingroup Task
+    enum class TaskState
+    {
+        INVALID = 0, ///< Invalid OR uninitialized state
+        CREATED,     ///< Task has been created (BUT NOT REGISTERED WITH THE RUNTINME)
+        READY,       ///< Ready for execution
+        RUNNING,     ///< Currently running
+        IO_WAITING,  ///< Waiting for IO
+        WAITING,     ///< Waiting for an event
+        ZOMBIE,      ///< Already dead
+        DELETING     ///< Currently being deleted
+    };
+    const char* ToString(TaskState state) noexcept;
+
+    /// \brief Coroutine handle for a Task
+    /// \ingroup Task
+    using TaskHdl = std::coroutine_handle<TaskContext>;
+
     struct DefineTask {
         using promise_type = TaskContext;
 
@@ -23,6 +42,11 @@ namespace ak
 
         TaskHdl hdl;
     };
+
+    /// \brief Defines a Task function type-erased pointer (no std::function)
+    /// \ingroup Task
+    template <typename... Args>
+    using TaskFn = DefineTask(*)(Args...);
 
     struct TaskContext {
         using Link = utl::DLink;
@@ -104,8 +128,10 @@ namespace ak
         Size binPoolCount[ALLOCATOR_BIN_COUNT];
     };
 
-
     namespace priv {
+
+        struct KernelTaskPromise;
+        using KernelTaskHdl = std::coroutine_handle<KernelTaskPromise>;
 
         struct AllocTable {
             static constexpr int ALLOCATOR_BIN_COUNT = AllocStats::ALLOCATOR_BIN_COUNT;

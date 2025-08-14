@@ -4,6 +4,21 @@
 
 namespace ak {
 
+    inline const char* ToString(TaskState state) noexcept 
+    {
+        switch (state) {
+            case TaskState::INVALID:    return "INVALID";
+            case TaskState::CREATED:    return "CREATED";
+            case TaskState::READY:      return "READY";
+            case TaskState::RUNNING:    return "RUNNING";
+            case TaskState::IO_WAITING: return "IO_WAITING";
+            case TaskState::WAITING:    return "WAITING";
+            case TaskState::ZOMBIE:     return "ZOMBIE";
+            case TaskState::DELETING:   return "DELETING";
+            default: return nullptr;
+        }
+    }
+
     // TaskContext implementation 
     // ----------------------------------------------------------------------------------------------------------------
 
