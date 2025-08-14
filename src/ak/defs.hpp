@@ -2,11 +2,7 @@
 
 // -----------------------------------------------------------------------------
 
-/// \defgroup Task Task API
-/// \brief Task API defines the API for creating and managing tasks.
 
-/// \defgroup Kernel Kernel API
-/// \brief Kernel API defines system level APIs.
 
 // -----------------------------------------------------------------------------
 
