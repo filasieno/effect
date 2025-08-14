@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ak/api.hpp"
+#include "ak/api.hpp" // IWYU pragma: keep
 
 namespace ak { namespace priv {
 

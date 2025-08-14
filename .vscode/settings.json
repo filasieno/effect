@@ -94,6 +94,13 @@
         "cassert": "cpp"
     },
     "editor.semanticHighlighting.enabled": true,
+    "nixEnvSelector.nixFile": "${workspaceFolder}/shell.nix",
     "clangd.semanticHighlighting": true,
-    "nixEnvSelector.nixFile": "${workspaceFolder}/shell.nix"
+    "clangd.arguments": [
+        "--background-index",
+        "--pch-storage=memory",
+        "--all-scopes-completion",
+        "--header-insertion=never",
+        "--clang-tidy=false"
+    ]
 }

@@ -1,16 +1,10 @@
 #pragma once
 
-// -----------------------------------------------------------------------------
-
-
-
-// -----------------------------------------------------------------------------
-
 namespace ak { 
     
-    using U64  = __u64;  
-    using U32  = __u32; 
-    using Size = __SIZE_TYPE__; 
+    using U64  = unsigned long long;  
+    using U32  = unsigned long; 
+    using Size = unsigned long long; 
 
     namespace priv {
 

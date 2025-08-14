@@ -6,7 +6,8 @@
 #include "liburing.h"
 
 #include "ak/defs.hpp"
-#include "ak/utl.hpp"
+#include "ak/utl.hpp" 
+#include "ak/impl_utl.hpp" // IWYU pragma: keep
 
 namespace ak 
 {
@@ -52,7 +53,7 @@ namespace ak
     using TaskFn = DefineTask(*)(Args...);
 
     struct TaskContext {
-        using Link = utl::DLink;
+        using DLink = utl::DLink;
 
         struct InitialSuspendTaskOp {
             constexpr bool await_ready() const noexcept { return false; }
@@ -83,9 +84,9 @@ namespace ak
         TaskState state;
         int       ioResult;
         unsigned  enqueuedIO;
-        Link      waitLink;                // Used to enqueue tasks waiting for Critical Section
-        Link      taskListLink;            // Global Task list
-        Link      awaitingTerminationList; // The list of all tasks waiting for this task
+        DLink     waitLink;                // Used to enqueue tasks waiting for Critical Section
+        DLink     taskListLink;            // Global Task list
+        DLink     awaitingTerminationList; // The list of all tasks waiting for this task
     };
 
     // Allocator
@@ -302,7 +303,7 @@ namespace ak
         explicit JoinTaskOp(TaskHdl hdl) : joinedTaskHdl(hdl) {};
 
         constexpr bool await_ready() const noexcept { return false; }
-        constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) const noexcept;
+        TaskHdl        await_suspend(TaskHdl currentTaskHdl) const noexcept;
         constexpr void await_resume() const noexcept {}
 
         TaskHdl joinedTaskHdl;

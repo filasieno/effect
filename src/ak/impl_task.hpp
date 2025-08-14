@@ -199,7 +199,7 @@ namespace ak {
     // JoinTaskOp implementation
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline constexpr TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept
+    inline TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept
     {
         using namespace priv;
         using namespace utl;
@@ -311,7 +311,6 @@ namespace ak { namespace priv {
 
     inline TaskContext* GetLinkedTaskContext(const utl::DLink* link) noexcept {
         unsigned long long promise_off = ((unsigned long long)link) - offsetof(TaskContext, waitLink);
-        return (TaskContext*)promise_off;
+        return reinterpret_cast<TaskContext*>(promise_off);
     }
-
 }} // namespace ak::priv
