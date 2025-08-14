@@ -6,8 +6,8 @@
 using namespace ak;
 
 DefineTask MainTask() noexcept {
-    priv::DebugDumpAllocTable(&gKernel.allocTable);
-    priv::DebugPrintAllocBlocks(&gKernel.allocTable);
+    priv::DebugDumpAllocTable();
+    priv::DebugPrintAllocBlocks();
   	co_return;
 }
 

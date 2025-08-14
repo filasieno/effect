@@ -118,7 +118,8 @@ namespace ak { namespace priv {
     // Allocator Debug utils
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline void DebugDumpAllocTable(AllocTable* at) noexcept {
+    inline void DebugDumpAllocTable() noexcept {
+        AllocTable* at = &gKernel.allocTable;
 
         // Basic layout and sizes
         std::print("AllocTable: {}\n", (void*)at);

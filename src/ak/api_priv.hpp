@@ -2,28 +2,23 @@
 
 #include "ak/api.hpp"
 
-namespace ak 
-{
+namespace ak { namespace priv {
 
-    namespace priv 
-    {
-        // Allocator routines
-        int   InitAllocTable(void* mem, Size size) noexcept;
-        void* TryMalloc(Size size) noexcept;
-        void  FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept;
+    // Allocator routines
+    int   InitAllocTable(void* mem, Size size) noexcept;
+    void* TryMalloc(Size size) noexcept;
+    void  FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept;
 
+    // Scheduling routines
+    TaskHdl ScheduleNextTask() noexcept;
+    
+    // Debug routines
+    void    DebugTaskCount() noexcept;
+    void    DebugIOURingParams(const io_uring_params* p);
+    void    DebugDumpAllocTable(AllocTable* at) noexcept;
 
-        // Scheduling routines
-        TaskHdl ScheduleNextTask() noexcept;
-        
-        // Debug routines
-        void    DebugTaskCount() noexcept;
-        void    DebugIOURingParams(const io_uring_params* p);
-        void    DebugDumpAllocTable(AllocTable* at) noexcept;
-
-        // Invariant checking routines
-        void    CheckInvariants() noexcept;
-    } // namespace priv
-
-} // namespace ak
+    // Invariant checking routines
+    void    CheckInvariants() noexcept;
+    
+}} // namespace ak::priv
 

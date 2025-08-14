@@ -2,6 +2,8 @@
 
 #include <coroutine>
 #include <cassert>
+#include <immintrin.h>
+
 #include "ak/defs.hpp"
 #include "ak/utl.hpp"
 
