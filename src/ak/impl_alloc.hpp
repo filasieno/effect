@@ -4,9 +4,16 @@
 
 namespace ak { namespace priv {
     // FreeBin binmask utilities
-    static void SetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
-    static bool GetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
-    static void ClearAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
+    void SetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
+    bool GetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
+    void ClearAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
+
+    int FindAllocFreeListBinIndex(__m256i* bitField, Size allocSize) noexcept;
+    
+    AllocHeader* NextAllocHeaderPtr(AllocHeader* h) noexcept;
+    AllocHeader* PrevAllocHeaderPtr(AllocHeader* h) noexcept;
+    unsigned     GetAllocSmallBinIndexFromSize(uint64_t sz) noexcept;
+    unsigned     GetAllocFreeListBinIndex(const AllocHeader* h) noexcept;
 }}
 
 
@@ -14,134 +21,6 @@ namespace ak { namespace priv {
 // Private Allocator API implementation
 // ----------------------------------------------------------------------------------------------------------------
 namespace ak { namespace priv {
-
-   
-
-    inline int InitAllocTable(void* mem, Size size) noexcept {
-        AllocTable* at = &gKernel.allocTable;
-        
-        constexpr U64 SENTINEL_SIZE = sizeof(FreeAllocHeader);
-
-        assert(mem != nullptr);
-        assert(size >= 4096);
-
-        memset((void*)at, 0, sizeof(AllocTable));
-        
-        // Establish heap boundaries
-        char* heapBegin = (char*)(mem);
-        char* heapEnd   = heapBegin + size;
-
-        // // Align start up to 32 and end down to 32 to keep all blocks 32B-multiples
-        U64 alignedBegin = ((U64)heapBegin + SENTINEL_SIZE) & ~31ull;
-        U64 alignedEnd   = ((U64)heapEnd   - SENTINEL_SIZE) & ~31ull;
-
-        at->heapBegin = heapBegin;
-        at->heapEnd   = heapEnd;
-        at->memBegin  = (char*)alignedBegin;
-        at->memEnd    = (char*)alignedEnd;
-        at->memSize   = (Size)(at->memEnd - at->memBegin);
-
-        // Addresses
-        // Layout: [BeginSentinel] ... blocks ... [LargeBlockSentinel] ... largeBlocks ... [EndSentinel]
-        FreeAllocHeader* beginSentinel      = (FreeAllocHeader*)alignedBegin;
-        FreeAllocHeader* wildBlock          = (FreeAllocHeader*)((char*)beginSentinel + SENTINEL_SIZE);
-        FreeAllocHeader* endSentinel        = (FreeAllocHeader*)((char*)alignedEnd - SENTINEL_SIZE); 
-        FreeAllocHeader* largeBlockSentinel = (FreeAllocHeader*)((char*)endSentinel - SENTINEL_SIZE);
-        InitLink(&wildBlock->freeListLink);
-        
-        // Check alignments
-        assert(((U64)beginSentinel      & 31ull) == 0ull);
-        assert(((U64)wildBlock          & 31ull) == 0ull);
-        assert(((U64)endSentinel        & 31ull) == 0ull);
-        assert(((U64)largeBlockSentinel & 31ull) == 0ull);
-        
-        at->beginSentinel      = beginSentinel;
-        at->wildBlock          = wildBlock;
-        at->endSentinel        = endSentinel;
-        at->largeBlockSentinel = largeBlockSentinel;
-        
-        beginSentinel->thisSize.size       = (U64)SENTINEL_SIZE;
-        beginSentinel->thisSize.state      = (U32)AllocState::BEGIN_SENTINEL;
-        wildBlock->thisSize.size           = (U64)((U64)largeBlockSentinel - (U64)wildBlock);
-        wildBlock->thisSize.state          = (U32)AllocState::WILD_BLOCK;
-        largeBlockSentinel->thisSize.size  = (U64)SENTINEL_SIZE;
-        largeBlockSentinel->thisSize.state = (U32)AllocState::LARGE_BLOCK_SENTINEL;
-        endSentinel->thisSize.size         = (U64)SENTINEL_SIZE;
-        endSentinel->thisSize.state        = (U32)AllocState::END_SENTINEL;
-        wildBlock->prevSize                = beginSentinel->thisSize;
-        largeBlockSentinel->prevSize       = wildBlock->thisSize;
-        endSentinel->prevSize              = largeBlockSentinel->thisSize;
-        at->freeMemSize                    = wildBlock->thisSize.size;
-
-        for (int i = 0; i < 256; ++i) {
-            InitLink(&at->freeListBins[i]);
-        }
-
-        SetAllocFreeBinBit(&at->freeListbinMask, 255);
-        DLink* freeList = &at->freeListBins[255];
-        InitLink(&wildBlock->freeListLink);
-        InsertNextLink(freeList, &wildBlock->freeListLink);
-        at->freeListBinsCount[255] = 1;
-
-        return 0;
-    }
-
-
-
-    inline static AllocHeader* NextHeaderPtr(AllocHeader* h) {
-        size_t sz = (size_t)h->thisSize.size;
-        if (sz == 0) return h;
-        return (AllocHeader*)((char*)h + sz);
-    }
-
-    inline static AllocHeader* PrevHeaderPtr(AllocHeader* h) {
-        size_t sz = (size_t)h->prevSize.size;
-        if (sz == 0) return h;
-        return (AllocHeader*)((char*)h - sz);
-    }
-    
-    inline const char* StateText(AllocState s) {
-        switch (s) {
-            case AllocState::USED:                 return "USED";
-            case AllocState::FREE:                 return "FREE";
-            case AllocState::WILD_BLOCK:           return "WILD";
-            case AllocState::BEGIN_SENTINEL:       return "SENTINEL B";
-            case AllocState::LARGE_BLOCK_SENTINEL: return "SENTINEL L";
-            case AllocState::END_SENTINEL:         return "SENTINEL E";
-            default:                               return "INVALID";
-        }
-    }
-    
-    
-    
-    static inline unsigned GetSmallBinIndexFromSize(uint64_t sz) {
-        if (sz < 32) return 0u;
-        if (sz <= 32ull * 254ull) return (unsigned)(sz / 32ull) - 1u;
-        return 254u; // 254 = medium, 255 = wild
-    }
-
-    inline static unsigned GetFreeListBinIndex(const AllocHeader* h) {
-        switch ((AllocState)h->thisSize.state) {
-            case AllocState::WILD_BLOCK:
-                return 255;
-            case AllocState::FREE: 
-            {
-                Size sz = h->thisSize.size;
-                if (sz >= 254ull * 32ull) return 254;
-                else return (unsigned)(sz / 32ull);
-            }
-            case AllocState::INVALID:
-            case AllocState::USED:
-            case AllocState::BEGIN_SENTINEL:
-            case AllocState::LARGE_BLOCK_SENTINEL:
-            case AllocState::END_SENTINEL:
-            default:
-            {
-                return 256;
-            }
-        }
-    }
-
 
     constexpr const char* DEBUG_ALLOC_COLOR_RESET  = "\033[0m";
     constexpr const char* DEBUG_ALLOC_COLOR_WHITE  = "\033[37m"; 
@@ -264,8 +143,8 @@ namespace ak { namespace priv {
         AllocState st = (AllocState)h->thisSize.state;
         AllocState pst = (AllocState)h->prevSize.state;
 
-        const char* stateText = StateText(st);
-        const char* previousStateText = StateText(pst);
+        const char* stateText = ToString(st);
+        const char* previousStateText = ToString(pst);
         const char* stateColor = StateColor(st);
 
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
@@ -323,9 +202,9 @@ namespace ak { namespace priv {
         PrintHeader();
         PrintHeaderSeparator();
         AllocHeader* head = (AllocHeader*) at->beginSentinel;
-        AllocHeader* end  = (AllocHeader*) NextHeaderPtr((AllocHeader*)at->endSentinel);
+        AllocHeader* end  = (AllocHeader*) NextAllocHeaderPtr((AllocHeader*)at->endSentinel);
         
-        for (; head != end; head = NextHeaderPtr(head)) {
+        for (; head != end; head = NextAllocHeaderPtr(head)) {
             PrintRow(head);
         }
 
@@ -339,7 +218,7 @@ namespace ak { namespace priv {
     /// \return The index of the smallest free list that can store the allocSize
     /// \pre AVX2 is available
     /// \pre bitField is 64 byte aligned
-    static inline int FindFreeListBucket(Size allocSize, char* bitField) noexcept {
+    inline int FindAllocFreeListBinIndex(__m256i* bitField, Size allocSize) noexcept {
         assert(bitField != nullptr);
         assert(((uintptr_t)bitField % 64ull) == 0ull);
 
@@ -455,9 +334,6 @@ namespace ak { namespace priv {
 
 }
 
-namespace priv {
-    
-}
 
 // Constants for allocator (add at top of allocator section, around line 212)
 static constexpr Size HEADER_SIZE = 16;
@@ -470,7 +346,76 @@ static constexpr Size ALIGNMENT = 32;
 
 namespace ak { namespace priv {
 
-    static inline void SetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept {
+    inline int InitAllocTable(void* mem, Size size) noexcept {
+        AllocTable* at = &gKernel.allocTable;
+        
+        constexpr U64 SENTINEL_SIZE = sizeof(FreeAllocHeader);
+
+        assert(mem != nullptr);
+        assert(size >= 4096);
+
+        memset((void*)at, 0, sizeof(AllocTable));
+        
+        // Establish heap boundaries
+        char* heapBegin = (char*)(mem);
+        char* heapEnd   = heapBegin + size;
+
+        // // Align start up to 32 and end down to 32 to keep all blocks 32B-multiples
+        U64 alignedBegin = ((U64)heapBegin + SENTINEL_SIZE) & ~31ull;
+        U64 alignedEnd   = ((U64)heapEnd   - SENTINEL_SIZE) & ~31ull;
+
+        at->heapBegin = heapBegin;
+        at->heapEnd   = heapEnd;
+        at->memBegin  = (char*)alignedBegin;
+        at->memEnd    = (char*)alignedEnd;
+        at->memSize   = (Size)(at->memEnd - at->memBegin);
+
+        // Addresses
+        // Layout: [BeginSentinel] ... blocks ... [LargeBlockSentinel] ... largeBlocks ... [EndSentinel]
+        FreeAllocHeader* beginSentinel      = (FreeAllocHeader*)alignedBegin;
+        FreeAllocHeader* wildBlock          = (FreeAllocHeader*)((char*)beginSentinel + SENTINEL_SIZE);
+        FreeAllocHeader* endSentinel        = (FreeAllocHeader*)((char*)alignedEnd - SENTINEL_SIZE); 
+        FreeAllocHeader* largeBlockSentinel = (FreeAllocHeader*)((char*)endSentinel - SENTINEL_SIZE);
+        InitLink(&wildBlock->freeListLink);
+        
+        // Check alignments
+        assert(((U64)beginSentinel      & 31ull) == 0ull);
+        assert(((U64)wildBlock          & 31ull) == 0ull);
+        assert(((U64)endSentinel        & 31ull) == 0ull);
+        assert(((U64)largeBlockSentinel & 31ull) == 0ull);
+        
+        at->beginSentinel      = beginSentinel;
+        at->wildBlock          = wildBlock;
+        at->endSentinel        = endSentinel;
+        at->largeBlockSentinel = largeBlockSentinel;
+        
+        beginSentinel->thisSize.size       = (U64)SENTINEL_SIZE;
+        beginSentinel->thisSize.state      = (U32)AllocState::BEGIN_SENTINEL;
+        wildBlock->thisSize.size           = (U64)((U64)largeBlockSentinel - (U64)wildBlock);
+        wildBlock->thisSize.state          = (U32)AllocState::WILD_BLOCK;
+        largeBlockSentinel->thisSize.size  = (U64)SENTINEL_SIZE;
+        largeBlockSentinel->thisSize.state = (U32)AllocState::LARGE_BLOCK_SENTINEL;
+        endSentinel->thisSize.size         = (U64)SENTINEL_SIZE;
+        endSentinel->thisSize.state        = (U32)AllocState::END_SENTINEL;
+        wildBlock->prevSize                = beginSentinel->thisSize;
+        largeBlockSentinel->prevSize       = wildBlock->thisSize;
+        endSentinel->prevSize              = largeBlockSentinel->thisSize;
+        at->freeMemSize                    = wildBlock->thisSize.size;
+
+        for (int i = 0; i < 256; ++i) {
+            InitLink(&at->freeListBins[i]);
+        }
+
+        SetAllocFreeBinBit(&at->freeListbinMask, 255);
+        DLink* freeList = &at->freeListBins[255];
+        InitLink(&wildBlock->freeListLink);
+        InsertNextLink(freeList, &wildBlock->freeListLink);
+        at->freeListBinsCount[255] = 1;
+
+        return 0;
+    }
+
+    inline void SetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept {
         assert(bitField != nullptr);
         assert(binIdx < 256);
         const U32 lane = (U32)(binIdx >> 6);         // 0..3
@@ -479,7 +424,7 @@ namespace ak { namespace priv {
         lanes[lane] |= (1ull << bit);
     }
 
-    static inline bool GetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept {
+    inline bool GetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept {
         assert(bitField != nullptr);
         assert(binIdx < 256);
         const U64 lane = binIdx >> 6;         // 0..3
@@ -488,7 +433,7 @@ namespace ak { namespace priv {
         return ((lanes[lane] >> bit) & 1ull) != 0ull;
     }
 
-    static inline void ClearAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept {
+    inline void ClearAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept {
         assert(bitField != nullptr);
         assert(binIdx < 256);
         const U64 lane = binIdx >> 6;         // 0..3
@@ -496,6 +441,49 @@ namespace ak { namespace priv {
         U64* lanes = reinterpret_cast<U64*>(bitField);
         lanes[lane] &= ~(1ull << bit);
     }
+
+    inline AllocHeader* NextAllocHeaderPtr(AllocHeader* h) noexcept {
+        size_t sz = (size_t)h->thisSize.size;
+        if (sz == 0) return h;
+        return (AllocHeader*)((char*)h + sz);
+    }
+
+    inline AllocHeader* PrevAllocHeaderPtr(AllocHeader* h) noexcept {
+        size_t sz = (size_t)h->prevSize.size;
+        if (sz == 0) return h;
+        return (AllocHeader*)((char*)h - sz);
+    }
+
+    inline unsigned GetAllocSmallBinIndexFromSize(uint64_t sz) noexcept {
+        if (sz < 32) return 0u;
+        if (sz <= 32ull * 254ull) return (unsigned)(sz / 32ull) - 1u;
+        return 254u; // 254 = medium, 255 = wild
+    }
+
+    inline unsigned GetAllocFreeListBinIndex(const AllocHeader* h) noexcept {
+        switch ((AllocState)h->thisSize.state) {
+            case AllocState::WILD_BLOCK:
+                return 255;
+            case AllocState::FREE: 
+            {
+                Size sz = h->thisSize.size;
+                if (sz >= 254ull * 32ull) return 254;
+                else return (unsigned)(sz / 32ull);
+            }
+            case AllocState::INVALID:
+            case AllocState::USED:
+            case AllocState::BEGIN_SENTINEL:
+            case AllocState::LARGE_BLOCK_SENTINEL:
+            case AllocState::END_SENTINEL:
+            default:
+            {
+               // Unreachable
+               std::abort();
+               return UINT_MAX;
+            }
+        }
+    }
+
 
 }}
 
@@ -509,6 +497,18 @@ namespace ak { namespace priv {
 // Public Allocator API Implementation
 // ----------------------------------------------------------------------------------------------------------------
 namespace ak {
+
+    inline const char* ToString(AllocState s) noexcept {
+        switch (s) {
+            case AllocState::USED:                 return "USED";
+            case AllocState::FREE:                 return "FREE";
+            case AllocState::WILD_BLOCK:           return "WILD";
+            case AllocState::BEGIN_SENTINEL:       return "SENTINEL B";
+            case AllocState::LARGE_BLOCK_SENTINEL: return "SENTINEL L";
+            case AllocState::END_SENTINEL:         return "SENTINEL E";
+            default:                               return "INVALID";
+        }
+    }
 
     // In TryMalloc (replace existing function starting at 2933):
     /// \brief Attempts to synchronously allocate memory from the heap.
@@ -534,7 +534,7 @@ namespace ak {
         assert(requestedBlockSize >= MIN_BLOCK_SIZE);
         
         // Find bin
-        int binIdx = FindFreeListBucket(requestedBlockSize, (char*)&at->freeListbinMask);
+        int binIdx = FindAllocFreeListBinIndex(&at->freeListbinMask, requestedBlockSize);
         assert(GetAllocFreeBinBit(&at->freeListbinMask, binIdx));
         assert(!IsLinkDetached(&at->freeListBins[binIdx]));
         assert(at->freeListBinsCount[binIdx] > 0);
@@ -546,7 +546,7 @@ namespace ak {
             if (at->freeListBinsCount[binIdx] == 0) ClearAllocFreeBinBit(&at->freeListbinMask, binIdx);
             
             AllocHeader* block = (AllocHeader*)((char*)link - offsetof(FreeAllocHeader, freeListLink));
-            AllocHeader* nextBlock = NextHeaderPtr(block);
+            AllocHeader* nextBlock = NextAllocHeaderPtr(block);
             __builtin_prefetch(nextBlock, 1, 3);
             
             if constexpr (IS_DEBUG_MODE) {
@@ -605,7 +605,7 @@ namespace ak {
                     --at->freeListBinsCount[254];
                     if (at->freeListBinsCount[254] == 0) ClearAllocFreeBinBit(&at->freeListbinMask, 254);
                     
-                    AllocHeader* nextBlock = NextHeaderPtr((AllocHeader*)block);
+                    AllocHeader* nextBlock = NextAllocHeaderPtr((AllocHeader*)block);
                     __builtin_prefetch(nextBlock, 1, 3);
                     
                     if constexpr (IS_DEBUG_MODE) {
@@ -637,7 +637,7 @@ namespace ak {
                         nextBlock->prevSize = newFree->thisSize;
                         
                         // For medium remainder, push back to medium bin (254)
-                        U64 newBinIdx = GetSmallBinIndexFromSize((U64)newFreeSize);
+                        U64 newBinIdx = GetAllocSmallBinIndexFromSize((U64)newFreeSize);
                         DLink* newStack = &at->freeListBins[newBinIdx];
                         PushLink(newStack, &newFree->freeListLink);
                         ++at->freeListBinsCount[newBinIdx];
@@ -666,7 +666,7 @@ namespace ak {
             ClearAllocFreeBinBit(&at->freeListbinMask, 255);
             
             AllocHeader* oldWild = (AllocHeader*)((char*)link - offsetof(FreeAllocHeader, freeListLink));
-            AllocHeader* nextBlock = NextHeaderPtr(oldWild);
+            AllocHeader* nextBlock = NextAllocHeaderPtr(oldWild);
             __builtin_prefetch(nextBlock, 1, 3);
             assert(at->wildBlock == (FreeAllocHeader*)oldWild);
             
@@ -729,18 +729,18 @@ namespace ak {
         FreeAllocHeader* block = (FreeAllocHeader*)((char*)ptr - HEADER_SIZE);
         assert(block->thisSize.state == (U32)AllocState::USED);
 
-        AllocHeader* nextBlock = NextHeaderPtr((AllocHeader*)block);
+        AllocHeader* nextBlock = NextAllocHeaderPtr((AllocHeader*)block);
         Size blockSize = block->thisSize.size;
-        unsigned origBinIdx = GetFreeListBinIndex((AllocHeader*)block);  // For stats
+        unsigned origBinIdx = GetAllocFreeListBinIndex((AllocHeader*)block);  // For stats
 
         // Step 2: Left coalescing loop - merge previous free blocks backwards
         unsigned leftMerges = 0;
         while (leftMerges < sideCoalescing) {
-            AllocHeader* prevBlock = PrevHeaderPtr((AllocHeader*)block);
+            AllocHeader* prevBlock = PrevAllocHeaderPtr((AllocHeader*)block);
             if (prevBlock->thisSize.state != (U32)AllocState::FREE) break;  // Stop if not free
 
             FreeAllocHeader* prevFree = (FreeAllocHeader*)prevBlock;
-            int prevBin = GetFreeListBinIndex((AllocHeader*)prevFree);
+            int prevBin = GetAllocFreeListBinIndex((AllocHeader*)prevFree);
 
             // Unlink the previous free block from its bin
             DetachLink(&prevFree->freeListLink);
@@ -763,7 +763,7 @@ namespace ak {
         unsigned rightMerges = 0;
         bool mergedToWild = false;
         while (rightMerges < sideCoalescing) {
-            nextBlock = NextHeaderPtr((AllocHeader*)block);  // Refresh next after any prior merges
+            nextBlock = NextAllocHeaderPtr((AllocHeader*)block);  // Refresh next after any prior merges
             AllocState nextState = (AllocState)nextBlock->thisSize.state;
             if (nextState != AllocState::FREE && nextState != AllocState::WILD_BLOCK) break;  // Stop if not free/wild
 
@@ -771,7 +771,7 @@ namespace ak {
             Size nextSize = nextBlock->thisSize.size;
 
             if (nextState == AllocState::FREE) {
-                int nextBin = GetFreeListBinIndex((AllocHeader*)nextFree);
+                int nextBin = GetAllocFreeListBinIndex((AllocHeader*)nextFree);
 
                 // Unlink the next free block from its bin
                 DetachLink(&nextFree->freeListLink);
@@ -800,7 +800,7 @@ namespace ak {
             blockSize = block->thisSize.size;
 
             // Update the block after next's prevSize to point to the expanded current
-            AllocHeader* nextNext = NextHeaderPtr(nextBlock);
+            AllocHeader* nextNext = NextAllocHeaderPtr(nextBlock);
             nextNext->prevSize = block->thisSize;
 
             ++rightMerges;
@@ -833,7 +833,7 @@ namespace ak {
         ++stats->binFreeCount[origBinIdx];
 
         // Ensure the final next block's prevSize is updated
-        nextBlock = NextHeaderPtr((AllocHeader*)block);
+        nextBlock = NextAllocHeaderPtr((AllocHeader*)block);
         nextBlock->prevSize = block->thisSize;
     }
 }

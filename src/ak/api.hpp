@@ -99,6 +99,7 @@ namespace ak
         LARGE_BLOCK_SENTINEL = 0b0110,
         END_SENTINEL         = 0b1100,
     };
+    const char* ToString(AllocState s) noexcept;
 
     struct AllocSizeRecord {
         U64 size      : 48;
