@@ -4,6 +4,15 @@
 
 namespace ak { namespace priv {
 
+#ifndef NDEBUG
+    struct KernelDebug {
+        // Allocation Table: Set of allocated blocks
+        // Promise Table: Set of allocated promises pointing to the `address()` of the Task frame
+    };
+
+    inline KernelDebug gKernelDebug;
+#endif
+
     // Allocator routines
     int          InitAllocTable(void* mem, Size size) noexcept;
     void*        TryMalloc(Size size) noexcept;

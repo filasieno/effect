@@ -350,7 +350,9 @@ namespace ak {
 
             Size blockSize = block->thisSize.size;
             
-            if (blockSize == requestedBlockSize) {  // Exact match
+            // Exact match case
+            // ----------------
+            if (blockSize == requestedBlockSize) {  
                 block->thisSize.state = (U32)AllocState::USED;
                 at->freeMemSize -= requestedBlockSize;
                 AllocStats* stats = &at->stats;
@@ -358,39 +360,44 @@ namespace ak {
                 ++stats->binReuseCount[binIdx];
                 nextBlock->prevSize.state = (U32)AllocState::USED;
                 return (void*)((char*)block + HEADER_SIZE);
-            } else {  // Split
-                Size newFreeSize = blockSize - requestedBlockSize;
-                assert(newFreeSize >= MIN_BLOCK_SIZE && newFreeSize % ALIGNMENT == 0);
-                
-                FreeAllocHeader* newFree = (FreeAllocHeader*)((char*)block + requestedBlockSize);
-                __builtin_prefetch(newFree, 1, 3);
-                
-                block->thisSize.size = requestedBlockSize;
-                block->thisSize.state = (U32)AllocState::USED;
-                
-                newFree->thisSize.size = newFreeSize;
-                newFree->thisSize.state = (U32)AllocState::FREE;
-                newFree->prevSize = block->thisSize;
-                
-                nextBlock->prevSize = newFree->thisSize;
-                
-                int newBinIdx = (newFreeSize / ALIGNMENT) - 1;
-                DLink* newStack = &at->freeListBins[newBinIdx];
-                PushLink(newStack, &newFree->freeListLink);
-                ++at->freeListBinsCount[newBinIdx];
-                if (at->freeListBinsCount[newBinIdx] == 1) SetAllocFreeBinBit(&at->freeListbinMask, newBinIdx);
-                
-                AllocStats* stats = &at->stats;
-                ++stats->binAllocCount[binIdx];
-                ++stats->binSplitCount[binIdx];
-                ++stats->binPoolCount[newBinIdx];
-                at->freeMemSize -= requestedBlockSize;
-                
-                return (void*)((char*)block + HEADER_SIZE);
-            }
+            } 
+
+            // Required Split case
+            // -------------------
+            Size newFreeSize = blockSize - requestedBlockSize;
+            assert(newFreeSize >= MIN_BLOCK_SIZE && newFreeSize % ALIGNMENT == 0);
+            
+            FreeAllocHeader* newFree = (FreeAllocHeader*)((char*)block + requestedBlockSize);
+            __builtin_prefetch(newFree, 1, 3);
+            
+            block->thisSize.size = requestedBlockSize;
+            block->thisSize.state = (U32)AllocState::USED;
+            
+            newFree->thisSize.size = newFreeSize;
+            newFree->thisSize.state = (U32)AllocState::FREE;
+            newFree->prevSize = block->thisSize;
+            
+            nextBlock->prevSize = newFree->thisSize;
+            
+            int newBinIdx = (newFreeSize / ALIGNMENT) - 1;
+            DLink* newStack = &at->freeListBins[newBinIdx];
+            PushLink(newStack, &newFree->freeListLink);
+            ++at->freeListBinsCount[newBinIdx];
+            if (at->freeListBinsCount[newBinIdx] == 1) SetAllocFreeBinBit(&at->freeListbinMask, newBinIdx);
+            
+            AllocStats* stats = &at->stats;
+            ++stats->binAllocCount[binIdx];
+            ++stats->binSplitCount[binIdx];
+            ++stats->binPoolCount[newBinIdx];
+            at->freeMemSize -= requestedBlockSize;
+            
+            return (void*)((char*)block + HEADER_SIZE);
+            
         }
         
-        if (binIdx == 254) {  // Medium bin: First-fit search and split
+        // Medium bin case do a fist fit search
+        // -------------------------------------
+        if (binIdx == 254) {
             DLink* mediumList = &at->freeListBins[254];
             for (DLink* link = mediumList->next; link != mediumList; link = link->next) {
                 FreeAllocHeader* block = (FreeAllocHeader*)((char*)link - offsetof(FreeAllocHeader, freeListLink));
@@ -407,7 +414,9 @@ namespace ak {
                         ClearLink(link);
                     }         
 
-                    if (blockSize == requestedBlockSize) {  // Exact
+                    // Exact match case
+                    // ----------------
+                    if (blockSize == requestedBlockSize) {  
                         block->thisSize.state = (U32)AllocState::USED;
                         at->freeMemSize -= requestedBlockSize;
                         AllocStats* stats = &at->stats;
@@ -415,93 +424,102 @@ namespace ak {
                         ++stats->binReuseCount[254];
                         nextBlock->prevSize.state = (U32)AllocState::USED;
                         return (void*)((char*)block + HEADER_SIZE);
-                    } else {  // Split
-                        Size newFreeSize = blockSize - requestedBlockSize;
-                        assert(newFreeSize >= MIN_BLOCK_SIZE && newFreeSize % ALIGNMENT == 0);
-                        
-                        FreeAllocHeader* newFree = (FreeAllocHeader*)((char*)block + requestedBlockSize);
-                        __builtin_prefetch(newFree, 1, 3);
-                        
-                        block->thisSize.size = requestedBlockSize;
-                        block->thisSize.state = (U32)AllocState::USED;
-                        
-                        newFree->thisSize.size = newFreeSize;
-                        newFree->thisSize.state = (U32)AllocState::FREE;
-                        newFree->prevSize = block->thisSize;
-                        
-                        nextBlock->prevSize = newFree->thisSize;
-                        
-                        // For medium remainder, push back to medium bin (254)
-                        U64 newBinIdx = GetAllocSmallBinIndexFromSize((U64)newFreeSize);
-                        DLink* newStack = &at->freeListBins[newBinIdx];
-                        PushLink(newStack, &newFree->freeListLink);
-                        ++at->freeListBinsCount[newBinIdx];
-                        SetAllocFreeBinBit(&at->freeListbinMask, newBinIdx);
-                        
-                        AllocStats* stats = &at->stats;
-                        ++stats->binAllocCount[254];
-                        ++stats->binSplitCount[254];
-                        ++stats->binPoolCount[newBinIdx];
-                        at->freeMemSize -= requestedBlockSize;
-                        
-                        return (void*)((char*)block + HEADER_SIZE);
-                    }
+                    } 
+
+                    // Required Split case
+                    // -------------------
+                    Size newFreeSize = blockSize - requestedBlockSize;
+                    assert(newFreeSize >= MIN_BLOCK_SIZE && newFreeSize % ALIGNMENT == 0);
+                    
+                    FreeAllocHeader* newFree = (FreeAllocHeader*)((char*)block + requestedBlockSize);
+                    __builtin_prefetch(newFree, 1, 3);
+                    
+                    block->thisSize.size = requestedBlockSize;
+                    block->thisSize.state = (U32)AllocState::USED;
+                    
+                    newFree->thisSize.size = newFreeSize;
+                    newFree->thisSize.state = (U32)AllocState::FREE;
+                    newFree->prevSize = block->thisSize;
+                    
+                    nextBlock->prevSize = newFree->thisSize;
+                    
+                    // For medium remainder, push back to medium bin (254)
+                    U64 newBinIdx = GetAllocSmallBinIndexFromSize((U64)newFreeSize);
+                    DLink* newStack = &at->freeListBins[newBinIdx];
+                    PushLink(newStack, &newFree->freeListLink);
+                    ++at->freeListBinsCount[newBinIdx];
+                    SetAllocFreeBinBit(&at->freeListbinMask, newBinIdx);
+                    
+                    AllocStats* stats = &at->stats;
+                    ++stats->binAllocCount[254];
+                    ++stats->binSplitCount[254];
+                    ++stats->binPoolCount[newBinIdx];
+                    at->freeMemSize -= requestedBlockSize;
+                    
+                    return (void*)((char*)block + HEADER_SIZE);
+                
                 }
             }
             return nullptr;  // No fit found
         }
         
-        if (binIdx == 255) {  // Wild bin
+        // Case we are allocating from the Wild Block (255)
+        // ================================================
+        if (binIdx == 255) {  
             assert(at->wildBlock != nullptr);
-            DLink* freeStack = &at->freeListBins[255];
-            DLink* link = &at->wildBlock->freeListLink;
-            DetachLink(link);
-            assert(freeStack->prev == freeStack && freeStack->next == freeStack);  // Empty after detach
-            at->freeListBinsCount[255] = 0;
-            ClearAllocFreeBinBit(&at->freeListbinMask, 255);
+            AllocHeader* oldWild = (AllocHeader*)at->wildBlock;            
             
-            AllocHeader* oldWild = (AllocHeader*)((char*)link - offsetof(FreeAllocHeader, freeListLink));
+            // Prefetch the next block, the prev block and the new wild block
+            // --------------------------------------------------------------
+            
+            // 1. Prefetch the next block
             AllocHeader* nextBlock = NextAllocHeaderPtr(oldWild);
             __builtin_prefetch(nextBlock, 1, 3);
-            assert(at->wildBlock == (FreeAllocHeader*)oldWild);
             
+            // 2. Prefetch the new wild block
+            FreeAllocHeader* newWild = (FreeAllocHeader*)((char*)oldWild + requestedBlockSize);
+            __builtin_prefetch(newWild, 1, 3);
+
+            // 3. Prefetch stats
+            __builtin_prefetch(&at->stats.binAllocCount[255], 1, 3);
+            __builtin_prefetch(&at->stats.binSplitCount[255], 1, 3);
+            
+            // Case there the wild block is full; memory is exhausted
+            // ------------------------------------------------------
             Size oldSize = oldWild->thisSize.size;
+            if (requestedBlockSize >= oldSize - MIN_BLOCK_SIZE) { // the wild block must have at least MIN_BLOCK_SIZE free space
+                ++at->stats.binFailedCount[255];
+                return nullptr; // not enough space
+            }
             
-            if (requestedBlockSize >= (oldSize + 32)) return nullptr; // not enough space
-            
+            // Case there is enough space -> Split the wild block
+            // --------------------------------------------------
             Size newWildSize = oldSize - requestedBlockSize;
             assert(newWildSize >= MIN_BLOCK_SIZE && newWildSize % ALIGNMENT == 0);
             
+            AllocSizeRecord allocatedSize = { requestedBlockSize, (U32)AllocState::USED, 0 };
             AllocHeader* allocated = oldWild;
-            allocated->thisSize.size = requestedBlockSize;
-            allocated->thisSize.state = (U32)AllocState::USED;
+            allocated->thisSize = allocatedSize;
             
-            FreeAllocHeader* newWild = (FreeAllocHeader*)((char*)allocated + requestedBlockSize);
-            newWild->thisSize.size = newWildSize;
-            newWild->thisSize.state = (U32)AllocState::WILD_BLOCK;
+            AllocSizeRecord newWildSizeRecord = { newWildSize, (U32)AllocState::WILD_BLOCK, 0 };
+            newWild->thisSize = newWildSizeRecord;
             newWild->prevSize = allocated->thisSize;
-            
+            at->wildBlock = newWild;
             nextBlock->prevSize = newWild->thisSize;
             
-            at->wildBlock = newWild;
-            PushLink(freeStack, &newWild->freeListLink);
-            ++at->freeListBinsCount[255];
-            SetAllocFreeBinBit(&at->freeListbinMask, 255);
-            
+            // Update stats
+            ++at->stats.binAllocCount[255];
+            ++at->stats.binSplitCount[255];
             at->freeMemSize -= requestedBlockSize;
-            AllocStats* stats = &at->stats;
-            ++stats->binAllocCount[255];
-            ++stats->binSplitCount[255];
             
             return (void*)((char*)allocated + HEADER_SIZE);
-        
         }
         
-        assert(false && "Unreachable");
+        // Unreachable
+        std::abort();
         return nullptr;
     }
 
-    // In FreeMem (replace existing function starting at 3102):
     /// \brief Frees allocated memory and coalesces with adjacent free blocks.
     /// 
     /// Algorithm:

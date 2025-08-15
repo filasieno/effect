@@ -129,7 +129,6 @@ namespace ak { namespace priv {
         std::print("  memBegin         : {}\n", (void*)at->memBegin);
         std::print("  memEnd           : {}; size: {}\n", (void*)at->memEnd, (intptr_t)(at->memEnd - at->memBegin));
         std::print("  memSize          : {}\n", at->memSize);
-        std::print("  usedMemSize      : {}\n", at->usedMemSize);
         std::print("  freeMemSize      : {}\n", at->freeMemSize);
     
         // Sentinels and wild/large tracking (addresses only; do not dereference)

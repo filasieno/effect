@@ -131,6 +131,7 @@ namespace ak
         Size binAllocCount[ALLOCATOR_BIN_COUNT];
         Size binReallocCount[ALLOCATOR_BIN_COUNT];
         Size binFreeCount[ALLOCATOR_BIN_COUNT];
+        Size binFailedCount[ALLOCATOR_BIN_COUNT];
         Size binSplitCount[ALLOCATOR_BIN_COUNT];
         Size binMergeCount[ALLOCATOR_BIN_COUNT];
         Size binReuseCount[ALLOCATOR_BIN_COUNT];
@@ -153,7 +154,6 @@ namespace ak
         
         // MEMORY ACCOUNTING
         Size memSize;
-        Size usedMemSize;
         Size freeMemSize;
         Size maxFreeBlockSize;
         
