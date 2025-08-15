@@ -8,7 +8,7 @@ using namespace ak;
 DefineTask MainTask() noexcept {
     priv::DebugDumpAllocTable();
     priv::DebugPrintAllocBlocks();
-	Size bins = 8;
+	Size bins = 253;
 	Size maxSize = bins * 32  - 16;
 	for (U64 memSize = 16; memSize <= maxSize; memSize += 32) {
 		void* buff = TryAllocMem(memSize);

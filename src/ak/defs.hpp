@@ -13,7 +13,7 @@ namespace ak {
         #else
             constexpr bool IS_DEBUG_MODE    = true;   
         #endif
-        
+        constexpr bool ENABLE_AVX2      = false;
         constexpr bool TRACE_DEBUG_CODE = false;
 
     } // namespace ak::priv

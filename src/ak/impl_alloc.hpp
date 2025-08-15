@@ -39,107 +39,106 @@ namespace ak { namespace priv {
         }
         if (requiredBin > 255u) requiredBin = 255u;
 
-#if defined(__AVX2__)
-        // AVX2 fast path (no runtime feature check)
-        // Build a byte-granular mask: zero bytes < requiredByte, keep bytes >= requiredByte;
-        // additionally mask bits < bitInByte in the requiredByte itself
-        const unsigned requiredByte = requiredBin >> 3;   // 0..31
-        const unsigned bitInByteReq = requiredBin & 7u;   // 0..7
+        if constexpr (ENABLE_AVX2) {
+            // AVX2 fast path (no runtime feature check)
+            // Build a byte-granular mask: zero bytes < requiredByte, keep bytes >= requiredByte;
+            // additionally mask bits < bitInByte in the requiredByte itself
+            const unsigned requiredByte = requiredBin >> 3;   // 0..31
+            const unsigned bitInByteReq = requiredBin & 7u;   // 0..7
 
-        // Precomputed 0..31 index vector (one-time constant)
-        alignas(32) static const unsigned char INDEX_0_31[32] = {
-            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-            16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31
-        };
+            // Precomputed 0..31 index vector (one-time constant)
+            alignas(32) static const unsigned char INDEX_0_31[32] = {
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+                16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31
+            };
 
-        const __m256i availability = _mm256_load_si256((const __m256i*)bitField);
-        const __m256i idx = _mm256_load_si256((const __m256i*)INDEX_0_31);
-        const __m256i reqByteVec = _mm256_set1_epi8((char)requiredByte);
-        const __m256i allOnes    = _mm256_set1_epi8((char)-1);
+            const __m256i availability = _mm256_load_si256((const __m256i*)bitField);
+            const __m256i idx = _mm256_load_si256((const __m256i*)INDEX_0_31);
+            const __m256i reqByteVec = _mm256_set1_epi8((char)requiredByte);
+            const __m256i allOnes    = _mm256_set1_epi8((char)-1);
 
-        // geMask: 0xFF where idx >= requiredByte, 0x00 otherwise (one compare + andnot)
-        const __m256i ltMask = _mm256_cmpgt_epi8(reqByteVec, idx); // 0xFF where req > idx (i.e., idx < req)
-        const __m256i geMask = _mm256_andnot_si256(ltMask, allOnes);
+            // geMask: 0xFF where idx >= requiredByte, 0x00 otherwise (one compare + andnot)
+            const __m256i ltMask = _mm256_cmpgt_epi8(reqByteVec, idx); // 0xFF where req > idx (i.e., idx < req)
+            const __m256i geMask = _mm256_andnot_si256(ltMask, allOnes);
 
-        // Apply byte-level mask and also clear bits below bitInByteReq in the required byte
-        __m256i masked = _mm256_and_si256(availability, geMask);
-        const __m256i eqMask = _mm256_cmpeq_epi8(idx, reqByteVec);
-        const __m256i firstByteMaskVec = _mm256_set1_epi8((char)(unsigned char)(0xFFu << bitInByteReq));
-        const __m256i onlyEqLane       = _mm256_and_si256(masked, eqMask);
-        const __m256i maskedEqLane     = _mm256_and_si256(onlyEqLane, firstByteMaskVec);
-        const __m256i otherLanes       = _mm256_andnot_si256(eqMask, masked);
-        masked = _mm256_or_si256(otherLanes, maskedEqLane);
+            // Apply byte-level mask and also clear bits below bitInByteReq in the required byte
+            __m256i masked = _mm256_and_si256(availability, geMask);
+            const __m256i eqMask = _mm256_cmpeq_epi8(idx, reqByteVec);
+            const __m256i firstByteMaskVec = _mm256_set1_epi8((char)(unsigned char)(0xFFu << bitInByteReq));
+            const __m256i onlyEqLane       = _mm256_and_si256(masked, eqMask);
+            const __m256i maskedEqLane     = _mm256_and_si256(onlyEqLane, firstByteMaskVec);
+            const __m256i otherLanes       = _mm256_andnot_si256(eqMask, masked);
+            masked = _mm256_or_si256(otherLanes, maskedEqLane);
 
-        // Find the lowest set bit using movemask on zero-compare
-        const __m256i zero = _mm256_setzero_si256();
-        const __m256i is_zero = _mm256_cmpeq_epi8(masked, zero);
-        const unsigned non_zero_mask = ~static_cast<unsigned>(_mm256_movemask_epi8(is_zero));
-        if (non_zero_mask == 0u) {
-            return 255;
+            // Find the lowest set bit using movemask on zero-compare
+            const __m256i zero = _mm256_setzero_si256();
+            const __m256i is_zero = _mm256_cmpeq_epi8(masked, zero);
+            const unsigned non_zero_mask = ~static_cast<unsigned>(_mm256_movemask_epi8(is_zero));
+            if (non_zero_mask == 0u) {
+                return 255;
+            }
+
+            const int byte_idx = __builtin_ctz(non_zero_mask);
+            // Read the target byte directly from the original bitfield and apply the per-byte bit mask for the first lane only (branchless)
+            const unsigned char* bytes_src = (const unsigned char*)bitField;
+            unsigned char byte_val = bytes_src[byte_idx];
+            const unsigned char firstByteMaskScalar = (unsigned char)(0xFFu << bitInByteReq);
+            const unsigned char sameMask = (unsigned char)-(byte_idx == (int)requiredByte); // 0xFF if same, 0x00 otherwise
+            byte_val &= (unsigned char)((sameMask & firstByteMaskScalar) | (~sameMask));
+            const int bit_in_byte = __builtin_ctz((unsigned)byte_val);
+            return byte_idx * 8 + bit_in_byte;
+        } else {
+            // Fallback: branchless, fully unrolled scan of 4x64-bit words
+            const uint64_t* words = (const uint64_t*)bitField; // 4 x 64-bit words
+            const unsigned wordIdx = requiredBin >> 6;        // 0..3
+            const unsigned bitInWord = requiredBin & 63u;    // 0..63
+
+            const uint64_t startMask = ~0ull << bitInWord;   // valid when selecting the starting word
+
+            // Enable masks for words >= word_idx (0xFFFFFFFFFFFFFFFF or 0x0)
+            const uint64_t en0 = (uint64_t)-(0u >= wordIdx);
+            const uint64_t en1 = (uint64_t)-(1u >= wordIdx);
+            const uint64_t en2 = (uint64_t)-(2u >= wordIdx);
+            const uint64_t en3 = (uint64_t)-(3u >= wordIdx);
+
+            // Equal masks for exactly the starting word
+            const uint64_t eq0 = (uint64_t)-(0u == wordIdx);
+            const uint64_t eq1 = (uint64_t)-(1u == wordIdx);
+            const uint64_t eq2 = (uint64_t)-(2u == wordIdx);
+            const uint64_t eq3 = (uint64_t)-(3u == wordIdx);
+
+            // Per-word effective masks: for starting word use startMask, otherwise ~0ull; then gate with enable mask
+            const uint64_t mask0 = en0 & ((eq0 & startMask) | (~eq0 & ~0ull));
+            const uint64_t mask1 = en1 & ((eq1 & startMask) | (~eq1 & ~0ull));
+            const uint64_t mask2 = en2 & ((eq2 & startMask) | (~eq2 & ~0ull));
+            const uint64_t mask3 = en3 & ((eq3 & startMask) | (~eq3 & ~0ull));
+
+            const uint64_t v0 = words[0] & mask0;
+            const uint64_t v1 = words[1] & mask1;
+            const uint64_t v2 = words[2] & mask2;
+            const uint64_t v3 = words[3] & mask3;
+
+            const unsigned n0 = (unsigned)(v0 != 0);
+            const unsigned n1 = (unsigned)(v1 != 0);
+            const unsigned n2 = (unsigned)(v2 != 0);
+            const unsigned n3 = (unsigned)(v3 != 0);
+            const unsigned nonzero_groups = (n0) | (n1 << 1) | (n2 << 2) | (n3 << 3);
+            if (nonzero_groups == 0u) {
+                return 255;
+            }
+
+            const unsigned group = (unsigned)__builtin_ctz(nonzero_groups); // 0..3
+
+            // Branchless selection of the first nonzero word
+            const uint64_t sel0 = (uint64_t)-(group == 0u);
+            const uint64_t sel1 = (uint64_t)-(group == 1u);
+            const uint64_t sel2 = (uint64_t)-(group == 2u);
+            const uint64_t sel3 = (uint64_t)-(group == 3u);
+            const uint64_t vv = (v0 & sel0) | (v1 & sel1) | (v2 & sel2) | (v3 & sel3);
+
+            const unsigned bit_in_word_first = (unsigned)__builtin_ctzll(vv);
+            return (int)(group * 64u + bit_in_word_first);
         }
-
-        const int byte_idx = __builtin_ctz(non_zero_mask);
-        // Read the target byte directly from the original bitfield and apply the per-byte bit mask for the first lane only (branchless)
-        const unsigned char* bytes_src = (const unsigned char*)bitField;
-        unsigned char byte_val = bytes_src[byte_idx];
-        const unsigned char firstByteMaskScalar = (unsigned char)(0xFFu << bitInByteReq);
-        const unsigned char sameMask = (unsigned char)-(byte_idx == (int)requiredByte); // 0xFF if same, 0x00 otherwise
-        byte_val &= (unsigned char)((sameMask & firstByteMaskScalar) | (~sameMask));
-        const int bit_in_byte = __builtin_ctz((unsigned)byte_val);
-        return byte_idx * 8 + bit_in_byte;
-#else
-        // Fallback: branchless, fully unrolled scan of 4x64-bit words
-        const uint64_t* words = (const uint64_t*)bitField; // 4 x 64-bit words
-        const unsigned wordIdx = requiredBin >> 6;        // 0..3
-        const unsigned bitInWord = requiredBin & 63u;    // 0..63
-
-        const uint64_t startMask = ~0ull << bitInWord;   // valid when selecting the starting word
-
-        // Enable masks for words >= word_idx (0xFFFFFFFFFFFFFFFF or 0x0)
-        const uint64_t en0 = (uint64_t)-(0u >= wordIdx);
-        const uint64_t en1 = (uint64_t)-(1u >= wordIdx);
-        const uint64_t en2 = (uint64_t)-(2u >= wordIdx);
-        const uint64_t en3 = (uint64_t)-(3u >= wordIdx);
-
-        // Equal masks for exactly the starting word
-        const uint64_t eq0 = (uint64_t)-(0u == wordIdx);
-        const uint64_t eq1 = (uint64_t)-(1u == wordIdx);
-        const uint64_t eq2 = (uint64_t)-(2u == wordIdx);
-        const uint64_t eq3 = (uint64_t)-(3u == wordIdx);
-
-        // Per-word effective masks: for starting word use startMask, otherwise ~0ull; then gate with enable mask
-        const uint64_t mask0 = en0 & ((eq0 & startMask) | (~eq0 & ~0ull));
-        const uint64_t mask1 = en1 & ((eq1 & startMask) | (~eq1 & ~0ull));
-        const uint64_t mask2 = en2 & ((eq2 & startMask) | (~eq2 & ~0ull));
-        const uint64_t mask3 = en3 & ((eq3 & startMask) | (~eq3 & ~0ull));
-
-        const uint64_t v0 = words[0] & mask0;
-        const uint64_t v1 = words[1] & mask1;
-        const uint64_t v2 = words[2] & mask2;
-        const uint64_t v3 = words[3] & mask3;
-
-        const unsigned n0 = (unsigned)(v0 != 0);
-        const unsigned n1 = (unsigned)(v1 != 0);
-        const unsigned n2 = (unsigned)(v2 != 0);
-        const unsigned n3 = (unsigned)(v3 != 0);
-        const unsigned nonzero_groups = (n0) | (n1 << 1) | (n2 << 2) | (n3 << 3);
-        if (nonzero_groups == 0u) {
-            return 255;
-        }
-
-        const unsigned group = (unsigned)__builtin_ctz(nonzero_groups); // 0..3
-
-        // Branchless selection of the first nonzero word
-        const uint64_t sel0 = (uint64_t)-(group == 0u);
-        const uint64_t sel1 = (uint64_t)-(group == 1u);
-        const uint64_t sel2 = (uint64_t)-(group == 2u);
-        const uint64_t sel3 = (uint64_t)-(group == 3u);
-        const uint64_t vv = (v0 & sel0) | (v1 & sel1) | (v2 & sel2) | (v3 & sel3);
-
-        const unsigned bit_in_word_first = (unsigned)__builtin_ctzll(vv);
-        return (int)(group * 64u + bit_in_word_first);
-#endif
-
     }
 
     inline int InitAllocTable(void* mem, Size size) noexcept {

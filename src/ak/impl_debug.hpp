@@ -157,10 +157,10 @@ namespace ak { namespace priv {
         for (unsigned i = 0; i < 254; ++i) {
             unsigned cc = at->freeListBinsCount[i];
             if (cc == 0) continue;
-            std::print("    {:>3} bytes class  : {}\n", (i + 1) * 32, cc);
+            std::print("    {:>5} bytes class  : {}\n", (i + 1) * 32, cc);
         }
-        std::print("     medium class    : {}\n", at->freeListBinsCount[254]);
-        std::print("     wild class      : {}\n", at->freeListBinsCount[255]);
+        std::print("     medium     class  : {}\n", at->freeListBinsCount[254]);
+        std::print("     wild       class  : {}\n", at->freeListBinsCount[255]);
         std::print("  FreeListBinsSizes end\n");
         
     
