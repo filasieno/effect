@@ -1,6 +1,7 @@
 #pragma once
 
-#include "ak/precompiled.hpp" // IWYU pragma: keep
+// #include "ak/precompiled.hpp" // IWYU pragma: keep
+
 #include "ak/defs.hpp"        // IWYU pragma: keep
 #include "ak/utl.hpp"         // IWYU pragma: keep
 #include "ak/api.hpp"         // IWYU pragma: keep

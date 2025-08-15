@@ -127,16 +127,16 @@ namespace ak { namespace priv {
         std::print("  heapBegin        : {}\n", (void*)at->heapBegin);
         std::print("  heapEnd          : {}; size: {}\n", (void*)at->heapEnd, (intptr_t)(at->heapEnd - at->heapBegin));
         std::print("  memBegin         : {}\n", (void*)at->memBegin);
-        std::print("  memEnd           : {}; size: {}\n", (void*)at->memEnd, (intptr_t)(at->memEnd - at->memBegin));
+        std::print("  memEnd           : {}; size: {}\n", (void*)at->memEnd,  (intptr_t)(at->memEnd  - at->memBegin));
         std::print("  memSize          : {}\n", at->memSize);
         std::print("  freeMemSize      : {}\n", at->freeMemSize);
     
         // Sentinels and wild/large tracking (addresses only; do not dereference)
         std::print("  Key Offsets:\n");
-        std::print("    Begin sentinel offset: {}\n", (intptr_t)at->beginSentinel - (intptr_t)at->memBegin);
-        std::print("    Wild  block    offset: {}\n", (intptr_t)at->wildBlock - (intptr_t)at->memBegin);
+        std::print("    Begin sentinel offset: {}\n", (intptr_t)at->beginSentinel      - (intptr_t)at->memBegin);
+        std::print("    Wild  block    offset: {}\n", (intptr_t)at->wildBlock          - (intptr_t)at->memBegin);
         std::print("    LB    sentinel offset: {}\n", (intptr_t)at->largeBlockSentinel - (intptr_t)at->memBegin);
-        std::print("    End   sentinel offset: {}\n", (intptr_t)at->endSentinel - (intptr_t)at->memBegin);
+        std::print("    End   sentinel offset: {}\n", (intptr_t)at->endSentinel        - (intptr_t)at->memBegin);
     
         // Free list availability mask as a bit array (256 bits)
         std::print("  FreeListbinMask:");
@@ -159,8 +159,8 @@ namespace ak { namespace priv {
             if (cc == 0) continue;
             std::print("    {:>3} bytes class  : {}\n", i * 32, cc);
         }
-        std::print("    medium class (254) : {}\n", at->freeListBinsCount[254]);
-        std::print("    wild class   (255) : {}\n", at->freeListBinsCount[255]);
+        std::print("     medium class    : {}\n", at->freeListBinsCount[254]);
+        std::print("     wild class      : {}\n", at->freeListBinsCount[255]);
         std::print("  FreeListBinsSizes end\n");
         
     
@@ -316,7 +316,17 @@ namespace ak { namespace priv {
         
         // Print FreeListPrev
         if (h->thisSize.state == (U32)AllocState::FREE) {
-            std::print("{} {:<18} ", stateColor, "TODO");
+            DLink* freeListLink = &((FreeAllocHeader*)h)->freeListLink;
+            DLink* prev = freeListLink->prev;
+            Size binIdx = GetAllocSmallBinIndexFromSize(h->thisSize.size);
+            DLink* head = &gKernel.allocTable.freeListBins[binIdx];
+            if (prev == head) {
+                std::print("{} {:<18} ", stateColor, "HEAD");
+            } else {
+                AllocHeader* prevBlock = (AllocHeader*)((char*)prev - sizeof(AllocHeader));
+                Size offset = (Size)((char*)prevBlock - (char*)gKernel.allocTable.beginSentinel);
+                std::print("{} {:<18} ", stateColor, offset);
+            }
         } else {
             std::print("{} {:<18} ", stateColor, "");
         }
@@ -325,7 +335,17 @@ namespace ak { namespace priv {
 
         // Print FreeList Next
         if (h->thisSize.state == (U32)AllocState::FREE) {
-            std::print("{} {:<18} ", stateColor, "TODO");
+            DLink* freeListLink = &((FreeAllocHeader*)h)->freeListLink;
+            DLink* next = freeListLink->next;
+            Size binIdx = GetAllocSmallBinIndexFromSize(h->thisSize.size);
+            DLink* head = &gKernel.allocTable.freeListBins[binIdx];
+            if (next == head) {
+                std::print("{} {:<18} ", stateColor, "HEAD");
+            } else {
+                AllocHeader* nextBlock = (AllocHeader*)((char*)next - sizeof(AllocHeader));
+                Size offset = (Size)((char*)nextBlock - (char*)gKernel.allocTable.beginSentinel);
+                std::print("{} {:<18} ", stateColor, offset);
+            }
         } else {
             std::print("{} {:<18} ", stateColor, "");
         }

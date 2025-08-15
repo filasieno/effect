@@ -9,7 +9,7 @@ namespace ak { namespace priv {
     void ClearAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
     int  FindAllocFreeListBinIndex(__m256i* bitField, Size allocSize) noexcept;
 
-    unsigned GetAllocSmallBinIndexFromSize(uint64_t sz) noexcept;
+
     unsigned GetAllocFreeListBinIndex(const AllocHeader* h) noexcept;
 }}
 
@@ -246,11 +246,11 @@ namespace ak { namespace priv {
         return (AllocHeader*)((char*)h - sz);
     }
 
-    inline unsigned GetAllocSmallBinIndexFromSize(uint64_t sz) noexcept {
+    inline U64 GetAllocSmallBinIndexFromSize(U64 sz) noexcept {
         // Bin mapping: bin = ceil(sz/32) - 1, clamped to [0, 254]
         // Examples: 1..32 -> 0, 33..64 -> 1, ..., 8160 -> 254
         assert(sz > 0);
-        unsigned bin = (unsigned)((sz - 1ull) >> 5); // ceil(sz/32) - 1
+        U64 bin = (U64)((sz - 1ull) >> 5); // ceil(sz/32) - 1
         if (bin > 254u) bin = 254u;                  // 254 = medium, 255 = wild
         return bin;
     }

@@ -17,7 +17,7 @@ namespace ak { namespace priv {
     int          InitAllocTable(void* mem, Size size) noexcept;
     AllocHeader* NextAllocHeaderPtr(AllocHeader* h) noexcept;
     AllocHeader* PrevAllocHeaderPtr(AllocHeader* h) noexcept;
-
+    U64          GetAllocSmallBinIndexFromSize(U64 sz) noexcept;
     // Scheduling routines
     TaskHdl      ScheduleNextTask() noexcept;
     TaskContext* GetLinkedTaskContext(const utl::DLink* link) noexcept;
