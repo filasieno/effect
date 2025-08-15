@@ -27,6 +27,7 @@ namespace ak { namespace priv {
     /// \return The index of the smallest free list that can store the allocSize
     /// \pre AVX2 is available
     /// \pre bitField is 64 byte aligned
+    /// \internal
     inline int FindAllocFreeListBinIndex(__m256i* bitField, Size allocSize) noexcept {
         assert(bitField != nullptr);
         assert(((uintptr_t)bitField % 64ull) == 0ull);

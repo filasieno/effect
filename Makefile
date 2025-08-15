@@ -207,6 +207,13 @@ build/%.pdf: src/%.md | build/.
 doxygen: | build/doc/.
 	doxygen Doxyfile
 
+.PHONY: doxygen-xml
+doxygen-xml: | build/doc/.
+	{ cat Doxyfile; echo "GENERATE_XML = YES"; echo "EXCLUDE += src/test"; } | doxygen -
+
+.PHONY: docs-xml
+docs-xml: doxygen-xml
+
 #----------------------------------------
 
 test:: test_dlist

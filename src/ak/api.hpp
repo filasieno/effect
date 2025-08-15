@@ -139,10 +139,11 @@ namespace ak
 
     struct AllocTable {
         static constexpr int ALLOCATOR_BIN_COUNT = AllocStats::ALLOCATOR_BIN_COUNT;
+        using DLink = utl::DLink;
         // FREE LIST MANAGEMENT
-        alignas(64) __m256i    freeListbinMask;                         
-        alignas(64) utl::DLink freeListBins[ALLOCATOR_BIN_COUNT];
-        alignas(64) U32        freeListBinsCount[ALLOCATOR_BIN_COUNT];
+        alignas(64) __m256i freeListbinMask;                         
+        alignas(64) DLink   freeListBins[ALLOCATOR_BIN_COUNT];
+        alignas(64) U32     freeListBinsCount[ALLOCATOR_BIN_COUNT];
 
         // HEAP BOUNDARY MANAGEMENT
         alignas(8) char* heapBegin;
