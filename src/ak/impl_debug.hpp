@@ -317,13 +317,6 @@ namespace ak { namespace priv {
         // Print FreeListPrev
         if (h->thisSize.state == (U32)AllocState::FREE) {
             std::print("{} {:<18} ", stateColor, "TODO");
-        } else if (h->thisSize.state == (U32)AllocState::WILD_BLOCK) {
-            FreeAllocHeader* freeBlock = (FreeAllocHeader*)h;
-            if (freeBlock->freeListLink.prev == &at->freeListBins[255]) {
-                std::print("{} {:<18} ", DEBUG_ALLOC_COLOR_GREEN, "WILD LIST");
-            } else {
-                std::print("{} {:<18} ", DEBUG_ALLOC_COLOR_RED, "INVALID");
-            }
         } else {
             std::print("{} {:<18} ", stateColor, "");
         }
@@ -333,17 +326,9 @@ namespace ak { namespace priv {
         // Print FreeList Next
         if (h->thisSize.state == (U32)AllocState::FREE) {
             std::print("{} {:<18} ", stateColor, "TODO");
-        } else if (h->thisSize.state == (U32)AllocState::WILD_BLOCK) {
-            FreeAllocHeader* freeBlock = (FreeAllocHeader*)h;
-            if (freeBlock->freeListLink.next == &at->freeListBins[255]) {
-                std::print("{} {:<18} ", DEBUG_ALLOC_COLOR_GREEN, "WILD LIST");
-            } else {
-                std::print("{} {:<18} ", DEBUG_ALLOC_COLOR_RED, "INVALID");
-            }
         } else {
             std::print("{} {:<18} ", stateColor, "");
         }
-
 
         std::print("{}│{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
