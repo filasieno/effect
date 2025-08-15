@@ -17,25 +17,7 @@ namespace ak {
             KernelTaskHdl hdl;
         };
 
-        struct KernelTaskPromise {
-            using InitialSuspend = std::suspend_always;
-            using FinalSuspend   = std::suspend_never;
 
-            static void*         operator new(std::size_t) noexcept;
-            static void          operator delete(void*, std::size_t) noexcept {};
-            static KernelTaskHdl get_return_object_on_allocation_failure() noexcept { std::abort(); /* unreachable */ }
-
-            template <typename... Args>
-            KernelTaskPromise(DefineTask(*)(Args ...) noexcept, Args... ) noexcept : returnValue(0) {}
-            
-            KernelTaskHdl            get_return_object() noexcept { return KernelTaskHdl::from_promise(*this); }
-            constexpr InitialSuspend initial_suspend() noexcept { return {}; }
-            constexpr FinalSuspend   final_suspend() noexcept { return {}; }
-            constexpr void           return_void() noexcept { }
-            constexpr void           unhandled_exception() noexcept { std::abort(); } 
-
-            int returnValue;
-        };
         
         // Boot routines
         template <typename... Args>
@@ -250,16 +232,28 @@ namespace ak {
     }
 }
 
-namespace ak { namespace priv {
 
-// KernelTaskPromise
-// ----------------------------------------------------------------------------------------------------------------
 
-inline void* KernelTaskPromise::operator new(std::size_t n) noexcept {
-    std::print("KernelTaskPromise::operator new with size: {}\n", n);
-    assert(n <= sizeof(gKernel.bootTaskFrame));
-    return (void*)gKernel.bootTaskFrame;
+// Kernel Task implementation
+// ================================================================================================================
+
+namespace ak { 
+
+    inline void* KernelTaskPromise::operator new(std::size_t n) noexcept {
+        std::print("KernelTaskPromise::operator new with size: {}\n", n);
+        assert(n <= sizeof(gKernel.bootTaskFrame));
+        return (void*)gKernel.bootTaskFrame;
+    }
+    
 }
+
+
+
+
+// Kernel boot implementation 
+// ================================================================================================================
+
+namespace ak { namespace priv {
 
 // RunSchedulerTaskOp
 // ----------------------------------------------------------------------------------------------------------------

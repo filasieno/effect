@@ -53,6 +53,9 @@ namespace ak
     template <typename... Args>
     using TaskFn = DefineTask(*)(Args...);
 
+    // TODO: Add size Probing for TaskContext
+    struct TaskContextSizeProbe {};
+
     struct TaskContext {
         using DLink = utl::DLink;
 
@@ -134,39 +137,36 @@ namespace ak
         Size binPoolCount[ALLOCATOR_BIN_COUNT];
     };
 
+    struct AllocTable {
+        static constexpr int ALLOCATOR_BIN_COUNT = AllocStats::ALLOCATOR_BIN_COUNT;
+        // FREE LIST MANAGEMENT
+        alignas(64) __m256i    freeListbinMask;                         
+        alignas(64) utl::DLink freeListBins[ALLOCATOR_BIN_COUNT];
+        alignas(64) U32        freeListBinsCount[ALLOCATOR_BIN_COUNT];
+
+        // HEAP BOUNDARY MANAGEMENT
+        alignas(8) char* heapBegin;
+        alignas(8) char* heapEnd;
+        alignas(8) char* memBegin;
+        alignas(8) char* memEnd;
+        
+        // MEMORY ACCOUNTING
+        Size memSize;
+        Size usedMemSize;
+        Size freeMemSize;
+        Size maxFreeBlockSize;
+        
+        // ALLOCATION STATISTICS
+        AllocStats stats;
+        
+        // SENTINEL BLOCKS
+        alignas(8) FreeAllocHeader* beginSentinel;
+        alignas(8) FreeAllocHeader* wildBlock;
+        alignas(8) FreeAllocHeader* largeBlockSentinel;
+        alignas(8) FreeAllocHeader* endSentinel;
+    };
+
     namespace priv {
-
-        struct KernelTaskPromise;
-        using KernelTaskHdl = std::coroutine_handle<KernelTaskPromise>;
-
-        struct AllocTable {
-            static constexpr int ALLOCATOR_BIN_COUNT = AllocStats::ALLOCATOR_BIN_COUNT;
-            // FREE LIST MANAGEMENT
-            alignas(64) __m256i    freeListbinMask;                         
-            alignas(64) utl::DLink freeListBins[ALLOCATOR_BIN_COUNT];
-            alignas(64) U32        freeListBinsCount[ALLOCATOR_BIN_COUNT];
-
-            // HEAP BOUNDARY MANAGEMENT
-            alignas(8) char* heapBegin;
-            alignas(8) char* heapEnd;
-            alignas(8) char* memBegin;
-            alignas(8) char* memEnd;
-            
-            // MEMORY ACCOUNTING
-            Size memSize;
-            Size usedMemSize;
-            Size freeMemSize;
-            Size maxFreeBlockSize;
-            
-            // ALLOCATION STATISTICS
-            AllocStats stats;
-            
-            // SENTINEL BLOCKS
-            alignas(8) FreeAllocHeader* beginSentinel;
-            alignas(8) FreeAllocHeader* wildBlock;
-            alignas(8) FreeAllocHeader* largeBlockSentinel;
-            alignas(8) FreeAllocHeader* endSentinel;
-        };
 
         constexpr U64 ALLOC_STATE_IS_USED_MASK     = 0;
         constexpr U64 ALLOC_STATE_IS_FREE_MASK     = 1;
@@ -177,31 +177,55 @@ namespace ak
 
     // Kernel
     // ----------------------------------------------------------------------------------------------------------------
+    struct KernelTaskPromise;
+    using KernelTaskHdl = std::coroutine_handle<KernelTaskPromise>;
 
+    struct KernelTaskPromise {
+        using InitialSuspend = std::suspend_always;
+        using FinalSuspend   = std::suspend_never;
+
+        static void*         operator new(std::size_t) noexcept;
+        static void          operator delete(void*, std::size_t) noexcept {};
+        static KernelTaskHdl get_return_object_on_allocation_failure() noexcept { std::abort(); /* unreachable */ }
+
+        template <typename... Args>
+        KernelTaskPromise(DefineTask(*)(Args ...) noexcept, Args... ) noexcept : returnValue(0) {}
+        
+        KernelTaskHdl            get_return_object() noexcept { return KernelTaskHdl::from_promise(*this); }
+        constexpr InitialSuspend initial_suspend() noexcept { return {}; }
+        constexpr FinalSuspend   final_suspend() noexcept { return {}; }
+        constexpr void           return_void() noexcept { }
+        constexpr void           unhandled_exception() noexcept { std::abort(); } 
+
+        int returnValue;
+    };
+    
     struct Kernel {
+        using DLink = utl::DLink;
+        
         // Allocation table
-        alignas(64) priv::AllocTable allocTable;
+        AllocTable allocTable;
         
         // Task management
-        TaskHdl             currentTaskHdl;
-        TaskHdl             schedulerTaskHdl;
-        TaskHdl             mainTaskHdl;
-        utl::DLink          zombieList;
-        utl::DLink          readyList;
-        utl::DLink          taskList;
-        void*               mem;
-        Size                memSize;
-        priv::KernelTaskHdl kernelTask;
-        int                 mainTaskReturnValue;
-        int                 taskCount;
-        int                 readyCount;
-        int                 waitingCount;
-        int                 ioWaitingCount;
-        int                 zombieCount;
-        int                 interrupted;
+        TaskHdl currentTaskHdl;
+        TaskHdl schedulerTaskHdl;
+        TaskHdl mainTaskHdl;
+        DLink   zombieList;
+        DLink   readyList;
+        DLink   taskList;
+        void*   mem;
+        Size    memSize;
+        int     mainTaskReturnValue;
+        int     taskCount;
+        int     readyCount;
+        int     waitingCount;
+        int     ioWaitingCount;
+        int     zombieCount;
+        int     interrupted;
         
         // Kernnel Storage 
-        char                bootTaskFrame[64];
+        KernelTaskHdl kernelTask;
+        char bootTaskFrame[64];
 
         // IOManagement
         io_uring ioRing;

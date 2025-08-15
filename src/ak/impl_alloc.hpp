@@ -197,15 +197,11 @@ namespace ak { namespace priv {
         endSentinel->prevSize              = largeBlockSentinel->thisSize;
         at->freeMemSize                    = wildBlock->thisSize.size;
 
-        for (int i = 0; i < 256; ++i) {
+        for (int i = 0; i < 255; ++i) { // Wild block (255) stays cleared
             InitLink(&at->freeListBins[i]);
         }
-
+        at->freeListBinsCount[255] = 1; // Wild block has always exaclty one block
         SetAllocFreeBinBit(&at->freeListbinMask, 255);
-        DLink* freeList = &at->freeListBins[255];
-        InitLink(&wildBlock->freeListLink);
-        InsertNextLink(freeList, &wildBlock->freeListLink);
-        at->freeListBinsCount[255] = 1;
 
         return 0;
     }
@@ -252,7 +248,7 @@ namespace ak { namespace priv {
     inline unsigned GetAllocSmallBinIndexFromSize(uint64_t sz) noexcept {
         // Bin mapping: bin = ceil(sz/32) - 1, clamped to [0, 254]
         // Examples: 1..32 -> 0, 33..64 -> 1, ..., 8160 -> 254
-        if (sz == 0) return 0u; // defensive; callers should not pass 0
+        assert(sz > 0);
         unsigned bin = (unsigned)((sz - 1ull) >> 5); // ceil(sz/32) - 1
         if (bin > 254u) bin = 254u;                  // 254 = medium, 255 = wild
         return bin;
