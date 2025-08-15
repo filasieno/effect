@@ -98,16 +98,16 @@ namespace ak {
     }
 
     inline void* TaskContext::operator new(std::size_t n) noexcept {
-        void* mem = std::malloc(n);
+        void* mem = TryAllocMem(n);
         if (!mem) return nullptr;
         return mem;
     }
 
     inline void TaskContext::operator delete(void* ptr, std::size_t sz) {
         (void)sz;
-        std::free(ptr);
+        U64 offset = ((U64)ptr) - ((U64)gKernel.allocTable.beginSentinel);
+        std::print("Free Unimplemented | addr: {}, size: {} \n", offset, sz);
     }
-
 
     inline void TaskContext::return_value(int value) noexcept {
         using namespace priv;

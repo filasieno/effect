@@ -15,8 +15,6 @@ namespace ak { namespace priv {
 
     // Allocator routines
     int          InitAllocTable(void* mem, Size size) noexcept;
-    void*        TryMalloc(Size size) noexcept;
-    void         FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept;
     AllocHeader* NextAllocHeaderPtr(AllocHeader* h) noexcept;
     AllocHeader* PrevAllocHeaderPtr(AllocHeader* h) noexcept;
 

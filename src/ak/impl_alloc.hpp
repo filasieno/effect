@@ -317,7 +317,7 @@ namespace ak {
     /// 
     /// Returns nullptr if no suitable block found (heap doesn't grow).
     /// For async version that suspends on failure, use co_await AllocMem(size).
-    inline void* TryMalloc(Size size) noexcept {
+    inline void* TryAllocMem(Size size) noexcept {
         using namespace priv;
         AllocTable* at = &gKernel.allocTable;
         
@@ -542,7 +542,7 @@ namespace ak {
     /// 
     /// \param ptr Pointer returned by TryMalloc (must not be nullptr).
     /// \param sideCoalescing Maximum number of merges per side (0 = no coalescing, defaults to UINT_MAX for unlimited).
-    inline void FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept {
+    inline void FreeMem(void* ptr, unsigned sideCoalescing) noexcept {
         using namespace priv;
         AllocTable* at = &gKernel.allocTable;
 

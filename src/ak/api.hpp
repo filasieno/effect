@@ -305,6 +305,10 @@ namespace ak
     ExecIOOp IORename(const char* oldpath, const char* newpath) noexcept;
     ExecIOOp IORenameAt(int olddfd, const char* oldpath, int newdfd, const char* newpath, unsigned int flags) noexcept;
 
+    // Allocator
+    void* TryAllocMem(Size sz) noexcept;
+    void  FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept;
+
     // Concurrency Tools
     struct Event {  
         utl::DLink waitingList;
