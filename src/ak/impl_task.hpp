@@ -105,8 +105,7 @@ namespace ak {
 
     inline void TaskContext::operator delete(void* ptr, std::size_t sz) {
         (void)sz;
-        U64 offset = ((U64)ptr) - ((U64)gKernel.allocTable.beginSentinel);
-        std::print("Free Unimplemented | addr: {}, size: {} \n", offset, sz);
+        FreeMem(ptr);
     }
 
     inline void TaskContext::return_value(int value) noexcept {

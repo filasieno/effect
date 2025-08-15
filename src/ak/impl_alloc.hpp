@@ -544,118 +544,24 @@ namespace ak {
     /// \param sideCoalescing Maximum number of merges per side (0 = no coalescing, defaults to UINT_MAX for unlimited).
     inline void FreeMem(void* ptr, unsigned sideCoalescing) noexcept {
         using namespace priv;
-        AllocTable* at = &gKernel.allocTable;
+        assert(ptr != nullptr);
+        (void)sideCoalescing;
 
-        if (ptr == nullptr) return;
-
+        // Release Block
         FreeAllocHeader* block = (FreeAllocHeader*)((char*)ptr - HEADER_SIZE);
-        assert(block->thisSize.state == (U32)AllocState::USED);
+        Size blockSize        = block->thisSize.size;
+        AllocState blockState = (AllocState)block->thisSize.state;
+        block->thisSize.state = (U32)AllocState::FREE;
+        assert(blockState == AllocState::USED);
 
-        AllocHeader* nextBlock = NextAllocHeaderPtr((AllocHeader*)block);
-        Size blockSize = block->thisSize.size;
-        unsigned origBinIdx = GetAllocFreeListBinIndex((AllocHeader*)block);  // For stats
-
-        // Step 2: Left coalescing loop - merge previous free blocks backwards
-        unsigned leftMerges = 0;
-        while (leftMerges < sideCoalescing) {
-            AllocHeader* prevBlock = PrevAllocHeaderPtr((AllocHeader*)block);
-            if (prevBlock->thisSize.state != (U32)AllocState::FREE) break;  // Stop if not free
-
-            FreeAllocHeader* prevFree = (FreeAllocHeader*)prevBlock;
-            int prevBin = GetAllocFreeListBinIndex((AllocHeader*)prevFree);
-
-            // Unlink the previous free block from its bin
-            DetachLink(&prevFree->freeListLink);
-            --at->freeListBinsCount[prevBin];
-            if (at->freeListBinsCount[prevBin] == 0) ClearAllocFreeBinBit(&at->freeListbinMask, prevBin);
-
-            // Merge: extend prev into current by adding sizes, shift block to prev
-            prevBlock->thisSize.size += blockSize;
-            block = (FreeAllocHeader*)prevBlock;
-            blockSize = block->thisSize.size;
-
-            // Update stats for this merge
-            AllocStats* stats = &at->stats;
-            ++stats->binMergeCount[prevBin];
-
-            ++leftMerges;
-        }
-
-        // Step 3: Right coalescing loop - merge next free/wild blocks forwards
-        unsigned rightMerges = 0;
-        bool mergedToWild = false;
-        while (rightMerges < sideCoalescing) {
-            nextBlock = NextAllocHeaderPtr((AllocHeader*)block);  // Refresh next after any prior merges
-            AllocState nextState = (AllocState)nextBlock->thisSize.state;
-            if (nextState != AllocState::FREE && nextState != AllocState::WILD_BLOCK) break;  // Stop if not free/wild
-
-            FreeAllocHeader* nextFree = (FreeAllocHeader*)nextBlock;
-            Size nextSize = nextBlock->thisSize.size;
-
-            if (nextState == AllocState::FREE) {
-                int nextBin = GetAllocFreeListBinIndex((AllocHeader*)nextFree);
-
-                // Unlink the next free block from its bin
-                DetachLink(&nextFree->freeListLink);
-                --at->freeListBinsCount[nextBin];
-                if (at->freeListBinsCount[nextBin] == 0) ClearAllocFreeBinBit(&at->freeListbinMask, nextBin);
-
-                // Update stats for this merge
-                AllocStats* stats = &at->stats;
-                ++stats->binMergeCount[nextBin];
-            } else {  // Wild block
-                assert(nextFree == at->wildBlock);
-
-                // Unlink the wild block
-                DetachLink(&nextFree->freeListLink);
-                at->freeListBinsCount[255] = 0;
-                ClearAllocFreeBinBit(&at->freeListbinMask, 255);
-
-                // Update stats and flag
-                AllocStats* stats = &at->stats;
-                ++stats->binMergeCount[255];
-                mergedToWild = true;
-            }
-
-            // Merge: extend current into next by adding sizes
-            block->thisSize.size += nextSize;
-            blockSize = block->thisSize.size;
-
-            // Update the block after next's prevSize to point to the expanded current
-            AllocHeader* nextNext = NextAllocHeaderPtr(nextBlock);
-            nextNext->prevSize = block->thisSize;
-
-            ++rightMerges;
-
-            // If we merged the wild block, stop further right coalescing
-            if (mergedToWild) break;
-        }
-
-        // Step 4: Set final state based on whether we merged to wild
-        if (mergedToWild) {
-            block->thisSize.state = (U32)AllocState::WILD_BLOCK;
-            at->wildBlock = block;
-            // Wild doesn't get pushed to a bin
-        } else {
-            block->thisSize.state = (U32)AllocState::FREE;
-            int newBinIdx = (blockSize / ALIGNMENT) - 1;
-            DLink* newStack = &at->freeListBins[newBinIdx];
-            PushLink(newStack, &block->freeListLink);
-            ++at->freeListBinsCount[newBinIdx];
-            if (at->freeListBinsCount[newBinIdx] == 1) SetAllocFreeBinBit(&at->freeListbinMask, newBinIdx);
-
-            // Update pool stats for the new free block
-            AllocStats* stats = &at->stats;
-            ++stats->binPoolCount[newBinIdx];
-        }
-
-        // Step 5: Update global stats and final metadata
-        at->freeMemSize += blockSize;  // Add the total merged size to free memory
-        AllocStats* stats = &at->stats;
-        ++stats->binFreeCount[origBinIdx];
-
-        // Ensure the final next block's prevSize is updated
-        nextBlock = NextAllocHeaderPtr((AllocHeader*)block);
-        nextBlock->prevSize = block->thisSize;
+        unsigned origBinIdx = GetAllocFreeListBinIndex((AllocHeader*)block);
+        assert(origBinIdx < 255);
+        PushLink(&gKernel.allocTable.freeListBins[origBinIdx], &block->freeListLink);
+        ++gKernel.allocTable.stats.binFreeCount[origBinIdx];
+        ++gKernel.allocTable.stats.binPoolCount[origBinIdx];
+        ++gKernel.allocTable.freeListBinsCount[origBinIdx];
+        SetAllocFreeBinBit(&gKernel.allocTable.freeListbinMask, origBinIdx);
+        gKernel.allocTable.freeMemSize += blockSize;
+        
     }
 }

@@ -24,7 +24,18 @@ DefineTask MainTask() noexcept {
 	assert(buff4 != nullptr);
 	priv::DebugPrintAllocBlocks();
 
+	FreeMem(buff4);
+	priv::DebugPrintAllocBlocks();
 
+	FreeMem(buff3);
+	priv::DebugPrintAllocBlocks();
+
+	FreeMem(buff2);
+	priv::DebugPrintAllocBlocks();
+
+	FreeMem(buff1);
+	priv::DebugPrintAllocBlocks();
+	priv::DebugDumpAllocTable();
   	co_return 0;
 }
 
@@ -41,5 +52,7 @@ int main() {
 		std::abort();
 		// Unreachable
 	}
+	priv::DebugPrintAllocBlocks();
+	priv::DebugDumpAllocTable();
 	return 0;
 }
