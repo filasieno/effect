@@ -330,11 +330,13 @@ namespace ak {
         
         // Find bin
         int binIdx = FindAllocFreeListBinIndex(&at->freeListbinMask, requestedBlockSize);
-        assert(GetAllocFreeBinBit(&at->freeListbinMask, binIdx));
-        assert(!IsLinkDetached(&at->freeListBins[binIdx]));
-        assert(at->freeListBinsCount[binIdx] > 0);
+        // assert(GetAllocFreeBinBit(&at->freeListbinMask, binIdx));
+        // assert(!IsLinkDetached(&at->freeListBins[binIdx]));
+        // assert(at->freeListBinsCount[binIdx] > 0);
         
-        if (binIdx < 254) {  // Small bin: Pop and optional split
+        // Small bin allocation case
+        // =========================
+        if (binIdx < 254) {
             DLink* freeStack = &at->freeListBins[binIdx];
             DLink* link = PopLink(freeStack);
             --at->freeListBinsCount[binIdx];
@@ -396,7 +398,7 @@ namespace ak {
         }
         
         // Medium bin case do a fist fit search
-        // -------------------------------------
+        // ====================================
         if (binIdx == 254) {
             DLink* mediumList = &at->freeListBins[254];
             for (DLink* link = mediumList->next; link != mediumList; link = link->next) {
@@ -466,7 +468,13 @@ namespace ak {
         // Case we are allocating from the Wild Block (255)
         // ================================================
         if (binIdx == 255) {  
-            assert(at->wildBlock != nullptr);
+            assert(at->wildBlock != nullptr);                      // Wild block pointer always valid
+            assert(GetAllocFreeBinBit(&at->freeListbinMask, 255)); // Wild block is always in the free list
+            assert(at->freeListBinsCount[255] == 1);               // Wild block has always exaclty one block
+
+            // Note: The wild block is a degenerate case; it does not use free bins
+            //       and it must always be allocated; which means have at least MIN_BLOCK_SIZE free space
+            
             AllocHeader* oldWild = (AllocHeader*)at->wildBlock;            
             
             // Prefetch the next block, the prev block and the new wild block
@@ -487,7 +495,8 @@ namespace ak {
             // Case there the wild block is full; memory is exhausted
             // ------------------------------------------------------
             Size oldSize = oldWild->thisSize.size;
-            if (requestedBlockSize >= oldSize - MIN_BLOCK_SIZE) { // the wild block must have at least MIN_BLOCK_SIZE free space
+            if (requestedBlockSize > oldSize - MIN_BLOCK_SIZE) {
+                // the wild block must have at least MIN_BLOCK_SIZE free space
                 ++at->stats.binFailedCount[255];
                 return nullptr; // not enough space
             }

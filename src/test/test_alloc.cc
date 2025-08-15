@@ -8,6 +8,23 @@ using namespace ak;
 DefineTask MainTask() noexcept {
     priv::DebugDumpAllocTable();
     priv::DebugPrintAllocBlocks();
+	void* buff1 = TryMalloc(32);
+	assert(buff1 != nullptr);
+	priv::DebugPrintAllocBlocks();
+
+	void* buff2 = TryMalloc(33);
+	assert(buff2 != nullptr);
+	priv::DebugPrintAllocBlocks();
+
+	void* buff3 = TryMalloc(63);
+	assert(buff3 != nullptr);
+	priv::DebugPrintAllocBlocks();
+
+	void* buff4 = TryMalloc(64 - 16);
+	assert(buff4 != nullptr);
+	priv::DebugPrintAllocBlocks();
+
+
   	co_return 0;
 }
 
