@@ -157,7 +157,7 @@ namespace ak { namespace priv {
         for (unsigned i = 0; i < 254; ++i) {
             unsigned cc = at->freeListBinsCount[i];
             if (cc == 0) continue;
-            std::print("    {:>3} bytes class  : {}\n", i * 32, cc);
+            std::print("    {:>3} bytes class  : {}\n", (i + 1) * 32, cc);
         }
         std::print("     medium class    : {}\n", at->freeListBinsCount[254]);
         std::print("     wild class      : {}\n", at->freeListBinsCount[255]);
@@ -314,16 +314,17 @@ namespace ak { namespace priv {
         std::print("{} {:<10} ", stateColor, previousStateText);
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         
+        Size binIdx = GetAllocSmallBinIndexFromSize(h->thisSize.size);  
+        
         // Print FreeListPrev
         if (h->thisSize.state == (U32)AllocState::FREE) {
             DLink* freeListLink = &((FreeAllocHeader*)h)->freeListLink;
             DLink* prev = freeListLink->prev;
-            Size binIdx = GetAllocSmallBinIndexFromSize(h->thisSize.size);
             DLink* head = &gKernel.allocTable.freeListBins[binIdx];
             if (prev == head) {
                 std::print("{} {:<18} ", stateColor, "HEAD");
             } else {
-                AllocHeader* prevBlock = (AllocHeader*)((char*)prev - sizeof(AllocHeader));
+                AllocHeader* prevBlock = (AllocHeader*)((char*)prev - offsetof(FreeAllocHeader, freeListLink));
                 Size offset = (Size)((char*)prevBlock - (char*)gKernel.allocTable.beginSentinel);
                 std::print("{} {:<18} ", stateColor, offset);
             }
@@ -337,12 +338,11 @@ namespace ak { namespace priv {
         if (h->thisSize.state == (U32)AllocState::FREE) {
             DLink* freeListLink = &((FreeAllocHeader*)h)->freeListLink;
             DLink* next = freeListLink->next;
-            Size binIdx = GetAllocSmallBinIndexFromSize(h->thisSize.size);
             DLink* head = &gKernel.allocTable.freeListBins[binIdx];
             if (next == head) {
                 std::print("{} {:<18} ", stateColor, "HEAD");
             } else {
-                AllocHeader* nextBlock = (AllocHeader*)((char*)next - sizeof(AllocHeader));
+                AllocHeader* nextBlock = (AllocHeader*)((char*)next - offsetof(FreeAllocHeader, freeListLink));
                 Size offset = (Size)((char*)nextBlock - (char*)gKernel.allocTable.beginSentinel);
                 std::print("{} {:<18} ", stateColor, offset);
             }

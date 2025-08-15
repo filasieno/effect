@@ -221,6 +221,7 @@ test:: test_ak
 test:: test_event
 test:: test_file_io
 test:: test_alloc
+test:: test_alloc_small
 test:: test_freelist_search
 
 all:: test doxygen
