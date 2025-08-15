@@ -4,10 +4,10 @@
 
 namespace ak { namespace priv {
     // FreeBin utilities
-    void     SetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
-    bool     GetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
-    void     ClearAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
-    int      FindAllocFreeListBinIndex(__m256i* bitField, Size allocSize) noexcept;
+    void SetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
+    bool GetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
+    void ClearAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
+    int  FindAllocFreeListBinIndex(__m256i* bitField, Size allocSize) noexcept;
 
     unsigned GetAllocSmallBinIndexFromSize(uint64_t sz) noexcept;
     unsigned GetAllocFreeListBinIndex(const AllocHeader* h) noexcept;
@@ -250,9 +250,12 @@ namespace ak { namespace priv {
     }
 
     inline unsigned GetAllocSmallBinIndexFromSize(uint64_t sz) noexcept {
-        if (sz < 32) return 0u;
-        if (sz <= 32ull * 254ull) return (unsigned)(sz / 32ull) - 1u;
-        return 254u; // 254 = medium, 255 = wild
+        // Bin mapping: bin = ceil(sz/32) - 1, clamped to [0, 254]
+        // Examples: 1..32 -> 0, 33..64 -> 1, ..., 8160 -> 254
+        if (sz == 0) return 0u; // defensive; callers should not pass 0
+        unsigned bin = (unsigned)((sz - 1ull) >> 5); // ceil(sz/32) - 1
+        if (bin > 254u) bin = 254u;                  // 254 = medium, 255 = wild
+        return bin;
     }
 
     inline unsigned GetAllocFreeListBinIndex(const AllocHeader* h) noexcept {
@@ -261,9 +264,11 @@ namespace ak { namespace priv {
                 return 255;
             case AllocState::FREE: 
             {
-                Size sz = h->thisSize.size;
-                if (sz >= 254ull * 32ull) return 254;
-                else return (unsigned)(sz / 32ull);
+                const Size sz = h->thisSize.size;
+                // Same mapping used everywhere: bin = ceil(sz/32) - 1, clamped to 254
+                unsigned bin = (unsigned)((sz - 1ull) >> 5);
+                if (bin > 254u) bin = 254u;
+                return bin;
             }
             case AllocState::INVALID:
             case AllocState::USED:
