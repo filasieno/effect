@@ -225,4 +225,4 @@ test:: test_event
 test:: test_file_io
 test:: test_freelist_search
 
-all:: test doxygen
+all:: build/ak_impl.o test doxigen

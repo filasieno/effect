@@ -101,11 +101,11 @@ DefineTask MainTask(const Char* name) noexcept {
 
 	TaskHdl writer = WriterTask(&readyToRead, &readyToWrite, &readSignal, &writeSignal, &value);
 	TaskHdl reader = ReaderTask(&readyToRead, &readyToWrite, &readSignal, &writeSignal, &value);
-	std::print("State of reader: {}; State of writer: {}\n", ToString(GetTaskState(reader)), ToString(GetTaskState(writer)));
+	std::print("State of reader: {}; State of writer: {}\n", to_string(GetTaskState(reader)), to_string(GetTaskState(writer)));
 	co_await JoinTask(reader);
-	std::print("State of reader: {}; State of writer: {}\n", ToString(GetTaskState(reader)), ToString(GetTaskState(writer)));
+	std::print("State of reader: {}; State of writer: {}\n", to_string(GetTaskState(reader)), to_string(GetTaskState(writer)));
 	co_await JoinTask(writer);
-	std::print("State of reader: {}; State of writer: {}\n", ToString(GetTaskState(reader)), ToString(GetTaskState(writer)));
+	std::print("State of reader: {}; State of writer: {}\n", to_string(GetTaskState(reader)), to_string(GetTaskState(writer)));
 	std::fflush(stdout);
 	
 	co_return 0;

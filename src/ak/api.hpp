@@ -34,7 +34,7 @@ namespace ak
         ZOMBIE,      ///< Already dead
         DELETING     ///< Currently being deleted
     };
-    const Char* ToString(TaskState state) noexcept;
+    const Char* to_string(TaskState state) noexcept;
 
     /// \brief Coroutine handle for a Task
     /// \ingroup Task

@@ -4,7 +4,7 @@
 
 namespace ak {
 
-    inline const Char* ToString(TaskState state) noexcept 
+    inline const Char* to_string(TaskState state) noexcept 
     {
         switch (state) {
             case TaskState::INVALID:    return "INVALID";
