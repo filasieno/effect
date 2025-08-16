@@ -1,4 +1,5 @@
-#include "ak.hpp"
+#define AK_IMPLEMENTATION
+#include "ak.hpp" // IWYU pragma: keep
 #include <netinet/in.h>
 #include <string.h>
 #include <arpa/inet.h>
@@ -26,7 +27,7 @@ DefineTask HandleClient(int taskId,int clientFd) noexcept {
 
     // Close client connection
     co_await IOClose(clientFd);
-    co_return;
+    co_return 0;
 }
 
 // Accept and handle new connections
@@ -57,7 +58,7 @@ DefineTask MainTask() noexcept {
     int serverFd = co_await IOSocket(AF_INET, SOCK_STREAM, 0, 0);
     if (serverFd < 0) {
         std::print("Failed to create socket\n");
-        co_return;
+        co_return 0;
     }
 
     // Set socket options
@@ -65,7 +66,7 @@ DefineTask MainTask() noexcept {
     if (setsockopt(serverFd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
         std::print("Failed to set socket options\n");
         co_await IOClose(serverFd);
-        co_return;
+        co_return 0;
     }
 
     // Setup server address
@@ -79,14 +80,14 @@ DefineTask MainTask() noexcept {
     if (bind(serverFd, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
         std::print("Failed to bind\n");
         co_await IOClose(serverFd);
-        co_return;
+        co_return 0;
     }
 
     // Listen
     if (listen(serverFd, SOMAXCONN) < 0) {
         std::print("Failed to listen\n");
         co_await IOClose(serverFd);
-        co_return;
+        co_return 0;
     }
 
     std::print("Echo server listening on port 8080...\n");
@@ -96,7 +97,7 @@ DefineTask MainTask() noexcept {
 
     // Cleanup
     res = co_await IOClose(serverFd);
-    co_return;
+    co_return 0;
 }
 
 int main() {

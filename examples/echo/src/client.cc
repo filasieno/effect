@@ -1,4 +1,5 @@
-#include "ak.hpp"
+#define AK_IMPLEMENTATION
+#include "ak.hpp" // IWYU pragma: keep
 #include <arpa/inet.h>
 #include <cstring>
 #include <print>
@@ -12,7 +13,7 @@ DefineTask ClientTask(int taskId,const char* serverIp, int port, int msgPerClien
     int sock = co_await IOSocket(AF_INET, SOCK_STREAM, 0, 0);
     if (sock < 0) {
         std::print("Failed to create socket\n");
-        co_return;
+        co_return 0;
     }
 
     // Setup server address
@@ -23,7 +24,7 @@ DefineTask ClientTask(int taskId,const char* serverIp, int port, int msgPerClien
     if (inet_pton(AF_INET, serverIp, &server_addr.sin_addr) <= 0) {
         std::print("Invalid address\n");
         co_await IOClose(sock);
-        co_return;
+        co_return 0;
     }
 
     // Connect to server
@@ -31,12 +32,12 @@ DefineTask ClientTask(int taskId,const char* serverIp, int port, int msgPerClien
     if (result < 0) {
         std::print("Connection failed\n");
         co_await IOClose(sock);
-        co_return;
+        co_return 0;
     }
     std::print("task {} connected to server\n", taskId);
 
     char buff[128];
-    TaskHdl current = co_await GetCurrentTask();
+    // TaskHdl current = co_await gKernel.currentTaskHdl;
     
     // Send multiple messages
     for (int i = 0; i < msgPerClient; i++) {
@@ -63,6 +64,7 @@ DefineTask ClientTask(int taskId,const char* serverIp, int port, int msgPerClien
     }
 
     co_await IOClose(sock);
+    co_return 0;
 }
 
 DefineTask MainTask(int clientCount, int msgPerClient, const char* serverIp, int serverPort) noexcept {
@@ -79,6 +81,7 @@ DefineTask MainTask(int clientCount, int msgPerClient, const char* serverIp, int
         co_await JoinTask(client);
     }
     std::print("All clients completed\n");
+    co_return 0;
 }
 
 int main(int argc, char* argv[]) {

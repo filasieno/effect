@@ -1,3 +1,4 @@
+#! /bin/bash
 
 rm -Rf ./build
 mkdir -p build

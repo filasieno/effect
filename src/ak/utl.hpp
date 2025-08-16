@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cassert>
-#include "ak/defs.hpp"
+#include "ak/defs.hpp" // IWYU pragma: keep
 
 namespace ak { namespace utl {
 
