@@ -95,12 +95,12 @@
     },
     "editor.semanticHighlighting.enabled": true,
     "nixEnvSelector.nixFile": "${workspaceFolder}/shell.nix",
-    "clangd.semanticHighlighting": true,
     "clangd.arguments": [
         "--background-index",
         "--pch-storage=memory",
         "--all-scopes-completion",
         "--header-insertion=never",
         "--clang-tidy=false"
-    ]
+    ],
+    "clangd.path": "/nix/store/adm1gf89bmd29d6nawzx6bb91zvwi316-clang-tools-20.1.6/bin/clangd"
 }
