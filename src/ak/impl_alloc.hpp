@@ -87,7 +87,7 @@ namespace ak { namespace priv {
         FreeAllocHeader* wildBlock          = (FreeAllocHeader*)((char*)beginSentinel + SENTINEL_SIZE);
         FreeAllocHeader* endSentinel        = (FreeAllocHeader*)((char*)alignedEnd    - SENTINEL_SIZE); 
         FreeAllocHeader* largeBlockSentinel = (FreeAllocHeader*)((char*)endSentinel   - SENTINEL_SIZE);
-        InitLink(&wildBlock->freeListLink);
+        utl::init_link(&wildBlock->freeListLink);
         
         // Check alignments
         assert(((U64)beginSentinel      & 31ull) == 0ull);
@@ -117,7 +117,7 @@ namespace ak { namespace priv {
         at->freeMemSize                    = wildBlock->thisSize.size;
 
         for (int i = 0; i < 255; ++i) { // Wild block (255) stays cleared
-            InitLink(&at->freeListBins[i]);
+            utl::init_link(&at->freeListBins[i]);
         }
         at->freeListBinsCount[255] = 1; // Wild block has always exaclty one block
         SetAllocFreeBinBit(&at->freeListbinMask, 255);
@@ -261,8 +261,8 @@ namespace ak {
             assert(gKernel.allocTable.freeListBinsCount[binIdx] > 0);
             assert(GetAllocFreeBinBit(&gKernel.allocTable.freeListbinMask, binIdx));
             
-            DLink* freeStack = &gKernel.allocTable.freeListBins[binIdx];
-            DLink* link = PopLink(freeStack);
+            utl::DLink* freeStack = &gKernel.allocTable.freeListBins[binIdx];
+            utl::DLink* link = utl::pop_link(freeStack);
             --gKernel.allocTable.freeListBinsCount[binIdx];
             if (gKernel.allocTable.freeListBinsCount[binIdx] == 0) {
                 ClearAllocFreeBinBit(&gKernel.allocTable.freeListbinMask, binIdx);
@@ -273,7 +273,7 @@ namespace ak {
             __builtin_prefetch(nextBlock, 1, 3);
             
             if constexpr (IS_DEBUG_MODE) {
-                ClearLink(link);
+                utl::clear_link(link);
             }
 
             Size blockSize = block->thisSize.size;
@@ -337,7 +337,7 @@ namespace ak {
             
             ++gKernel.allocTable.stats.binSplitCount[binIdx];
             ++gKernel.allocTable.stats.binAllocCount[binIdx];
-            PushLink(&gKernel.allocTable.freeListBins[newBinIdx], &newFree->freeListLink);
+            utl::push_link(&gKernel.allocTable.freeListBins[newBinIdx], &newFree->freeListLink);
             SetAllocFreeBinBit(&gKernel.allocTable.freeListbinMask, newBinIdx);
             ++gKernel.allocTable.stats.binPoolCount[newBinIdx];            
             ++gKernel.allocTable.freeListBinsCount[newBinIdx];
@@ -456,7 +456,7 @@ namespace ak {
         // ------------
         unsigned origBinIdx = GetAllocSmallBinIndexFromSize(blockSize);
         assert(origBinIdx < 255);
-        PushLink(&gKernel.allocTable.freeListBins[origBinIdx], &block->freeListLink);
+        utl::push_link(&gKernel.allocTable.freeListBins[origBinIdx], &block->freeListLink);
         ++gKernel.allocTable.stats.binFreeCount[origBinIdx];
         ++gKernel.allocTable.stats.binPoolCount[origBinIdx];
         ++gKernel.allocTable.freeListBinsCount[origBinIdx];

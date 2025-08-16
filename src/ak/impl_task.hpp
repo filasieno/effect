@@ -30,20 +30,20 @@ namespace ak {
 
         // Check initial preconditions
         assert(promise->state == TaskState::CREATED);
-        assert(IsLinkDetached(&promise->waitLink));
+        assert(is_link_detached(&promise->waitLink));
         CheckInvariants();
 
         // Add task to the kernel
         ++gKernel.taskCount;
-        EnqueueLink(&gKernel.taskList, &promise->taskListLink);
+        enqueue_link(&gKernel.taskList, &promise->taskListLink);
 
         ++gKernel.readyCount;
-        EnqueueLink(&gKernel.readyList, &promise->waitLink);
+        enqueue_link(&gKernel.readyList, &promise->waitLink);
         promise->state = TaskState::READY;
 
         // Check post-conditions
         assert(promise->state == TaskState::READY);
-        assert(!IsLinkDetached(&promise->waitLink));
+        assert(!is_link_detached(&promise->waitLink));
         CheckInvariants();
         priv::DebugTaskCount();
     }
@@ -56,13 +56,13 @@ namespace ak {
         TaskContext* ctx = &hdl.promise();
         assert(gKernel.currentTaskHdl == hdl);
         assert(ctx->state == TaskState::RUNNING);
-        assert(IsLinkDetached(&ctx->waitLink));
+        assert(is_link_detached(&ctx->waitLink));
         CheckInvariants();
 
         // Move the current task from RUNNING to ZOMBIE
         ctx->state = TaskState::ZOMBIE;
         ++gKernel.zombieCount;
-        EnqueueLink(&gKernel.zombieList, &ctx->waitLink);
+        enqueue_link(&gKernel.zombieList, &ctx->waitLink);
         ClearTaskHdl(&gKernel.currentTaskHdl);
         CheckInvariants();
 
@@ -73,8 +73,8 @@ namespace ak {
     inline TaskContext::~TaskContext() {
         using namespace priv;
         assert(state == TaskState::DELETING);
-        assert(IsLinkDetached(&taskListLink));
-        assert(IsLinkDetached(&waitLink));
+        assert(is_link_detached(&taskListLink));
+        assert(is_link_detached(&waitLink));
         DebugTaskCount();
         CheckInvariants();
     }
@@ -83,16 +83,16 @@ namespace ak {
     inline TaskContext::TaskContext(Args&&... ) {
         using namespace priv;
 
-        InitLink(&taskListLink);
-        InitLink(&waitLink);
-        InitLink(&awaitingTerminationList);
+        init_link(&taskListLink);
+        init_link(&waitLink);
+        init_link(&awaitingTerminationList);
         state = TaskState::CREATED;
         enqueuedIO = 0;
         ioResult = -1;
 
         // Check post-conditions
-        assert(IsLinkDetached(&taskListLink));
-        assert(IsLinkDetached(&waitLink));
+        assert(is_link_detached(&taskListLink));
+        assert(is_link_detached(&waitLink));
         assert(state == TaskState::CREATED);
         CheckInvariants();
     }
@@ -122,22 +122,22 @@ namespace ak {
         }
 
         // Wake up all tasks waiting for this task
-        if (IsLinkDetached(&awaitingTerminationList)) {
+        if (is_link_detached(&awaitingTerminationList)) {
             return;
         }
 
         do {
-            utl::DLink* next = DequeueLink(&awaitingTerminationList);
+            utl::DLink* next = dequeue_link(&awaitingTerminationList);
             TaskContext* ctx = GetLinkedTaskContext(next);
             DebugTaskCount();
             assert(ctx->state == TaskState::WAITING);
             --gKernel.waitingCount;
             ctx->state = TaskState::READY;
-            EnqueueLink(&gKernel.readyList, &ctx->waitLink);
+            enqueue_link(&gKernel.readyList, &ctx->waitLink);
             ++gKernel.readyCount;
             DebugTaskCount();
 
-        } while (!IsLinkDetached(&awaitingTerminationList));
+        } while (!is_link_detached(&awaitingTerminationList));
 
     }
 
@@ -156,14 +156,14 @@ namespace ak {
         if constexpr (IS_DEBUG_MODE) {
             assert(gKernel.currentTaskHdl == currentTask);
             assert(currentPromise->state == TaskState::RUNNING);
-            assert(IsLinkDetached(&currentPromise->waitLink));
+            assert(is_link_detached(&currentPromise->waitLink));
             CheckInvariants();
         }
 
         // Move the current task from RUNNINIG to READY
         currentPromise->state = TaskState::READY;
         ++gKernel.readyCount;
-        EnqueueLink(&gKernel.readyList, &currentPromise->waitLink);
+        enqueue_link(&gKernel.readyList, &currentPromise->waitLink);
         ClearTaskHdl(&gKernel.currentTaskHdl);
         CheckInvariants();
 
@@ -181,21 +181,21 @@ namespace ak {
 
         // Check the current Task
         TaskContext* currentPromise = &gKernel.currentTaskHdl.promise();
-        assert(IsLinkDetached(&currentPromise->waitLink));
+        assert(is_link_detached(&currentPromise->waitLink));
         assert(currentPromise->state == TaskState::RUNNING);
         CheckInvariants();
 
         // Suspend the current Task
         currentPromise->state = TaskState::READY;
         ++gKernel.readyCount;
-        EnqueueLink(&gKernel.readyList, &currentPromise->waitLink);
+        enqueue_link(&gKernel.readyList, &currentPromise->waitLink);
         ClearTaskHdl(&gKernel.currentTaskHdl);
         CheckInvariants();
 
         // Move the target task from READY to RUNNING
         TaskContext* promise = &hdl.promise();
         promise->state = TaskState::RUNNING;
-        DetachLink(&promise->waitLink);
+        detach_link(&promise->waitLink);
         --gKernel.readyCount;
         gKernel.currentTaskHdl = hdl;
         CheckInvariants();
@@ -216,7 +216,7 @@ namespace ak {
 
         // Check CurrentTask preconditions
         assert(currentTaskCtx->state == TaskState::RUNNING);
-        assert(IsLinkDetached(&currentTaskCtx->waitLink));
+        assert(is_link_detached(&currentTaskCtx->waitLink));
         assert(gKernel.currentTaskHdl == currentTaskHdl);
         CheckInvariants();
 
@@ -229,14 +229,14 @@ namespace ak {
                 // Move current Task from READY to WAITING
                 currentTaskCtx->state = TaskState::WAITING;
                 ++gKernel.waitingCount;
-                EnqueueLink(&joinedTaskCtx->awaitingTerminationList, &currentTaskCtx->waitLink); 
+                enqueue_link(&joinedTaskCtx->awaitingTerminationList, &currentTaskCtx->waitLink); 
                 ClearTaskHdl(&gKernel.currentTaskHdl);
                 CheckInvariants();
                 DebugTaskCount();
 
                 // Move the joined TASK from READY to RUNNING
                 joinedTaskCtx->state = TaskState::RUNNING;
-                DetachLink(&joinedTaskCtx->waitLink);
+                detach_link(&joinedTaskCtx->waitLink);
                 --gKernel.readyCount;
                 gKernel.currentTaskHdl = joinedTaskHdl;
                 CheckInvariants();
@@ -250,7 +250,7 @@ namespace ak {
                  // Move current Task from READY to WAITING
                 currentTaskCtx->state = TaskState::WAITING;
                 ++gKernel.waitingCount;
-                EnqueueLink(&joinedTaskCtx->awaitingTerminationList, &currentTaskCtx->waitLink); 
+                enqueue_link(&joinedTaskCtx->awaitingTerminationList, &currentTaskCtx->waitLink); 
                 ClearTaskHdl(&gKernel.currentTaskHdl);
                 CheckInvariants();
                 DebugTaskCount();
@@ -259,7 +259,7 @@ namespace ak {
                 TaskContext* schedCtx = &gKernel.schedulerTaskHdl.promise();
                 assert(schedCtx->state == TaskState::READY);
                 schedCtx->state = TaskState::RUNNING;
-                DetachLink(&schedCtx->waitLink);
+                detach_link(&schedCtx->waitLink);
                 --gKernel.readyCount;
                 gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
                 CheckInvariants();

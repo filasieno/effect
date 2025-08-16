@@ -127,7 +127,7 @@ namespace ak {
 
                 // If we have a ready task, resume it
                 if (gKernel.readyCount > 0) {
-                    DLink* nextNode = gKernel.readyList.prev;
+                    utl::DLink* nextNode = gKernel.readyList.prev;
                     TaskContext* nextPromise = GetLinkedTaskContext(nextNode);
                     TaskHdl nextTask = TaskHdl::from_promise(*nextPromise);
                     assert(nextTask != gKernel.schedulerTaskHdl);
@@ -140,16 +140,16 @@ namespace ak {
                 while (gKernel.zombieCount > 0) {
                     DebugTaskCount();
 
-                    DLink* zombieNode = DequeueLink(&gKernel.zombieList);
+                    utl::DLink* zombieNode = dequeue_link(&gKernel.zombieList);
                     TaskContext& zombiePromise = *GetLinkedTaskContext(zombieNode);
                     assert(zombiePromise.state == TaskState::ZOMBIE);
 
                     // Remove from zombie list
                     --gKernel.zombieCount;
-                    DetachLink(&zombiePromise.waitLink);
+                    detach_link(&zombiePromise.waitLink);
 
                     // Remove from task list
-                    DetachLink(&zombiePromise.taskListLink);
+                    detach_link(&zombiePromise.taskListLink);
                     --gKernel.taskCount;
 
                     // Delete
@@ -175,7 +175,7 @@ namespace ak {
                         --gKernel.ioWaitingCount;
                         ctx->state = TaskState::READY;
                         ++gKernel.readyCount;
-                        EnqueueLink(&gKernel.readyList, &ctx->waitLink);
+                        enqueue_link(&gKernel.readyList, &ctx->waitLink);
                         
                         // Complete operation
                         ctx->ioResult = cqe->res;
@@ -221,9 +221,9 @@ namespace ak {
             ClearTaskHdl(&gKernel.currentTaskHdl);
             ClearTaskHdl(&gKernel.schedulerTaskHdl);
 
-            InitLink(&gKernel.zombieList);
-            InitLink(&gKernel.readyList);
-            InitLink(&gKernel.taskList);
+            utl::init_link(&gKernel.zombieList);
+            utl::init_link(&gKernel.readyList);
+            utl::init_link(&gKernel.taskList);
             
             return 0;
         }
@@ -271,13 +271,13 @@ inline TaskHdl RunSchedulerTaskOp::await_suspend(KernelTaskHdl currentTaskHdl) c
     assert(gKernel.taskCount == 1);
     assert(gKernel.readyCount == 1);
     assert(schedulerPromise.state == TaskState::READY);
-    assert(!IsLinkDetached(&schedulerPromise.waitLink));
+    assert(!is_link_detached(&schedulerPromise.waitLink));
     assert(gKernel.currentTaskHdl == TaskHdl());
 
     // Setup SchedulerTask for execution (from READY -> RUNNING)
     gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
     schedulerPromise.state = TaskState::RUNNING;
-    DetachLink(&schedulerPromise.waitLink);
+    detach_link(&schedulerPromise.waitLink);
     --gKernel.readyCount;
 
     // Check expected state post task system bootstrap
@@ -296,11 +296,11 @@ inline KernelTaskHdl TerminateSchedulerOp::await_suspend(TaskHdl hdl) const noex
 
     TaskContext& schedulerPromise = gKernel.schedulerTaskHdl.promise();
     assert(schedulerPromise.state == TaskState::RUNNING);
-    assert(IsLinkDetached(&schedulerPromise.waitLink));
+    assert(utl::is_link_detached(&schedulerPromise.waitLink));
 
     schedulerPromise.state = TaskState::ZOMBIE;
     ClearTaskHdl(&gKernel.currentTaskHdl);
-    EnqueueLink(&gKernel.zombieList, &schedulerPromise.waitLink);
+    enqueue_link(&gKernel.zombieList, &schedulerPromise.waitLink);
     ++gKernel.zombieCount;
 
     return gKernel.kernelTask;
@@ -317,11 +317,11 @@ inline constexpr void DestroySchedulerTask(TaskHdl hdl) noexcept {
     TaskContext* promise = &hdl.promise();
 
     // Remove from Task list
-    DetachLink(&promise->taskListLink);
+    detach_link(&promise->taskListLink);
     --gKernel.taskCount;
 
     // Remove from Zombie List
-    DetachLink(&promise->waitLink);
+    detach_link(&promise->waitLink);
     --gKernel.zombieCount;
 
     promise->state = TaskState::DELETING; //TODO: double check
@@ -344,7 +344,7 @@ inline TaskHdl ScheduleNextTask() noexcept {
     // If we have a ready task, resume it
     while (true) {
         if (gKernel.readyCount > 0) {
-            DLink* link = DequeueLink(&gKernel.readyList);
+            utl::DLink* link = dequeue_link(&gKernel.readyList);
             TaskContext* ctx = GetLinkedTaskContext(link);
             TaskHdl task = TaskHdl::from_promise(*ctx);
             assert(ctx->state == TaskState::READY);
@@ -380,7 +380,7 @@ inline TaskHdl ScheduleNextTask() noexcept {
                 --gKernel.ioWaitingCount;
                 ctx->state = TaskState::READY;
                 ++gKernel.readyCount;
-                EnqueueLink(&gKernel.readyList, &ctx->waitLink);
+                enqueue_link(&gKernel.readyList, &ctx->waitLink);
                 
                 // Complete operation
                 ctx->ioResult = cqe->res;
@@ -397,16 +397,16 @@ inline TaskHdl ScheduleNextTask() noexcept {
         while (gKernel.zombieCount > 0) {
             DebugTaskCount();
 
-            DLink* zombieNode = DequeueLink(&gKernel.zombieList);
+            utl::DLink* zombieNode = dequeue_link(&gKernel.zombieList);
             TaskContext& zombiePromise = *GetLinkedTaskContext(zombieNode);
             assert(zombiePromise.state == TaskState::ZOMBIE);
 
             // Remove from zombie list
             --gKernel.zombieCount;
-            DetachLink(&zombiePromise.waitLink);
+            detach_link(&zombiePromise.waitLink);
 
             // Remove from task list
-            DetachLink(&zombiePromise.taskListLink);
+            detach_link(&zombiePromise.taskListLink);
             --gKernel.taskCount;
 
             // Delete

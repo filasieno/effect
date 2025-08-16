@@ -34,7 +34,7 @@ namespace ak {
         TaskContext* schedCtx = &gKernel.schedulerTaskHdl.promise();
         assert(schedCtx->state == TaskState::READY);
         schedCtx->state = TaskState::RUNNING;
-        DetachLink(&schedCtx->waitLink);
+        utl::detach_link(&schedCtx->waitLink);
         --gKernel.readyCount;
         gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
         CheckInvariants();

@@ -318,9 +318,9 @@ namespace ak { namespace priv {
         
         // Print FreeListPrev
         if (h->thisSize.state == (U32)AllocState::FREE) {
-            DLink* freeListLink = &((FreeAllocHeader*)h)->freeListLink;
-            DLink* prev = freeListLink->prev;
-            DLink* head = &gKernel.allocTable.freeListBins[binIdx];
+            utl::DLink* freeListLink = &((FreeAllocHeader*)h)->freeListLink;
+            utl::DLink* prev = freeListLink->prev;
+            utl::DLink* head = &gKernel.allocTable.freeListBins[binIdx];
             if (prev == head) {
                 std::print("{} {:<18} ", stateColor, "HEAD");
             } else {
@@ -336,9 +336,9 @@ namespace ak { namespace priv {
 
         // Print FreeList Next
         if (h->thisSize.state == (U32)AllocState::FREE) {
-            DLink* freeListLink = &((FreeAllocHeader*)h)->freeListLink;
-            DLink* next = freeListLink->next;
-            DLink* head = &gKernel.allocTable.freeListBins[binIdx];
+            utl::DLink* freeListLink = &((FreeAllocHeader*)h)->freeListLink;
+            utl::DLink* next = freeListLink->next;
+            utl::DLink* head = &gKernel.allocTable.freeListBins[binIdx];
             if (next == head) {
                 std::print("{} {:<18} ", stateColor, "HEAD");
             } else {

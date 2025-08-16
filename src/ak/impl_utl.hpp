@@ -4,14 +4,14 @@
 
 namespace ak { namespace utl {
 
-    inline void InitLink(DLink* link) noexcept {
+    inline void init_link(DLink* link) noexcept {
         assert(link != nullptr);
         
         link->next = link;
         link->prev = link;
     }
 
-    inline bool IsLinkDetached(const DLink* link) noexcept {
+    inline bool is_link_detached(const DLink* link) noexcept {
         assert(link != nullptr);
         assert(link->next != nullptr);
         assert(link->prev != nullptr);
@@ -19,26 +19,26 @@ namespace ak { namespace utl {
         return link->next == link && link->prev == link;
     }
 
-    inline void DetachLink(DLink* link) noexcept {
+    inline void detach_link(DLink* link) noexcept {
         assert(link != nullptr);
         assert(link->next != nullptr);
         assert(link->prev != nullptr);
         
-        if (IsLinkDetached(link)) return;
+        if (is_link_detached(link)) return;
         link->next->prev = link->prev;
         link->prev->next = link->next;
         link->next = link;
         link->prev = link;
     }
 
-    inline void ClearLink(DLink* link) noexcept {
+    inline void clear_link(DLink* link) noexcept {
         assert(link != nullptr);
         
         link->next = nullptr;
         link->prev = nullptr;
     }
 
-    inline void EnqueueLink(DLink* queue, DLink* link) {
+    inline void enqueue_link(DLink* queue, DLink* link) {
         assert(queue != nullptr);
         assert(link != nullptr);
         assert(queue->next != nullptr);
@@ -51,17 +51,17 @@ namespace ak { namespace utl {
         queue->next = link;
     }
 
-    inline DLink* DequeueLink(DLink* queue) {
+    inline DLink* dequeue_link(DLink* queue) {
         assert(queue != nullptr);
         assert(queue->next != nullptr);
         assert(queue->prev != nullptr);
-        if (IsLinkDetached(queue)) return nullptr;
+        if (is_link_detached(queue)) return nullptr;
         DLink* target = queue->prev;
-        DetachLink(target);
+        detach_link(target);
         return target;
     }
 
-    inline void InsertPrevLink(DLink* queue, DLink* link) {
+    inline void insert_prev_link(DLink* queue, DLink* link) {
         assert(queue != nullptr);
         assert(link != nullptr);
         assert(queue->next != nullptr);
@@ -74,7 +74,7 @@ namespace ak { namespace utl {
         link->prev->next = link;
     }
 
-    inline void InsertNextLink(DLink* queue, DLink* link) {
+    inline void insert_next_link(DLink* queue, DLink* link) {
         assert(queue != nullptr);
         assert(link != nullptr);
         assert(queue->next != nullptr);
@@ -87,18 +87,18 @@ namespace ak { namespace utl {
         queue->next = link;
     }
 
-    inline void PushLink(DLink* stack, DLink* link) {
-        InsertNextLink(stack, link);
+    inline void push_link(DLink* stack, DLink* link) {
+        insert_next_link(stack, link);
     }
 
-    inline DLink* PopLink(DLink* stack) {
+    inline DLink* pop_link(DLink* stack) {
         assert(stack != nullptr);
         assert(stack->next != nullptr);
         assert(stack->prev != nullptr);
-        assert(!IsLinkDetached(stack));
+        assert(!is_link_detached(stack));
         
         DLink* target = stack->next;
-        DetachLink(target);
+        detach_link(target);
         return target;
     }
 
