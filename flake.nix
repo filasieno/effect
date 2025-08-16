@@ -142,6 +142,7 @@
               echo "liburing lib : ${pkgs.liburing}" 
               echo "C++ compiler : ${pkgs.clang}"
               echo "libcxx path  : ${pkgs.llvmPackages.libcxx}"
+              echo "clangd path  : ${pkgs.clang-tools}/bin/clangd"
             '';
           };
         };
