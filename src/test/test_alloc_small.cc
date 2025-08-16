@@ -35,5 +35,6 @@ int main() {
 	}
 	priv::DebugPrintAllocBlocks();
 	priv::DebugDumpAllocTable();
+	free(buffer);
 	return 0;
 }

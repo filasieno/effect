@@ -75,6 +75,8 @@ namespace ak {
     inline int RunMain(KernelConfig* config, DefineTask(*mainProc)(Args ...) noexcept , Args... args) noexcept {
         using namespace priv;
 
+        std::memset((void*)&gKernel, 0, sizeof(gKernel));
+
         if (InitKernel(config) < 0) {
             return -1;
         }

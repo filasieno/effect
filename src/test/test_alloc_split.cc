@@ -51,5 +51,6 @@ int main() {
 		std::abort();
 		// Unreachable
 	}
+	free(buffer);
 	return 0;
 }
