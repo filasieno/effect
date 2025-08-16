@@ -27,13 +27,13 @@ namespace ak {
         DefineTask SchedulerTaskProc(DefineTask(*mainProc)(Args ...) noexcept, Args... args) noexcept;
         
         int  InitKernel(KernelConfig* config) noexcept;
-        void FiniKernel() noexcept;
+        Void FiniKernel() noexcept;
         
 
         // Scheduler task routines
         constexpr RunSchedulerTaskOp   RunSchedulerTask() noexcept;
         constexpr TerminateSchedulerOp TerminateSchedulerTask() noexcept;
-        constexpr void                 DestroySchedulerTask(TaskHdl hdl) noexcept;
+        constexpr Void                 DestroySchedulerTask(TaskHdl hdl) noexcept;
     
     }       
 }
@@ -45,14 +45,14 @@ namespace ak {
 namespace ak { namespace priv {
 
     struct RunSchedulerTaskOp {
-        constexpr bool await_ready() const noexcept { return false; }
-        constexpr void await_resume() const noexcept { }
+        constexpr Bool await_ready() const noexcept { return false; }
+        constexpr Void await_resume() const noexcept { }
         TaskHdl await_suspend(KernelTaskHdl currentTaskHdl) const noexcept;
     };
 
     struct TerminateSchedulerOp {
-        constexpr bool await_ready() const noexcept { return false; }
-        constexpr void await_resume() const noexcept { }
+        constexpr Bool await_ready() const noexcept { return false; }
+        constexpr Void await_resume() const noexcept { }
         KernelTaskHdl  await_suspend(TaskHdl hdl) const noexcept;
     };
 
@@ -75,7 +75,7 @@ namespace ak {
     inline int RunMain(KernelConfig* config, DefineTask(*mainProc)(Args ...) noexcept , Args... args) noexcept {
         using namespace priv;
 
-        std::memset((void*)&gKernel, 0, sizeof(gKernel));
+        std::memset((Void*)&gKernel, 0, sizeof(gKernel));
 
         if (InitKernel(config) < 0) {
             return -1;
@@ -160,7 +160,7 @@ namespace ak {
                     DebugTaskCount();
                 }
 
-                bool waitingCC = gKernel.ioWaitingCount;
+                Bool waitingCC = gKernel.ioWaitingCount;
                 if (waitingCC) {
                     // Process all available completions
                     struct io_uring_cqe *cqe;
@@ -228,7 +228,7 @@ namespace ak {
             return 0;
         }
 
-        inline void FiniKernel() noexcept {
+        inline Void FiniKernel() noexcept {
             io_uring_queue_exit(&gKernel.ioRing);
         }
     }
@@ -241,10 +241,10 @@ namespace ak {
 
 namespace ak { 
 
-    inline void* KernelTaskPromise::operator new(std::size_t n) noexcept {
+    inline Void* KernelTaskPromise::operator new(std::size_t n) noexcept {
         std::print("KernelTaskPromise::operator new with size: {}\n", n);
         assert(n <= sizeof(gKernel.bootTaskFrame));
-        return (void*)gKernel.bootTaskFrame;
+        return (Void*)gKernel.bootTaskFrame;
     }
     
 }
@@ -263,7 +263,7 @@ namespace ak { namespace priv {
 inline TaskHdl RunSchedulerTaskOp::await_suspend(KernelTaskHdl currentTaskHdl) const noexcept {
     using namespace priv;
 
-    (void)currentTaskHdl;
+    (Void)currentTaskHdl;
     TaskContext& schedulerPromise = gKernel.schedulerTaskHdl.promise();
 
     // Check expected state post scheduler construction
@@ -312,7 +312,7 @@ constexpr RunSchedulerTaskOp   RunSchedulerTask() noexcept       { return {}; }
 
 constexpr TerminateSchedulerOp TerminateSchedulerTask() noexcept { return {}; }
 
-inline constexpr void DestroySchedulerTask(TaskHdl hdl) noexcept {
+inline constexpr Void DestroySchedulerTask(TaskHdl hdl) noexcept {
     using namespace priv;
     TaskContext* promise = &hdl.promise();
 

@@ -57,7 +57,7 @@
  */
 
 /**
- * @fn void ClearTaskHdl(TaskHdl* hdl)
+ * @fn Void ClearTaskHdl(TaskHdl* hdl)
  * @brief Clears the target TaskHdl
  * @ingroup Task
  * 
@@ -67,7 +67,7 @@
  */
 
 /**
- * @fn bool IsTaskHdlValid(const TaskHdl& hdl)
+ * @fn Bool IsTaskHdlValid(const TaskHdl& hdl)
  * @brief Checks if a TaskHdl is valid
  * @ingroup Task
  * 
@@ -114,7 +114,7 @@
  * @brief Suspends the current Task and resumes the Scheduler
  * @ingroup Task
  * 
- * @return [Async] void
+ * @return [Async] Void
  * 
  * Suspends the current task execution and yields control back to the scheduler.
  * This is an awaitable operation that allows other tasks to run.
@@ -126,7 +126,7 @@
  * @ingroup Task
  * 
  * @param hdl A handle to the target Task
- * @return [Async] void
+ * @return [Async] Void
  * 
  * Waits for the specified task to complete before resuming execution.
  * This is an awaitable operation that blocks until the target task finishes.
@@ -138,7 +138,7 @@
  * @ingroup Task
  * 
  * @param hdl A handle to the target Task
- * @return [Async] void
+ * @return [Async] Void
  * 
  * Provides co_await syntax support for joining tasks. This allows using
  * the standard C++ coroutine syntax: `co_await task_handle`.
@@ -157,7 +157,7 @@
  */
 
 /**
- * @fn bool IsTaskDone(const TaskHdl& hdl)
+ * @fn Bool IsTaskDone(const TaskHdl& hdl)
  * @brief Returns true if the target Task is done
  * @ingroup Task
  * 

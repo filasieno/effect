@@ -5,7 +5,7 @@
 
 using namespace ak;
 
-static void ResetBitField(__m256i* bitField) {
+static Void ResetBitField(__m256i* bitField) {
     _mm256_storeu_si256(bitField, _mm256_setzero_si256());
     priv::SetAllocFreeBinBit(bitField, 255);
 }
@@ -219,7 +219,7 @@ DefineTask MainTask() noexcept {
     co_return 0;
 }
 
-char buffer[8192];
+Char buffer[8192];
 
 int main() {
 	KernelConfig config = {

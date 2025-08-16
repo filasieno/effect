@@ -34,7 +34,7 @@ namespace ak
         ZOMBIE,      ///< Already dead
         DELETING     ///< Currently being deleted
     };
-    const char* ToString(TaskState state) noexcept;
+    const Char* ToString(TaskState state) noexcept;
 
     /// \brief Coroutine handle for a Task
     /// \ingroup Task
@@ -61,19 +61,19 @@ namespace ak
         using DLink = utl::DLink;
 
         struct InitialSuspendTaskOp {
-            constexpr bool await_ready() const noexcept { return false; }
-            void           await_suspend(TaskHdl hdl) const noexcept;
-            constexpr void await_resume() const noexcept {}
+            constexpr Bool await_ready() const noexcept { return false; }
+            Void           await_suspend(TaskHdl hdl) const noexcept;
+            constexpr Void await_resume() const noexcept {}
         };
 
         struct FinalSuspendTaskOp {
-            constexpr bool await_ready() const noexcept { return false; }
+            constexpr Bool await_ready() const noexcept { return false; }
             TaskHdl        await_suspend(TaskHdl hdl) const noexcept;
-            constexpr void await_resume() const noexcept {}
+            constexpr Void await_resume() const noexcept {}
         };
 
-        static void* operator new(std::size_t n) noexcept;
-        static void  operator delete(void* ptr, std::size_t sz);
+        static Void* operator new(std::size_t n) noexcept;
+        static Void  operator delete(Void* ptr, std::size_t sz);
         static TaskHdl        get_return_object_on_allocation_failure() noexcept { return {}; }
 
         template <typename... Args>
@@ -83,8 +83,8 @@ namespace ak
         TaskHdl        get_return_object() noexcept { return TaskHdl::from_promise(*this);}
         constexpr auto initial_suspend() noexcept { return InitialSuspendTaskOp{}; }
         constexpr auto final_suspend() noexcept { return FinalSuspendTaskOp{}; }
-        void           return_value(int value) noexcept;
-        void           unhandled_exception() noexcept  { std::abort(); /* unreachable */ }
+        Void           return_value(int value) noexcept;
+        Void           unhandled_exception() noexcept  { std::abort(); /* unreachable */ }
 
         TaskState state;
         int       ioResult;
@@ -106,7 +106,7 @@ namespace ak
         LARGE_BLOCK_SENTINEL = 0b0110,
         END_SENTINEL         = 0b1100,
     };
-    const char* ToString(AllocState s) noexcept;
+    const Char* ToString(AllocState s) noexcept;
 
     struct AllocSizeRecord {
         U64 size      : 48;
@@ -148,10 +148,10 @@ namespace ak
         alignas(64) U32     freeListBinsCount[ALLOCATOR_BIN_COUNT];
 
         // HEAP BOUNDARY MANAGEMENT
-        alignas(8) char* heapBegin;
-        alignas(8) char* heapEnd;
-        alignas(8) char* memBegin;
-        alignas(8) char* memEnd;
+        alignas(8) Char* heapBegin;
+        alignas(8) Char* heapEnd;
+        alignas(8) Char* memBegin;
+        alignas(8) Char* memEnd;
         
         // MEMORY ACCOUNTING
         Size memSize;
@@ -186,8 +186,8 @@ namespace ak
         using InitialSuspend = std::suspend_always;
         using FinalSuspend   = std::suspend_never;
 
-        static void*         operator new(std::size_t) noexcept;
-        static void          operator delete(void*, std::size_t) noexcept {};
+        static Void*         operator new(std::size_t) noexcept;
+        static Void          operator delete(Void*, std::size_t) noexcept {};
         static KernelTaskHdl get_return_object_on_allocation_failure() noexcept { std::abort(); /* unreachable */ }
 
         template <typename... Args>
@@ -196,8 +196,8 @@ namespace ak
         KernelTaskHdl            get_return_object() noexcept { return KernelTaskHdl::from_promise(*this); }
         constexpr InitialSuspend initial_suspend() noexcept { return {}; }
         constexpr FinalSuspend   final_suspend() noexcept { return {}; }
-        constexpr void           return_void() noexcept { }
-        constexpr void           unhandled_exception() noexcept { std::abort(); } 
+        constexpr Void           return_void() noexcept { }
+        constexpr Void           unhandled_exception() noexcept { std::abort(); } 
 
         int returnValue;
     };
@@ -206,7 +206,7 @@ namespace ak
         using DLink = utl::DLink;
         
         // Allocation table
-        AllocTable allocTable;
+        AllocTable alloc_table;
         
         // Task management
         TaskHdl currentTaskHdl;
@@ -215,23 +215,23 @@ namespace ak
         DLink   zombieList;
         DLink   readyList;
         DLink   taskList;
-        void*   mem;
+        Void*   mem;
         Size    memSize;
-        int     mainTaskReturnValue;
-        int     taskCount;
-        int     readyCount;
-        int     waitingCount;
-        int     ioWaitingCount;
-        int     zombieCount;
-        int     interrupted;
+        I32     mainTaskReturnValue;
+        I32     taskCount;
+        I32     readyCount;
+        I32     waitingCount;
+        I32     ioWaitingCount;
+        I32     zombieCount;
+        I32     interrupted;
         
         // Kernnel Storage 
         KernelTaskHdl kernelTask;
-        char bootTaskFrame[64];
+        Char bootTaskFrame[64];
 
         // IOManagement
         io_uring ioRing;
-        unsigned ioEntryCount;
+        U32      ioEntryCount;
     };
 
     // Global kernel instance declaration (defined in ak.hpp)
@@ -239,7 +239,7 @@ namespace ak
     
     // Main Routine
     struct KernelConfig {
-        void*    mem;
+        Void*    mem;
         Size     memSize;
         unsigned ioEntryCount;
     };
@@ -248,8 +248,8 @@ namespace ak
     int RunMain(KernelConfig* config, DefineTask(*mainProc)(Args ...) noexcept , Args... args) noexcept;
 
     // Task routines
-    void                       ClearTaskHdl(TaskHdl* hdl) noexcept;
-    bool                       IsTaskHdlValid(TaskHdl hdl) noexcept;
+    Void                       ClearTaskHdl(TaskHdl* hdl) noexcept;
+    Bool                       IsTaskHdlValid(TaskHdl hdl) noexcept;
     TaskContext*               GetTaskContext(TaskHdl hdl) noexcept;
     TaskContext*               GetTaskContext() noexcept;
     constexpr GetCurrentTaskOp GetCurrentTask() noexcept;
@@ -257,68 +257,68 @@ namespace ak
     JoinTaskOp                 JoinTask(TaskHdl hdl) noexcept;
     JoinTaskOp                 operator co_await(TaskHdl hdl) noexcept;
     TaskState                  GetTaskState(TaskHdl hdl) noexcept;
-    bool                       IsTaskDone(TaskHdl hdl) noexcept;
+    Bool                       IsTaskDone(TaskHdl hdl) noexcept;
     ResumeTaskOp               ResumeTask(TaskHdl hdl) noexcept;
     constexpr ExitOp           ExitTask(int value = 0) noexcept;
 
     // IO Routines
-    ExecIOOp IOOpen(const char* path, int flags, mode_t mode) noexcept;
-    ExecIOOp IOOpenAt(int dfd, const char* path, int flags, mode_t mode) noexcept;
-    ExecIOOp IOOpenAtDirect(int dfd, const char* path, int flags, mode_t mode, unsigned file_index) noexcept;
-    ExecIOOp IOClose(int fd) noexcept;
-    ExecIOOp IOCloseDirect(unsigned file_index) noexcept;
-    ExecIOOp IORead(int fd, void* buf, unsigned nbytes, __u64 offset) noexcept;
-    ExecIOOp IOReadMultishot(int fd, unsigned nbytes, __u64 offset, int buf_group) noexcept;
-    ExecIOOp IOReadFixed(int fd, void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept;
-    ExecIOOp IOReadV(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept;
-    ExecIOOp IOReadV2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept;
-    ExecIOOp IOReadVFixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept;
-    ExecIOOp IOWrite(int fd, const void* buf, unsigned nbytes, __u64 offset) noexcept;
-    ExecIOOp IOWriteFixed(int fd, const void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept;
-    ExecIOOp IOWriteV(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept;
-    ExecIOOp IOWriteV2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept;
-    ExecIOOp IOWriteVFixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept;
-    ExecIOOp IOAccept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept;
-    ExecIOOp IOAcceptDirect(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags, unsigned int file_index) noexcept;
-    ExecIOOp IOMultishotAccept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept;
-    ExecIOOp IOMultishotAcceptDirect(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept;
-    ExecIOOp IOConnect(int fd, const struct sockaddr* addr, socklen_t addrlen) noexcept;
-    ExecIOOp IOSend(int sockfd, const void* buf, size_t len, int flags) noexcept;
-    ExecIOOp IOSendZC(int sockfd, const void* buf, size_t len, int flags, unsigned zc_flags) noexcept;
-    ExecIOOp IOSendZCFixed(int sockfd, const void* buf, size_t len, int flags, unsigned zc_flags, unsigned buf_index) noexcept;
-    ExecIOOp IOSendMsg(int fd, const struct msghdr* msg, unsigned flags) noexcept;
-    ExecIOOp IOSendMsgZC(int fd, const struct msghdr* msg, unsigned flags) noexcept;
-    ExecIOOp IOSendMsgZCFixed(int fd, const struct msghdr* msg, unsigned flags, unsigned buf_index) noexcept;
-    ExecIOOp IORecv(int sockfd, void* buf, size_t len, int flags) noexcept;
-    ExecIOOp IORecvMultishot(int sockfd, void* buf, size_t len, int flags) noexcept;
-    ExecIOOp IORecvMsg(int fd, struct msghdr* msg, unsigned flags) noexcept;
-    ExecIOOp IORecvMsgMultishot(int fd, struct msghdr* msg, unsigned flags) noexcept;
-    ExecIOOp IOSocket(int domain, int type, int protocol, unsigned int flags) noexcept;
-    ExecIOOp IOSocketDirect(int domain, int type, int protocol, unsigned file_index, unsigned int flags) noexcept;
-    ExecIOOp IOMkdir(const char* path, mode_t mode) noexcept;
-    ExecIOOp IOMkdirAt(int dfd, const char* path, mode_t mode) noexcept;
-    ExecIOOp IOSymlink(const char* target, const char* linkpath) noexcept;
-    ExecIOOp IOSymlinkAt(const char* target, int newdirfd, const char* linkpath) noexcept;
-    ExecIOOp IOLink(const char* oldpath, const char* newpath, int flags) noexcept;
-    ExecIOOp IOLinkAt(int olddfd, const char* oldpath, int newdfd, const char* newpath, int flags) noexcept;
-    ExecIOOp IOUnlink(const char* path, int flags) noexcept;
-    ExecIOOp IOUnlinkAt(int dfd, const char* path, int flags) noexcept;
-    ExecIOOp IORename(const char* oldpath, const char* newpath) noexcept;
-    ExecIOOp IORenameAt(int olddfd, const char* oldpath, int newdfd, const char* newpath, unsigned int flags) noexcept;
+    ExecIOOp io_open(const Char* path, int flags, mode_t mode) noexcept;
+    ExecIOOp io_open_at(int dfd, const Char* path, int flags, mode_t mode) noexcept;
+    ExecIOOp io_open_at_direct(int dfd, const Char* path, int flags, mode_t mode, unsigned file_index) noexcept;
+    ExecIOOp io_close(int fd) noexcept;
+    ExecIOOp io_close_direct(unsigned file_index) noexcept;
+    ExecIOOp io_read(int fd, Void* buf, unsigned nbytes, __u64 offset) noexcept;
+    ExecIOOp io_read_multishot(int fd, unsigned nbytes, __u64 offset, int buf_group) noexcept;
+    ExecIOOp io_read_fixed(int fd, Void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept;
+    ExecIOOp io_readv(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept;
+    ExecIOOp io_readv2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept;
+    ExecIOOp io_readv_fixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept;
+    ExecIOOp io_write(int fd, const Void* buf, unsigned nbytes, __u64 offset) noexcept;
+    ExecIOOp io_write_fixed(int fd, const Void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept;
+    ExecIOOp io_writev(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept;
+    ExecIOOp io_writev2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept;
+    ExecIOOp io_writev_fixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept;
+    ExecIOOp io_accept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept;
+    ExecIOOp io_accept_direct(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags, unsigned int file_index) noexcept;
+    ExecIOOp io_multishot_accept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept;
+    ExecIOOp io_multishot_accept_direct(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept;
+    ExecIOOp io_connect(int fd, const struct sockaddr* addr, socklen_t addrlen) noexcept;
+    ExecIOOp io_send(int sockfd, const Void* buf, size_t len, int flags) noexcept;
+    ExecIOOp io_send_zc(int sockfd, const Void* buf, size_t len, int flags, unsigned zc_flags) noexcept;
+    ExecIOOp io_send_zc_fixed(int sockfd, const Void* buf, size_t len, int flags, unsigned zc_flags, unsigned buf_index) noexcept;
+    ExecIOOp io_send_msg(int fd, const struct msghdr* msg, unsigned flags) noexcept;
+    ExecIOOp io_send_msg_zc(int fd, const struct msghdr* msg, unsigned flags) noexcept;
+    ExecIOOp io_send_msg_zc_fixed(int fd, const struct msghdr* msg, unsigned flags, unsigned buf_index) noexcept;
+    ExecIOOp io_recv(int sockfd, Void* buf, size_t len, int flags) noexcept;
+    ExecIOOp io_recv_multishot(int sockfd, Void* buf, size_t len, int flags) noexcept;
+    ExecIOOp io_recv_msg(int fd, struct msghdr* msg, unsigned flags) noexcept;
+    ExecIOOp io_recv_msg_multishot(int fd, struct msghdr* msg, unsigned flags) noexcept;
+    ExecIOOp io_socket(int domain, int type, int protocol, unsigned int flags) noexcept;
+    ExecIOOp io_socket_direct(int domain, int type, int protocol, unsigned file_index, unsigned int flags) noexcept;
+    ExecIOOp io_mkdir(const Char* path, mode_t mode) noexcept;
+    ExecIOOp io_mkdir_at(int dfd, const Char* path, mode_t mode) noexcept;
+    ExecIOOp io_symlink(const Char* target, const Char* linkpath) noexcept;
+    ExecIOOp io_symlink_at(const Char* target, int newdirfd, const Char* linkpath) noexcept;
+    ExecIOOp io_link(const Char* oldpath, const Char* newpath, int flags) noexcept;
+    ExecIOOp io_link_at(int olddfd, const Char* oldpath, int newdfd, const Char* newpath, int flags) noexcept;
+    ExecIOOp io_unlink(const Char* path, int flags) noexcept;
+    ExecIOOp io_unlink_at(int dfd, const Char* path, int flags) noexcept;
+    ExecIOOp io_rename(const Char* oldpath, const Char* newpath) noexcept;
+    ExecIOOp io_rename_at(int olddfd, const Char* oldpath, int newdfd, const Char* newpath, unsigned int flags) noexcept;
 
     // Allocator
-    void* TryAllocMem(Size sz) noexcept;
-    void  FreeMem(void* ptr, unsigned sideCoalescing = UINT_MAX) noexcept;
+    Void* try_alloc_mem(Size sz) noexcept;
+    Void  free_mem(Void* ptr, U32 side_coalesching = UINT_MAX) noexcept;
 
     // Concurrency Tools
     struct Event {  
         utl::DLink waitingList;
     };
 
-    void        InitEvent(Event* event);
-    int         SignalEvent(Event* event);
-    int         SignalEventSome(Event* event, int n);
-    int         SignalEventAll(Event* event);
+    Void InitEvent(Event* event);
+    int  SignalEvent(Event* event);
+    int  SignalEventSome(Event* event, int n);
+    int  SignalEventAll(Event* event);
     WaitEventOp WaitEvent(Event* event);
 
 }
@@ -329,9 +329,9 @@ namespace ak
     struct ResumeTaskOp {
         explicit ResumeTaskOp(TaskHdl hdl) : hdl(hdl) {};
 
-        constexpr bool await_ready() const noexcept { return false; }
+        constexpr Bool await_ready() const noexcept { return false; }
         TaskHdl        await_suspend(TaskHdl currentTaskHdl) const noexcept;
-        constexpr void await_resume() const noexcept {}
+        constexpr Void await_resume() const noexcept {}
 
         TaskHdl hdl;
     };
@@ -339,7 +339,7 @@ namespace ak
     struct JoinTaskOp {
         explicit JoinTaskOp(TaskHdl hdl) : joinedTaskHdl(hdl) {};
 
-        constexpr bool await_ready() const noexcept { return false; }
+        constexpr Bool await_ready() const noexcept { return false; }
         TaskHdl        await_suspend(TaskHdl currentTaskHdl) const noexcept;
         constexpr int  await_resume() const noexcept { return joinedTaskHdl.promise().ioResult; }
 
@@ -347,31 +347,23 @@ namespace ak
     };
 
     struct SuspendOp {
-        constexpr bool await_ready() const noexcept { return false; }
+        constexpr Bool await_ready() const noexcept { return false; }
         TaskHdl        await_suspend(TaskHdl hdl) const noexcept;
-        constexpr void await_resume() const noexcept {}
+        constexpr Void await_resume() const noexcept {}
     };
 
     struct GetCurrentTaskOp {
-        constexpr bool    await_ready() const noexcept { return false; }
+        constexpr Bool    await_ready() const noexcept { return false; }
         constexpr TaskHdl await_suspend(TaskHdl hdl) noexcept;
         constexpr TaskHdl await_resume() const noexcept { return hdl; }
 
         TaskHdl hdl;
     };
 
-    struct WaitEventOp {
-        WaitEventOp(Event* event) : evt(event) {}
-
-        constexpr bool    await_ready() const noexcept { return false; }
-        constexpr TaskHdl await_suspend(TaskHdl hdl) const noexcept;
-        constexpr void    await_resume() const noexcept {}
-
-        Event* evt;
-    };
+   
 
     struct ExecIOOp {
-        constexpr bool    await_ready() const noexcept { return false; }
+        constexpr Bool    await_ready() const noexcept { return false; }
         constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) noexcept;
         constexpr int     await_resume() const noexcept { return gKernel.currentTaskHdl.promise().ioResult; }
     };
@@ -384,11 +376,11 @@ namespace ak
         ExitOp& operator=(ExitOp&&) = default;
         ~ExitOp() = default;
 
-        constexpr bool    await_ready() const noexcept { return false; }
+        constexpr Bool    await_ready() const noexcept { return false; }
         constexpr int     await_resume() const noexcept { return returnValue; }
         
         TaskHdl await_suspend(TaskHdl currentTaskHdl) noexcept { 
-            (void)currentTaskHdl;
+            (Void)currentTaskHdl;
             std::print("unimplemented ExitOp\n");
             std::fflush(stdout);
             std::abort(); 
@@ -397,5 +389,13 @@ namespace ak
         int returnValue;
     };
 
+    struct WaitEventOp {
+        WaitEventOp(Event* event) : evt(event) {}
 
+        constexpr Bool    await_ready() const noexcept { return false; }
+        constexpr TaskHdl await_suspend(TaskHdl hdl) const noexcept;
+        constexpr Void    await_resume() const noexcept {}
+
+        Event* evt;
+    };
 }

@@ -14,7 +14,7 @@ namespace ak { namespace priv {
 #endif
 
     // Allocator routines
-    int          InitAllocTable(void* mem, Size size) noexcept;
+    int          InitAllocTable(Void* mem, Size size) noexcept;
     AllocHeader* NextAllocHeaderPtr(AllocHeader* h) noexcept;
     AllocHeader* PrevAllocHeaderPtr(AllocHeader* h) noexcept;
     U64          GetAllocSmallBinIndexFromSize(U64 sz) noexcept;
@@ -23,13 +23,13 @@ namespace ak { namespace priv {
     TaskContext* GetLinkedTaskContext(const utl::DLink* link) noexcept;
     
     // Debug routines
-    void DebugTaskCount() noexcept;
-    void DebugIOURingParams(const io_uring_params* p);
-    void DebugDumpAllocTable() noexcept;
-    void DebugPrintAllocBlocks() noexcept;
+    Void DebugTaskCount() noexcept;
+    Void DebugIOURingParams(const io_uring_params* p);
+    Void DebugDumpAllocTable() noexcept;
+    Void DebugPrintAllocBlocks() noexcept;
     
     // Invariant checking routines
-    void CheckInvariants() noexcept;
+    Void CheckInvariants() noexcept;
     
 }} // namespace ak::priv
 

@@ -4,14 +4,14 @@
 
 namespace ak { namespace utl {
 
-    inline void init_link(DLink* link) noexcept {
+    inline Void init_link(DLink* link) noexcept {
         assert(link != nullptr);
         
         link->next = link;
         link->prev = link;
     }
 
-    inline bool is_link_detached(const DLink* link) noexcept {
+    inline Bool is_link_detached(const DLink* link) noexcept {
         assert(link != nullptr);
         assert(link->next != nullptr);
         assert(link->prev != nullptr);
@@ -19,7 +19,7 @@ namespace ak { namespace utl {
         return link->next == link && link->prev == link;
     }
 
-    inline void detach_link(DLink* link) noexcept {
+    inline Void detach_link(DLink* link) noexcept {
         assert(link != nullptr);
         assert(link->next != nullptr);
         assert(link->prev != nullptr);
@@ -31,14 +31,14 @@ namespace ak { namespace utl {
         link->prev = link;
     }
 
-    inline void clear_link(DLink* link) noexcept {
+    inline Void clear_link(DLink* link) noexcept {
         assert(link != nullptr);
         
         link->next = nullptr;
         link->prev = nullptr;
     }
 
-    inline void enqueue_link(DLink* queue, DLink* link) {
+    inline Void enqueue_link(DLink* queue, DLink* link) {
         assert(queue != nullptr);
         assert(link != nullptr);
         assert(queue->next != nullptr);
@@ -61,7 +61,7 @@ namespace ak { namespace utl {
         return target;
     }
 
-    inline void insert_prev_link(DLink* queue, DLink* link) {
+    inline Void insert_prev_link(DLink* queue, DLink* link) {
         assert(queue != nullptr);
         assert(link != nullptr);
         assert(queue->next != nullptr);
@@ -74,7 +74,7 @@ namespace ak { namespace utl {
         link->prev->next = link;
     }
 
-    inline void insert_next_link(DLink* queue, DLink* link) {
+    inline Void insert_next_link(DLink* queue, DLink* link) {
         assert(queue != nullptr);
         assert(link != nullptr);
         assert(queue->next != nullptr);
@@ -87,7 +87,7 @@ namespace ak { namespace utl {
         queue->next = link;
     }
 
-    inline void push_link(DLink* stack, DLink* link) {
+    inline Void push_link(DLink* stack, DLink* link) {
         insert_next_link(stack, link);
     }
 

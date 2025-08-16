@@ -6,7 +6,7 @@
 // #include <source_location>
 
 // #ifdef NDEBUG
-// #define assertf(expr, ...) ((void)0)
+// #define assertf(expr, ...) ((Void)0)
 // #else
 // #define assertf(expr, ...) \
 // 	do { \
@@ -23,13 +23,13 @@
 // #endif
 
 // #ifdef NDEBUG
-// #define ::ak::_Assert(expr, ...) ((void)0)
+// #define ::ak::_Assert(expr, ...) ((Void)0)
 // #else
-// #define ::ak::_Assert(expr, fmt, ...) ((void)0)
+// #define ::ak::_Assert(expr, fmt, ...) ((Void)0)
 // namespace ak {
 
 // 	template<typename... Args>
-// 	inline void _Assert(bool expr, std::string_view fmt, Args&&... args, const std::source_location& loc = std::source_location::current()) {
+// 	inline Void _Assert(Bool expr, std::string_view fmt, Args&&... args, const std::source_location& loc = std::source_location::current()) {
 // 		if (!expr && !std::is_constant_evaluated()) {
 // 			std::ios_base::sync_with_stdio(true);
 // 			std::fflush(nullptr);
@@ -41,7 +41,7 @@
 // 		}
 // 	}
 
-// 	inline void _Assert(bool expr, const std::source_location& loc = std::source_location::current()) {
+// 	inline Void _Assert(Bool expr, const std::source_location& loc = std::source_location::current()) {
 // 		if (!expr && !std::is_constant_evaluated()) {
 // 			std::ios_base::sync_with_stdio(true);
 // 			std::fflush(nullptr);

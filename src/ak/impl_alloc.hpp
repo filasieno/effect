@@ -4,9 +4,9 @@
 
 namespace ak { namespace priv {
     // FreeBin utilities
-    void SetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
-    bool GetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
-    void ClearAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
+    Void SetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
+    Bool GetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
+    Void ClearAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept;
     int  FindAllocFreeListBinIndex(__m256i* bitField, Size allocSize) noexcept;
 
 
@@ -57,19 +57,19 @@ namespace ak { namespace priv {
         return 255;
     }
 
-    inline int InitAllocTable(void* mem, Size size) noexcept {
-        AllocTable* at = &gKernel.allocTable;
+    inline int InitAllocTable(Void* mem, Size size) noexcept {
+        AllocTable* at = &gKernel.alloc_table;
         
         constexpr U64 SENTINEL_SIZE = sizeof(FreeAllocHeader);
 
         assert(mem != nullptr);
         assert(size >= 4096);
 
-        memset((void*)at, 0, sizeof(AllocTable));
+        memset((Void*)at, 0, sizeof(AllocTable));
         
         // Establish heap boundaries
-        char* heapBegin = (char*)(mem);
-        char* heapEnd   = heapBegin + size;
+        Char* heapBegin = (Char*)(mem);
+        Char* heapEnd   = heapBegin + size;
 
         // // Align start up to 32 and end down to 32 to keep all blocks 32B-multiples
         U64 alignedBegin = ((U64)heapBegin + SENTINEL_SIZE) & ~31ull;
@@ -77,16 +77,16 @@ namespace ak { namespace priv {
 
         at->heapBegin = heapBegin;
         at->heapEnd   = heapEnd;
-        at->memBegin  = (char*)alignedBegin;
-        at->memEnd    = (char*)alignedEnd;
+        at->memBegin  = (Char*)alignedBegin;
+        at->memEnd    = (Char*)alignedEnd;
         at->memSize   = (Size)(at->memEnd - at->memBegin);
 
         // Addresses
         // Layout: [BeginSentinel] ... blocks ... [LargeBlockSentinel] ... largeBlocks ... [EndSentinel]
         FreeAllocHeader* beginSentinel      = (FreeAllocHeader*)alignedBegin;
-        FreeAllocHeader* wildBlock          = (FreeAllocHeader*)((char*)beginSentinel + SENTINEL_SIZE);
-        FreeAllocHeader* endSentinel        = (FreeAllocHeader*)((char*)alignedEnd    - SENTINEL_SIZE); 
-        FreeAllocHeader* largeBlockSentinel = (FreeAllocHeader*)((char*)endSentinel   - SENTINEL_SIZE);
+        FreeAllocHeader* wildBlock          = (FreeAllocHeader*)((Char*)beginSentinel + SENTINEL_SIZE);
+        FreeAllocHeader* endSentinel        = (FreeAllocHeader*)((Char*)alignedEnd    - SENTINEL_SIZE); 
+        FreeAllocHeader* largeBlockSentinel = (FreeAllocHeader*)((Char*)endSentinel   - SENTINEL_SIZE);
         utl::init_link(&wildBlock->freeListLink);
         
         // Check alignments
@@ -125,48 +125,48 @@ namespace ak { namespace priv {
         return 0;
     }
 
-    inline void SetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept {
+    inline Void SetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept {
         assert(bitField != nullptr);
         assert(binIdx < 256);
         const U64 lane = binIdx >> 6;  // 0..3
         const U64 bit  = binIdx & 63u; // 0..63
         uint64_t word;
-        std::memcpy(&word, reinterpret_cast<const char*>(bitField) + lane * sizeof(uint64_t), sizeof(uint64_t));
+        std::memcpy(&word, reinterpret_cast<const Char*>(bitField) + lane * sizeof(uint64_t), sizeof(uint64_t));
         word |= (1ull << bit);
-        std::memcpy(reinterpret_cast<char*>(bitField) + lane * sizeof(uint64_t), &word, sizeof(uint64_t));
+        std::memcpy(reinterpret_cast<Char*>(bitField) + lane * sizeof(uint64_t), &word, sizeof(uint64_t));
     }
 
-    inline bool GetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept {
+    inline Bool GetAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept {
         assert(bitField != nullptr);
         assert(binIdx < 256);
         const U64 lane = binIdx >> 6;  // 0..3
         const U64 bit  = binIdx & 63u; // 0..63
         uint64_t word;
-        std::memcpy(&word, reinterpret_cast<const char*>(bitField) + lane * sizeof(uint64_t), sizeof(uint64_t));
+        std::memcpy(&word, reinterpret_cast<const Char*>(bitField) + lane * sizeof(uint64_t), sizeof(uint64_t));
         return ((word >> bit) & 1ull) != 0ull;
     }
 
-    inline void ClearAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept {
+    inline Void ClearAllocFreeBinBit(__m256i* bitField, U64 binIdx) noexcept {
         assert(bitField != nullptr);
         assert(binIdx < 256);
         const U64 lane = binIdx >> 6;  // 0..3
         const U64 bit  = binIdx & 63u; // 0..63
         uint64_t word;
-        std::memcpy(&word, reinterpret_cast<const char*>(bitField) + lane * sizeof(uint64_t), sizeof(uint64_t));
+        std::memcpy(&word, reinterpret_cast<const Char*>(bitField) + lane * sizeof(uint64_t), sizeof(uint64_t));
         word &= ~(1ull << bit);
-        std::memcpy(reinterpret_cast<char*>(bitField) + lane * sizeof(uint64_t), &word, sizeof(uint64_t));
+        std::memcpy(reinterpret_cast<Char*>(bitField) + lane * sizeof(uint64_t), &word, sizeof(uint64_t));
     }
 
     inline AllocHeader* NextAllocHeaderPtr(AllocHeader* h) noexcept {
         size_t sz = (size_t)h->thisSize.size;
         if (sz == 0) return h;
-        return (AllocHeader*)((char*)h + sz);
+        return (AllocHeader*)((Char*)h + sz);
     }
 
     inline AllocHeader* PrevAllocHeaderPtr(AllocHeader* h) noexcept {
         size_t sz = (size_t)h->prevSize.size;
         if (sz == 0) return h;
-        return (AllocHeader*)((char*)h - sz);
+        return (AllocHeader*)((Char*)h - sz);
     }
 
     inline U64 GetAllocSmallBinIndexFromSize(U64 sz) noexcept {
@@ -218,7 +218,7 @@ namespace ak {
         static constexpr Size ALIGNMENT      = 32;
     }
     
-    inline const char* ToString(AllocState s) noexcept {
+    inline const Char* ToString(AllocState s) noexcept {
         switch (s) {
             case AllocState::USED:                 return "USED";
             case AllocState::FREE:                 return "FREE";
@@ -242,7 +242,7 @@ namespace ak {
     /// 
     /// Returns nullptr if no suitable block found (heap doesn't grow).
     /// For async version that suspends on failure, use co_await AllocMem(size).
-    inline void* TryAllocMem(Size size) noexcept {
+    inline Void* try_alloc_mem(Size size) noexcept {
         using namespace priv;
         
         // Compute aligned block size
@@ -253,22 +253,22 @@ namespace ak {
         assert(requestedBlockSize >= MIN_BLOCK_SIZE);
         
         // Find bin
-        int binIdx = FindAllocFreeListBinIndex(&gKernel.allocTable.freeListbinMask, requestedBlockSize);
+        int binIdx = FindAllocFreeListBinIndex(&gKernel.alloc_table.freeListbinMask, requestedBlockSize);
         
         // Small bin allocation case
         // =========================
         if (binIdx < 254) {
-            assert(gKernel.allocTable.freeListBinsCount[binIdx] > 0);
-            assert(GetAllocFreeBinBit(&gKernel.allocTable.freeListbinMask, binIdx));
+            assert(gKernel.alloc_table.freeListBinsCount[binIdx] > 0);
+            assert(GetAllocFreeBinBit(&gKernel.alloc_table.freeListbinMask, binIdx));
             
-            utl::DLink* freeStack = &gKernel.allocTable.freeListBins[binIdx];
+            utl::DLink* freeStack = &gKernel.alloc_table.freeListBins[binIdx];
             utl::DLink* link = utl::pop_link(freeStack);
-            --gKernel.allocTable.freeListBinsCount[binIdx];
-            if (gKernel.allocTable.freeListBinsCount[binIdx] == 0) {
-                ClearAllocFreeBinBit(&gKernel.allocTable.freeListbinMask, binIdx);
+            --gKernel.alloc_table.freeListBinsCount[binIdx];
+            if (gKernel.alloc_table.freeListBinsCount[binIdx] == 0) {
+                ClearAllocFreeBinBit(&gKernel.alloc_table.freeListbinMask, binIdx);
             } 
             
-            AllocHeader* block = (AllocHeader*)((char*)link - offsetof(FreeAllocHeader, freeListLink));
+            AllocHeader* block = (AllocHeader*)((Char*)link - offsetof(FreeAllocHeader, freeListLink));
             AllocHeader* nextBlock = NextAllocHeaderPtr(block);
             __builtin_prefetch(nextBlock, 1, 3);
             
@@ -291,11 +291,11 @@ namespace ak {
                 nextBlock->prevSize.state = (U32)AllocState::USED;
                 assert(nextBlock->prevSize.state == (U32)AllocState::USED);
 
-                gKernel.allocTable.freeMemSize -= requestedBlockSize;
-                ++gKernel.allocTable.stats.binAllocCount[binIdx];
-                ++gKernel.allocTable.stats.binReuseCount[binIdx];
+                gKernel.alloc_table.freeMemSize -= requestedBlockSize;
+                ++gKernel.alloc_table.stats.binAllocCount[binIdx];
+                ++gKernel.alloc_table.stats.binReuseCount[binIdx];
                 
-                return (void*)((char*)block + HEADER_SIZE);
+                return (Void*)((Char*)block + HEADER_SIZE);
             } 
             
             // Required Split case
@@ -306,15 +306,15 @@ namespace ak {
             
             // Prefetch the new free block
             // ----------------------------
-            FreeAllocHeader* newFree = (FreeAllocHeader*)((char*)block + requestedBlockSize);
+            FreeAllocHeader* newFree = (FreeAllocHeader*)((Char*)block + requestedBlockSize);
             __builtin_prefetch(newFree, 1, 3);
 
             // Prefetch stats
             // --------------
             Size newBinIdx = GetAllocSmallBinIndexFromSize(newFreeSize);
-            __builtin_prefetch(&gKernel.allocTable.stats.binSplitCount[binIdx], 1, 3);  
-            __builtin_prefetch(&gKernel.allocTable.stats.binAllocCount[binIdx], 1, 3);
-            __builtin_prefetch(&gKernel.allocTable.stats.binPoolCount[newBinIdx],  1, 3);
+            __builtin_prefetch(&gKernel.alloc_table.stats.binSplitCount[binIdx], 1, 3);  
+            __builtin_prefetch(&gKernel.alloc_table.stats.binAllocCount[binIdx], 1, 3);
+            __builtin_prefetch(&gKernel.alloc_table.stats.binPoolCount[newBinIdx],  1, 3);
 
             // Update the new free block
             // -------------------------
@@ -335,15 +335,15 @@ namespace ak {
             // Update stats
             // ------------
             
-            ++gKernel.allocTable.stats.binSplitCount[binIdx];
-            ++gKernel.allocTable.stats.binAllocCount[binIdx];
-            utl::push_link(&gKernel.allocTable.freeListBins[newBinIdx], &newFree->freeListLink);
-            SetAllocFreeBinBit(&gKernel.allocTable.freeListbinMask, newBinIdx);
-            ++gKernel.allocTable.stats.binPoolCount[newBinIdx];            
-            ++gKernel.allocTable.freeListBinsCount[newBinIdx];
-            gKernel.allocTable.freeMemSize -= requestedBlockSize;
+            ++gKernel.alloc_table.stats.binSplitCount[binIdx];
+            ++gKernel.alloc_table.stats.binAllocCount[binIdx];
+            utl::push_link(&gKernel.alloc_table.freeListBins[newBinIdx], &newFree->freeListLink);
+            SetAllocFreeBinBit(&gKernel.alloc_table.freeListbinMask, newBinIdx);
+            ++gKernel.alloc_table.stats.binPoolCount[newBinIdx];            
+            ++gKernel.alloc_table.freeListBinsCount[newBinIdx];
+            gKernel.alloc_table.freeMemSize -= requestedBlockSize;
             
-            return (void*)((char*)block + HEADER_SIZE);            
+            return (Void*)((Char*)block + HEADER_SIZE);            
         }
         
         // Medium bin case do a fist fit search
@@ -356,14 +356,14 @@ namespace ak {
         // Case we are allocating from the Wild Block (255)
         // ================================================
         if (binIdx == 255) {  
-            assert(gKernel.allocTable.wildBlock != nullptr);                      // Wild block pointer always valid
-            assert(GetAllocFreeBinBit(&gKernel.allocTable.freeListbinMask, 255)); // Wild block is always in the free list
-            assert(gKernel.allocTable.freeListBinsCount[255] == 1);               // Wild block has always exaclty one block
+            assert(gKernel.alloc_table.wildBlock != nullptr);                      // Wild block pointer always valid
+            assert(GetAllocFreeBinBit(&gKernel.alloc_table.freeListbinMask, 255)); // Wild block is always in the free list
+            assert(gKernel.alloc_table.freeListBinsCount[255] == 1);               // Wild block has always exaclty one block
 
             // Note: The wild block is a degenerate case; it does not use free bins
             //       and it must always be allocated; which means have at least MIN_BLOCK_SIZE free space
             
-            AllocHeader* oldWild = (AllocHeader*)gKernel.allocTable.wildBlock;            
+            AllocHeader* oldWild = (AllocHeader*)gKernel.alloc_table.wildBlock;            
             
             // Prefetch the next block, the prev block and the new wild block
             // --------------------------------------------------------------
@@ -373,19 +373,19 @@ namespace ak {
             __builtin_prefetch(nextBlock, 1, 3);
             
             // 2. Prefetch the new wild block
-            FreeAllocHeader* newWild = (FreeAllocHeader*)((char*)oldWild + requestedBlockSize);
+            FreeAllocHeader* newWild = (FreeAllocHeader*)((Char*)oldWild + requestedBlockSize);
             __builtin_prefetch(newWild, 1, 3);
 
             // 3. Prefetch stats
-            __builtin_prefetch(&gKernel.allocTable.stats.binAllocCount[255], 1, 3);
-            __builtin_prefetch(&gKernel.allocTable.stats.binSplitCount[255], 1, 3);
+            __builtin_prefetch(&gKernel.alloc_table.stats.binAllocCount[255], 1, 3);
+            __builtin_prefetch(&gKernel.alloc_table.stats.binSplitCount[255], 1, 3);
             
             // Case there the wild block is full; memory is exhausted
             // ------------------------------------------------------
             Size oldSize = oldWild->thisSize.size;
             if (requestedBlockSize > oldSize - MIN_BLOCK_SIZE) {
                 // the wild block must have at least MIN_BLOCK_SIZE free space
-                ++gKernel.allocTable.stats.binFailedCount[255];
+                ++gKernel.alloc_table.stats.binFailedCount[255];
                 return nullptr; // not enough space
             }
             
@@ -401,15 +401,15 @@ namespace ak {
             AllocSizeRecord newWildSizeRecord = { newWildSize, (U32)AllocState::WILD_BLOCK, 0 };
             newWild->thisSize = newWildSizeRecord;
             newWild->prevSize = allocated->thisSize;
-            gKernel.allocTable.wildBlock = newWild;
+            gKernel.alloc_table.wildBlock = newWild;
             nextBlock->prevSize = newWild->thisSize;
             
             // Update stats
-            ++gKernel.allocTable.stats.binAllocCount[255];
-            ++gKernel.allocTable.stats.binSplitCount[255];
-            gKernel.allocTable.freeMemSize -= requestedBlockSize;
+            ++gKernel.alloc_table.stats.binAllocCount[255];
+            ++gKernel.alloc_table.stats.binSplitCount[255];
+            gKernel.alloc_table.freeMemSize -= requestedBlockSize;
             
-            return (void*)((char*)allocated + HEADER_SIZE);
+            return (Void*)((Char*)allocated + HEADER_SIZE);
         }
         
         // Unreachable
@@ -430,14 +430,14 @@ namespace ak {
     /// 
     /// \param ptr Pointer returned by TryMalloc (must not be nullptr).
     /// \param sideCoalescing Maximum number of merges per side (0 = no coalescing, defaults to UINT_MAX for unlimited).
-    inline void FreeMem(void* ptr, unsigned sideCoalescing) noexcept {
+    inline Void free_mem(Void* ptr, U32 sideCoalescing) noexcept {
         using namespace priv;
         assert(ptr != nullptr);
-        (void)sideCoalescing;
+        (Void)sideCoalescing;
 
         // Release Block
         // -------------
-        FreeAllocHeader* block = (FreeAllocHeader*)((char*)ptr - HEADER_SIZE);
+        FreeAllocHeader* block = (FreeAllocHeader*)((Char*)ptr - HEADER_SIZE);
         AllocSizeRecord thisSize = block->thisSize;
         Size blockSize = thisSize.size;
 
@@ -456,12 +456,12 @@ namespace ak {
         // ------------
         unsigned origBinIdx = GetAllocSmallBinIndexFromSize(blockSize);
         assert(origBinIdx < 255);
-        utl::push_link(&gKernel.allocTable.freeListBins[origBinIdx], &block->freeListLink);
-        ++gKernel.allocTable.stats.binFreeCount[origBinIdx];
-        ++gKernel.allocTable.stats.binPoolCount[origBinIdx];
-        ++gKernel.allocTable.freeListBinsCount[origBinIdx];
-        SetAllocFreeBinBit(&gKernel.allocTable.freeListbinMask, origBinIdx);
-        gKernel.allocTable.freeMemSize += blockSize;
+        utl::push_link(&gKernel.alloc_table.freeListBins[origBinIdx], &block->freeListLink);
+        ++gKernel.alloc_table.stats.binFreeCount[origBinIdx];
+        ++gKernel.alloc_table.stats.binPoolCount[origBinIdx];
+        ++gKernel.alloc_table.freeListBinsCount[origBinIdx];
+        SetAllocFreeBinBit(&gKernel.alloc_table.freeListbinMask, origBinIdx);
+        gKernel.alloc_table.freeMemSize += blockSize;
         
     }
 }

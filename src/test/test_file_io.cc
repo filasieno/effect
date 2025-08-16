@@ -5,23 +5,23 @@
 
 using namespace ak;
 
-DefineTask MainTask(const char* name) noexcept {
+DefineTask MainTask(const Char* name) noexcept {
 	int res;
 
-	const char* path = "test.txt";
-    int fd = co_await IOOpen(path, O_RDWR | O_CREAT | O_TRUNC | O_NONBLOCK, 0666);
+	const Char* path = "test.txt";
+    int fd = co_await io_open(path, O_RDWR | O_CREAT | O_TRUNC | O_NONBLOCK, 0666);
 	std::print("Open res: {}\n", fd);
-    res = co_await IOWrite(fd, "hello world!\n", 13, 0);
+    res = co_await io_write(fd, "hello world!\n", 13, 0);
 	std::print("written: {}\n", res);
-    res = co_await IOClose(fd);
+    res = co_await io_close(fd);
 	std::print("Close res: {}\n", res);
-    res = co_await IOUnlink(path, 0);
+    res = co_await io_unlink(path, 0);
 	std::print("Unlink res: {}\n", res);
 	
   	co_return 0;
 }
 
-char buffer[8192];
+Char buffer[8192];
 
 int main() {
 	KernelConfig config = {

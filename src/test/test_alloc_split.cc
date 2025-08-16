@@ -10,25 +10,25 @@ DefineTask MainTask() noexcept {
 	priv::DebugDumpAllocTable();
     	
 	U64 memSize01 = 8096;
-	void* buff01 = TryAllocMem(memSize01);
+	Void* buff01 = try_alloc_mem(memSize01);
 	assert(buff01 != nullptr);
 	
 	priv::DebugPrintAllocBlocks();
 	priv::DebugDumpAllocTable();
 
-	FreeMem(buff01);
+	free_mem(buff01);
 
 	priv::DebugPrintAllocBlocks();
 	priv::DebugDumpAllocTable();
 
 	U64 memSize02 = 16;
-	void* buff02 = TryAllocMem(memSize02);
+	Void* buff02 = try_alloc_mem(memSize02);
 	assert(buff02 != nullptr);
 
 	priv::DebugPrintAllocBlocks();
 	priv::DebugDumpAllocTable();
 
-	FreeMem(buff02);
+	free_mem(buff02);
 
 	priv::DebugPrintAllocBlocks();
 	priv::DebugDumpAllocTable();
@@ -40,7 +40,7 @@ DefineTask MainTask() noexcept {
 
 int main() {
 	U64 bufferSize = 1024 * 1024;
-	void* buffer = malloc(bufferSize);
+	Void* buffer = malloc(bufferSize);
 	KernelConfig config = {
 		.mem          = buffer,
 		.memSize      = bufferSize,

@@ -10,7 +10,7 @@ using namespace ak;
 
 DefineTask ClientTask(int taskId,const char* serverIp, int port, int msgPerClient) noexcept {
     // Create socket
-    int sock = co_await IOSocket(AF_INET, SOCK_STREAM, 0, 0);
+    int sock = co_await io_socket(AF_INET, SOCK_STREAM, 0, 0);
     if (sock < 0) {
         std::print("Failed to create socket\n");
         co_return 0;
@@ -23,15 +23,15 @@ DefineTask ClientTask(int taskId,const char* serverIp, int port, int msgPerClien
     server_addr.sin_port = htons(port);
     if (inet_pton(AF_INET, serverIp, &server_addr.sin_addr) <= 0) {
         std::print("Invalid address\n");
-        co_await IOClose(sock);
+        co_await io_close(sock);
         co_return 0;
     }
 
     // Connect to server
-    int result = co_await IOConnect(sock, (sockaddr*)&server_addr, sizeof(server_addr));
+    int result = co_await io_connect(sock, (sockaddr*)&server_addr, sizeof(server_addr));
     if (result < 0) {
         std::print("Connection failed\n");
-        co_await IOClose(sock);
+        co_await io_close(sock);
         co_return 0;
     }
     std::print("task {} connected to server\n", taskId);
@@ -45,7 +45,7 @@ DefineTask ClientTask(int taskId,const char* serverIp, int port, int msgPerClien
         int len = std::snprintf(buff, sizeof(buff), "Message %d from Task %d", i, taskId); 
         std::print("Client {} Received: {}\n", taskId, len); 
         // Send message
-        result = co_await IOWrite(sock, buff, len, 0);
+        result = co_await io_write(sock, buff, len, 0);
         if (result < 0) {
             std::print("Send failed\n");
             break;
@@ -53,7 +53,7 @@ DefineTask ClientTask(int taskId,const char* serverIp, int port, int msgPerClien
 
 
         // Receive echo
-        result = co_await IORead(sock, buff, sizeof(buff)-1, 0);
+        result = co_await io_read(sock, buff, sizeof(buff)-1, 0);
         if (result < 0) {
             std::print("Receive failed\n");
             break;
@@ -63,7 +63,7 @@ DefineTask ClientTask(int taskId,const char* serverIp, int port, int msgPerClien
         std::print("Received: {}\n", buff);
     }
 
-    co_await IOClose(sock);
+    co_await io_close(sock);
     co_return 0;
 }
 

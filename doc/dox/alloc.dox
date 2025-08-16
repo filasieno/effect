@@ -308,12 +308,12 @@
  * ```cpp
  * // Initialize allocator with 1MB heap
  * AllocTable allocTable;
- * void* heap = mmap(nullptr, 1024*1024, PROT_READ|PROT_WRITE, 
+ * Void* heap = mmap(nullptr, 1024*1024, PROT_READ|PROT_WRITE, 
  *                   MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
  * InitAllocTable(&allocTable, heap, 1024*1024);
  * 
  * // Allocate 128 bytes (goes to bin 3)
- * void* ptr = TryAllocMem(&allocTable, 128);
+ * Void* ptr = TryAllocMem(&allocTable, 128);
  * assert(ptr != nullptr);
  * // Free the allocation (triggers coalescing if possible)
  * FreeMem(&allocTable, ptr);
@@ -328,7 +328,7 @@
  *
  * ```cpp
  * DefineTask ProcessData() {
- *     void* buffer = co_await AllocMem(4096);  // Suspend if no memory
+ *     Void* buffer = co_await AllocMem(4096);  // Suspend if no memory
  *     // ... process data ...
  *     FreeAsync(buffer);  // May resume waiting coroutines
  * }

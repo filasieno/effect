@@ -26,7 +26,7 @@ namespace ak {
     // Event routines implementation
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline void InitEvent(Event* event) {  
+    inline Void InitEvent(Event* event) {  
         using namespace ak::utl;
         init_link(&event->waitingList);
     }

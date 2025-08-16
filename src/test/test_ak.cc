@@ -5,7 +5,7 @@
 
 using namespace ak;
 
-DefineTask aTask(const char* name) noexcept { 
+DefineTask aTask(const Char* name) noexcept { 
 	std::print("Hello from {}: Step 1\n", name);
 	co_await SuspendTask();
 
@@ -24,12 +24,12 @@ DefineTask aTask(const char* name) noexcept {
 	co_return 0;
 }
 
-DefineTask bTask(const char* name) noexcept { 
+DefineTask bTask(const Char* name) noexcept { 
 	std::print("Hello from {}\n", name);
 	co_return 0;
 }
 
-DefineTask MainTask(const char* name) noexcept {
+DefineTask MainTask(const Char* name) noexcept {
 	std::print("Hello from '{}'\n", name);
 	TaskHdl a = aTask("A-TASK");
 	auto b = bTask("B-TASK");
@@ -38,7 +38,7 @@ DefineTask MainTask(const char* name) noexcept {
 	co_return 0;
 }
 
-char buffer[8192];
+Char buffer[8192];
 
 int main() {
 	KernelConfig config = {

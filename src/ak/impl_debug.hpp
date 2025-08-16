@@ -7,7 +7,7 @@ namespace ak { namespace priv {
     // Task runtime debug utilities
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline void DebugTaskCount() noexcept {
+    inline Void DebugTaskCount() noexcept {
         if constexpr (priv::TRACE_DEBUG_CODE) {
             int runningCount = gKernel.currentTaskHdl != TaskHdl() ? 1 : 0;
             std::print("- {} Running\n", runningCount);
@@ -21,22 +21,22 @@ namespace ak { namespace priv {
     // Check Task Invariants
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline void DoCheckTaskCountInvariant() noexcept {
+    inline Void DoCheckTaskCountInvariant() noexcept {
         int running_count = gKernel.currentTaskHdl != TaskHdl() ? 1 : 0;
-        bool condition = gKernel.taskCount == running_count + gKernel.readyCount + gKernel.waitingCount + gKernel.ioWaitingCount + gKernel.zombieCount;
+        Bool condition = gKernel.taskCount == running_count + gKernel.readyCount + gKernel.waitingCount + gKernel.ioWaitingCount + gKernel.zombieCount;
         if (!condition) {
             DebugTaskCount();
             abort();
         }
     }
 
-    inline void CheckTaskCountInvariant() noexcept {
+    inline Void CheckTaskCountInvariant() noexcept {
         if constexpr (IS_DEBUG_MODE) {
             DoCheckTaskCountInvariant();
         }
     }
 
-    inline void CheckInvariants() noexcept {
+    inline Void CheckInvariants() noexcept {
         if constexpr (IS_DEBUG_MODE) {
             // check the Task invariants
             DoCheckTaskCountInvariant();
@@ -49,7 +49,7 @@ namespace ak { namespace priv {
     // IO Uring Debug utils
     // ----------------------------------------------------------------------------------------------------------------
     
-    inline void DebugIOURingFeatures(const unsigned int features) {
+    inline Void DebugIOURingFeatures(const unsigned int features) {
         std::print("IO uring features:\n");
         if (features & IORING_FEAT_SINGLE_MMAP)     std::print("  SINGLE_MMAP\n");
         if (features & IORING_FEAT_NODROP)          std::print("  NODROP\n");
@@ -63,7 +63,7 @@ namespace ak { namespace priv {
         if (features & IORING_FEAT_NATIVE_WORKERS)  std::print("  NATIVE_WORKERS\n");
     }
 
-    inline void DebugIOURingSetupFlags(const unsigned int flags) {
+    inline Void DebugIOURingSetupFlags(const unsigned int flags) {
         std::print("IO uring flags:\n");
         if (flags & IORING_SETUP_IOPOLL)    std::print("  IOPOLL\n");
         if (flags & IORING_SETUP_SQPOLL)    std::print("  SQPOLL\n");
@@ -73,7 +73,7 @@ namespace ak { namespace priv {
         if (flags & IORING_SETUP_ATTACH_WQ) std::print("  ATTACH_WQ\n");
     }
 
-    inline void DebugIOURingParams(const io_uring_params* p) {
+    inline Void DebugIOURingParams(const io_uring_params* p) {
         std::print("IO uring parameters:\n");
         
         // Main parameters
@@ -118,16 +118,16 @@ namespace ak { namespace priv {
     // Allocator Debug utils
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline void DebugDumpAllocTable() noexcept {
-        AllocTable* at = &gKernel.allocTable;
+    inline Void DebugDumpAllocTable() noexcept {
+        AllocTable* at = &gKernel.alloc_table;
 
         // Basic layout and sizes
-        std::print("AllocTable: {}\n", (void*)at);
+        std::print("AllocTable: {}\n", (Void*)at);
         
-        std::print("  heapBegin        : {}\n", (void*)at->heapBegin);
-        std::print("  heapEnd          : {}; size: {}\n", (void*)at->heapEnd, (intptr_t)(at->heapEnd - at->heapBegin));
-        std::print("  memBegin         : {}\n", (void*)at->memBegin);
-        std::print("  memEnd           : {}; size: {}\n", (void*)at->memEnd,  (intptr_t)(at->memEnd  - at->memBegin));
+        std::print("  heapBegin        : {}\n", (Void*)at->heapBegin);
+        std::print("  heapEnd          : {}; size: {}\n", (Void*)at->heapEnd, (intptr_t)(at->heapEnd - at->heapBegin));
+        std::print("  memBegin         : {}\n", (Void*)at->memBegin);
+        std::print("  memEnd           : {}; size: {}\n", (Void*)at->memEnd,  (intptr_t)(at->memEnd  - at->memBegin));
         std::print("  memSize          : {}\n", at->memSize);
         std::print("  freeMemSize      : {}\n", at->freeMemSize);
     
@@ -177,16 +177,16 @@ namespace ak { namespace priv {
     }
 
 
-    constexpr const char* DEBUG_ALLOC_COLOR_RESET  = "\033[0m";
-    constexpr const char* DEBUG_ALLOC_COLOR_WHITE  = "\033[37m"; 
-    constexpr const char* DEBUG_ALLOC_COLOR_GREEN  = "\033[1;32m"; 
-    constexpr const char* DEBUG_ALLOC_COLOR_YELLOW = "\033[1;33m"; 
-    constexpr const char* DEBUG_ALLOC_COLOR_CYAN   = "\033[36m"; 
-    constexpr const char* DEBUG_ALLOC_COLOR_MAG    = "\033[35m"; 
-    constexpr const char* DEBUG_ALLOC_COLOR_RED    = "\033[1;31m"; 
-    constexpr const char* DEBUG_ALLOC_COLOR_HDR    = "\033[36m"; 
+    constexpr const Char* DEBUG_ALLOC_COLOR_RESET  = "\033[0m";
+    constexpr const Char* DEBUG_ALLOC_COLOR_WHITE  = "\033[37m"; 
+    constexpr const Char* DEBUG_ALLOC_COLOR_GREEN  = "\033[1;32m"; 
+    constexpr const Char* DEBUG_ALLOC_COLOR_YELLOW = "\033[1;33m"; 
+    constexpr const Char* DEBUG_ALLOC_COLOR_CYAN   = "\033[36m"; 
+    constexpr const Char* DEBUG_ALLOC_COLOR_MAG    = "\033[35m"; 
+    constexpr const Char* DEBUG_ALLOC_COLOR_RED    = "\033[1;31m"; 
+    constexpr const Char* DEBUG_ALLOC_COLOR_HDR    = "\033[36m"; 
 
-    static inline constexpr const char* StateColor(AllocState s) {
+    static inline constexpr const Char* StateColor(AllocState s) {
         switch (s) {
             case AllocState::USED:               
                 return DEBUG_ALLOC_COLOR_CYAN;
@@ -213,11 +213,11 @@ namespace ak { namespace priv {
     constexpr int DEBUG_COL_W_FL_PREV = 18;
     constexpr int DEBUG_COL_W_FL_NEXT = 18;
 
-    static inline void PrintRun(const char* s, int n, const char* color = DEBUG_ALLOC_COLOR_WHITE) {
+    static inline Void PrintRun(const Char* s, int n, const Char* color = DEBUG_ALLOC_COLOR_WHITE) {
         for (int i = 0; i < n; ++i) std::print("{}{}", color, s);
     }
 
-    static inline void PrintTopBorder() {
+    static inline Void PrintTopBorder() {
         std::print("{}┌{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         PrintRun("─", DEBUG_COL_W_OFF + 2);
         std::print("{}┬{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
@@ -235,7 +235,7 @@ namespace ak { namespace priv {
         std::print("{}┐{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
 
-    static inline void PrintHeaderSeparator() {
+    static inline Void PrintHeaderSeparator() {
         std::print("{}├{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         PrintRun("─", DEBUG_COL_W_OFF + 2);
         std::print("{}┼{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
@@ -253,7 +253,7 @@ namespace ak { namespace priv {
         std::print("{}┤{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
 
-    static inline void PrintBottomBorder() {
+    static inline Void PrintBottomBorder() {
         std::print("{}└{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         PrintRun("─", DEBUG_COL_W_OFF + 2);
         std::print("{}┴{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
@@ -271,7 +271,7 @@ namespace ak { namespace priv {
         std::print("{}┘{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
 
-    static inline void PrintHeader() {
+    static inline Void PrintHeader() {
         std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         std::print("{} {:<18} "  , DEBUG_ALLOC_COLOR_HDR,   "Offset");
         std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
@@ -289,8 +289,8 @@ namespace ak { namespace priv {
         std::print("{}│{}\n"     , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
 
-    static inline void PrintRow(const AllocHeader* h) {
-        const AllocTable* at = &gKernel.allocTable;
+    static inline Void PrintRow(const AllocHeader* h) {
+        const AllocTable* at = &gKernel.alloc_table;
         uintptr_t beginAddr = (uintptr_t)at->beginSentinel;
         uintptr_t off = (uintptr_t)h - beginAddr;
         uint64_t  sz  = (uint64_t)h->thisSize.size;
@@ -298,9 +298,9 @@ namespace ak { namespace priv {
         AllocState st = (AllocState)h->thisSize.state;
         AllocState pst = (AllocState)h->prevSize.state;
 
-        const char* stateText = ToString(st);
-        const char* previousStateText = ToString(pst);
-        const char* stateColor = StateColor(st);
+        const Char* stateText = ToString(st);
+        const Char* previousStateText = ToString(pst);
+        const Char* stateColor = StateColor(st);
 
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         std::print("{} {:<18} ", stateColor, (unsigned long long)off);
@@ -320,12 +320,12 @@ namespace ak { namespace priv {
         if (h->thisSize.state == (U32)AllocState::FREE) {
             utl::DLink* freeListLink = &((FreeAllocHeader*)h)->freeListLink;
             utl::DLink* prev = freeListLink->prev;
-            utl::DLink* head = &gKernel.allocTable.freeListBins[binIdx];
+            utl::DLink* head = &gKernel.alloc_table.freeListBins[binIdx];
             if (prev == head) {
                 std::print("{} {:<18} ", stateColor, "HEAD");
             } else {
-                AllocHeader* prevBlock = (AllocHeader*)((char*)prev - offsetof(FreeAllocHeader, freeListLink));
-                Size offset = (Size)((char*)prevBlock - (char*)gKernel.allocTable.beginSentinel);
+                AllocHeader* prevBlock = (AllocHeader*)((Char*)prev - offsetof(FreeAllocHeader, freeListLink));
+                Size offset = (Size)((Char*)prevBlock - (Char*)gKernel.alloc_table.beginSentinel);
                 std::print("{} {:<18} ", stateColor, offset);
             }
         } else {
@@ -338,12 +338,12 @@ namespace ak { namespace priv {
         if (h->thisSize.state == (U32)AllocState::FREE) {
             utl::DLink* freeListLink = &((FreeAllocHeader*)h)->freeListLink;
             utl::DLink* next = freeListLink->next;
-            utl::DLink* head = &gKernel.allocTable.freeListBins[binIdx];
+            utl::DLink* head = &gKernel.alloc_table.freeListBins[binIdx];
             if (next == head) {
                 std::print("{} {:<18} ", stateColor, "HEAD");
             } else {
-                AllocHeader* nextBlock = (AllocHeader*)((char*)next - offsetof(FreeAllocHeader, freeListLink));
-                Size offset = (Size)((char*)nextBlock - (char*)gKernel.allocTable.beginSentinel);
+                AllocHeader* nextBlock = (AllocHeader*)((Char*)next - offsetof(FreeAllocHeader, freeListLink));
+                Size offset = (Size)((Char*)nextBlock - (Char*)gKernel.alloc_table.beginSentinel);
                 std::print("{} {:<18} ", stateColor, offset);
             }
         } else {
@@ -353,10 +353,10 @@ namespace ak { namespace priv {
         std::print("{}│{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
 
-    inline void DebugPrintAllocBlocks() noexcept 
+    inline Void DebugPrintAllocBlocks() noexcept 
     {
         using namespace priv;
-        AllocTable* at = &gKernel.allocTable;
+        AllocTable* at = &gKernel.alloc_table;
         
         PrintTopBorder();
         PrintHeader();

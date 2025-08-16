@@ -8,38 +8,38 @@ using namespace ak;
 DefineTask MainTask() noexcept {
     priv::DebugDumpAllocTable();
     priv::DebugPrintAllocBlocks();
-	void* buff1 = TryAllocMem(32);
+	Void* buff1 = try_alloc_mem(32);
 	assert(buff1 != nullptr);
 	priv::DebugPrintAllocBlocks();
 
-	void* buff2 = TryAllocMem(33);
+	Void* buff2 = try_alloc_mem(33);
 	assert(buff2 != nullptr);
 	priv::DebugPrintAllocBlocks();
 
-	void* buff3 = TryAllocMem(63);
+	Void* buff3 = try_alloc_mem(63);
 	assert(buff3 != nullptr);
 	priv::DebugPrintAllocBlocks();
 
-	void* buff4 = TryAllocMem(64 - 16);
+	Void* buff4 = try_alloc_mem(64 - 16);
 	assert(buff4 != nullptr);
 	priv::DebugPrintAllocBlocks();
 
-	FreeMem(buff4);
+	free_mem(buff4);
 	priv::DebugPrintAllocBlocks();
 
-	FreeMem(buff3);
+	free_mem(buff3);
 	priv::DebugPrintAllocBlocks();
 
-	FreeMem(buff2);
+	free_mem(buff2);
 	priv::DebugPrintAllocBlocks();
 
-	FreeMem(buff1);
+	free_mem(buff1);
 	priv::DebugPrintAllocBlocks();
 	priv::DebugDumpAllocTable();
   	co_return 0;
 }
 
-char buffer[8192];
+Char buffer[8192];
 
 int main() {
 	KernelConfig config = {

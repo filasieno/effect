@@ -1,9 +1,9 @@
 #pragma once
 
 namespace ak { 
-    using Void = void;
-    using Bool = bool;
-    using Char = char;
+    using Void  = void;
+    using Bool  = bool;
+    using Char  = char;
     using WChar = wchar_t;
 
     using U64  = unsigned long long;  
@@ -12,7 +12,7 @@ namespace ak {
     using U8   = unsigned char;
 
     using I64  = signed long long;  
-    using I32  = signed long; 
+    using I32  = signed int; 
     using I16  = signed short;
     using I8   = signed char;
     
@@ -26,12 +26,12 @@ namespace ak {
     namespace priv {
 
         #ifdef NDEBUG
-            constexpr bool IS_DEBUG_MODE    = false;
+            constexpr Bool IS_DEBUG_MODE = false;
         #else
-            constexpr bool IS_DEBUG_MODE    = true;   
+            constexpr Bool IS_DEBUG_MODE = true;   
         #endif
-        constexpr bool ENABLE_AVX2      = false;
-        constexpr bool TRACE_DEBUG_CODE = false;
+        constexpr Bool ENABLE_AVX2      = false;
+        constexpr Bool TRACE_DEBUG_CODE = false;
 
     } // namespace ak::priv
 } // namespace ak

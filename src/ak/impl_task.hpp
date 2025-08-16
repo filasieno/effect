@@ -4,7 +4,7 @@
 
 namespace ak {
 
-    inline const char* ToString(TaskState state) noexcept 
+    inline const Char* ToString(TaskState state) noexcept 
     {
         switch (state) {
             case TaskState::INVALID:    return "INVALID";
@@ -22,7 +22,7 @@ namespace ak {
     // TaskContext implementation 
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline void TaskContext::InitialSuspendTaskOp::await_suspend(TaskHdl hdl) const noexcept {
+    inline Void TaskContext::InitialSuspendTaskOp::await_suspend(TaskHdl hdl) const noexcept {
         using namespace priv;
         using namespace utl;
 
@@ -97,18 +97,18 @@ namespace ak {
         CheckInvariants();
     }
 
-    inline void* TaskContext::operator new(std::size_t n) noexcept {
-        void* mem = TryAllocMem(n);
+    inline Void* TaskContext::operator new(std::size_t n) noexcept {
+        Void* mem = try_alloc_mem(n);
         if (!mem) return nullptr;
         return mem;
     }
 
-    inline void TaskContext::operator delete(void* ptr, std::size_t sz) {
-        (void)sz;
-        FreeMem(ptr);
+    inline Void TaskContext::operator delete(Void* ptr, std::size_t sz) {
+        (Void)sz;
+        free_mem(ptr);
     }
 
-    inline void TaskContext::return_value(int value) noexcept {
+    inline Void TaskContext::return_value(int value) noexcept {
         using namespace priv;
 
         CheckInvariants();
@@ -288,9 +288,9 @@ namespace ak {
     // Task API Implementation
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline void ClearTaskHdl(TaskHdl* hdl) noexcept { *hdl = TaskHdl{}; }
+    inline Void ClearTaskHdl(TaskHdl* hdl) noexcept { *hdl = TaskHdl{}; }
 
-    inline bool IsTaskHdlValid(TaskHdl hdl) noexcept { return hdl.address() != nullptr; }
+    inline Bool IsTaskHdlValid(TaskHdl hdl) noexcept { return hdl.address() != nullptr; }
 
     inline TaskContext* GetTaskContext(TaskHdl hdl) noexcept { return &hdl.promise(); }
 
@@ -306,7 +306,7 @@ namespace ak {
 
     inline TaskState GetTaskState(TaskHdl hdl) noexcept { return hdl.promise().state; }
 
-    inline bool IsTaskDone(TaskHdl hdl) noexcept { return hdl.done(); }
+    inline Bool IsTaskDone(TaskHdl hdl) noexcept { return hdl.done(); }
 
     inline ResumeTaskOp ResumeTask(TaskHdl hdl) noexcept { return ResumeTaskOp(hdl); }
 

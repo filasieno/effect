@@ -89,7 +89,7 @@ DefineTask WriterTask(Event* canRead, Event* canWrite, int *readSignal, int* wri
 }
 
 
-DefineTask MainTask(const char* name) noexcept {
+DefineTask MainTask(const Char* name) noexcept {
 	int   value = -1;
 	int   readSignal = 0;
 	int   writeSignal = 0; 
@@ -112,7 +112,7 @@ DefineTask MainTask(const char* name) noexcept {
 }
 
 
-char buffer[8192];
+Char buffer[8192];
 
 int main() {
 	KernelConfig config = {
