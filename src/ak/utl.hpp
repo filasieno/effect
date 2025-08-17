@@ -14,12 +14,12 @@ namespace ak { namespace utl {
     Bool   is_link_detached(const DLink* link) noexcept;
     Void   detach_link(DLink* link) noexcept;
     Void   clear_link(DLink* link) noexcept;
-    Void   enqueue_link(DLink* queue, DLink* link);
-    DLink* dequeue_link(DLink* queue);
-    Void   insert_prev_link(DLink* queue, DLink* link);
-    Void   insert_next_link(DLink* queue, DLink* link);
-    Void   push_link(DLink* stack, DLink* link);
-    DLink* pop_link(DLink* stack);
+    Void   enqueue_link(DLink* queue, DLink* link) noexcept;
+    DLink* dequeue_link(DLink* queue) noexcept;
+    Void   insert_prev_link(DLink* queue, DLink* link) noexcept;
+    Void   insert_next_link(DLink* queue, DLink* link) noexcept;
+    Void   push_link(DLink* stack, DLink* link) noexcept;
+    DLink* pop_link(DLink* stack) noexcept;
 
 }} // namespace ak::utl
 

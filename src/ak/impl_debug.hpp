@@ -1,5 +1,6 @@
 #pragma once
 
+#include <print>
 #include "ak/api_priv.hpp"
 
 namespace ak { namespace priv {
@@ -9,12 +10,12 @@ namespace ak { namespace priv {
 
     inline Void dump_task_count() noexcept {
         if constexpr (priv::TRACE_DEBUG_CODE) {
-            int runningCount = gKernel.current_ctx_hdl != CThreadCtxHdl() ? 1 : 0;
+            int runningCount = global_kernel_state.current_cthread != CThread::Hdl() ? 1 : 0;
             std::print("- {} Running\n", runningCount);
-            std::print("  {} Ready\n", gKernel.ready_count);
-            std::print("  {} Waiting\n", gKernel.waiting_count);
-            std::print("  {} IO waiting\n", gKernel.iowaiting_count);
-            std::print("  {} Zombie\n", gKernel.zombie_count);
+            std::print("  {} Ready\n", global_kernel_state.ready_cthread_count);
+            std::print("  {} Waiting\n", global_kernel_state.waiting_cthread_count);
+            std::print("  {} IO waiting\n", global_kernel_state.iowaiting_cthread_count);
+            std::print("  {} Zombie\n", global_kernel_state.zombie_cthread_count);
         }
     }
 
@@ -22,8 +23,8 @@ namespace ak { namespace priv {
     // ----------------------------------------------------------------------------------------------------------------
 
     inline Void DoCheckTaskCountInvariant() noexcept {
-        int running_count = gKernel.current_ctx_hdl != CThreadCtxHdl() ? 1 : 0;
-        Bool condition = gKernel.task_count == running_count + gKernel.ready_count + gKernel.waiting_count + gKernel.iowaiting_count + gKernel.zombie_count;
+        int running_count = global_kernel_state.current_cthread != CThread::Hdl() ? 1 : 0;
+        Bool condition = global_kernel_state.cthread_count == running_count + global_kernel_state.ready_cthread_count + global_kernel_state.waiting_cthread_count + global_kernel_state.iowaiting_cthread_count + global_kernel_state.zombie_cthread_count;
         if (!condition) {
             dump_task_count();
             abort();
@@ -119,7 +120,7 @@ namespace ak { namespace priv {
     // ----------------------------------------------------------------------------------------------------------------
 
     inline Void dump_alloc_table() noexcept {
-        AllocTable* at = &gKernel.alloc_table;
+        AllocTable* at = &global_kernel_state.alloc_table;
 
         // Basic layout and sizes
         std::print("AllocTable: {}\n", (Void*)at);
@@ -186,18 +187,18 @@ namespace ak { namespace priv {
     constexpr const Char* DEBUG_ALLOC_COLOR_RED    = "\033[1;31m"; 
     constexpr const Char* DEBUG_ALLOC_COLOR_HDR    = "\033[36m"; 
 
-    static inline constexpr const Char* StateColor(AllocState s) {
+    static inline constexpr const Char* StateColor(AllocBlockState s) {
         switch (s) {
-            case AllocState::USED:               
+            case AllocBlockState::USED:               
                 return DEBUG_ALLOC_COLOR_CYAN;
-            case AllocState::FREE:   
-            case AllocState::WILD_BLOCK: 
+            case AllocBlockState::FREE:   
+            case AllocBlockState::WILD_BLOCK: 
                 return DEBUG_ALLOC_COLOR_GREEN;
-            case AllocState::BEGIN_SENTINEL:
-            case AllocState::LARGE_BLOCK_SENTINEL:
-            case AllocState::END_SENTINEL: 
+            case AllocBlockState::BEGIN_SENTINEL:
+            case AllocBlockState::LARGE_BLOCK_SENTINEL:
+            case AllocBlockState::END_SENTINEL: 
                 return DEBUG_ALLOC_COLOR_YELLOW;
-            case AllocState::INVALID: 
+            case AllocBlockState::INVALID: 
                 return DEBUG_ALLOC_COLOR_RED;
             default: 
                 return DEBUG_ALLOC_COLOR_RESET;
@@ -289,14 +290,14 @@ namespace ak { namespace priv {
         std::print("{}│{}\n"     , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
 
-    static inline Void PrintRow(const AllocHeader* h) {
-        const AllocTable* at = &gKernel.alloc_table;
+    static inline Void PrintRow(const AllocBlockHeader* h) {
+        const AllocTable* at = &global_kernel_state.alloc_table;
         uintptr_t beginAddr = (uintptr_t)at->sentinel_begin;
         uintptr_t off = (uintptr_t)h - beginAddr;
-        uint64_t  sz  = (uint64_t)h->this_size.size;
-        uint64_t  psz = (uint64_t)h->prev_size.size;
-        AllocState st = (AllocState)h->this_size.state;
-        AllocState pst = (AllocState)h->prev_size.state;
+        uint64_t  sz  = (uint64_t)h->this_desc.size;
+        uint64_t  psz = (uint64_t)h->prev_desc.size;
+        AllocBlockState st = (AllocBlockState)h->this_desc.state;
+        AllocBlockState pst = (AllocBlockState)h->prev_desc.state;
 
         const Char* stateText = to_string(st);
         const Char* previousStateText = to_string(pst);
@@ -314,18 +315,18 @@ namespace ak { namespace priv {
         std::print("{} {:<10} ", stateColor, previousStateText);
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         
-        Size binIdx = get_alloc_freelist_index(h->this_size.size);  
+        Size binIdx = get_alloc_freelist_index(h->this_desc.size);  
         
         // Print FreeListPrev
-        if (h->this_size.state == (U32)AllocState::FREE) {
-            utl::DLink* freeListLink = &((FreeAllocHeader*)h)->freelist_link;
+        if (h->this_desc.state == (U32)AllocBlockState::FREE) {
+            utl::DLink* freeListLink = &((FreeAllocBlockHeader*)h)->freelist_link;
             utl::DLink* prev = freeListLink->prev;
-            utl::DLink* head = &gKernel.alloc_table.freelist_head[binIdx];
+            utl::DLink* head = &global_kernel_state.alloc_table.freelist_head[binIdx];
             if (prev == head) {
                 std::print("{} {:<18} ", stateColor, "HEAD");
             } else {
-                AllocHeader* prevBlock = (AllocHeader*)((Char*)prev - offsetof(FreeAllocHeader, freelist_link));
-                Size offset = (Size)((Char*)prevBlock - (Char*)gKernel.alloc_table.sentinel_begin);
+                AllocBlockHeader* prevBlock = (AllocBlockHeader*)((Char*)prev - offsetof(FreeAllocBlockHeader, freelist_link));
+                Size offset = (Size)((Char*)prevBlock - (Char*)global_kernel_state.alloc_table.sentinel_begin);
                 std::print("{} {:<18} ", stateColor, offset);
             }
         } else {
@@ -335,15 +336,15 @@ namespace ak { namespace priv {
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
 
         // Print FreeList Next
-        if (h->this_size.state == (U32)AllocState::FREE) {
-            utl::DLink* freeListLink = &((FreeAllocHeader*)h)->freelist_link;
+        if (h->this_desc.state == (U32)AllocBlockState::FREE) {
+            utl::DLink* freeListLink = &((FreeAllocBlockHeader*)h)->freelist_link;
             utl::DLink* next = freeListLink->next;
-            utl::DLink* head = &gKernel.alloc_table.freelist_head[binIdx];
+            utl::DLink* head = &global_kernel_state.alloc_table.freelist_head[binIdx];
             if (next == head) {
                 std::print("{} {:<18} ", stateColor, "HEAD");
             } else {
-                AllocHeader* nextBlock = (AllocHeader*)((Char*)next - offsetof(FreeAllocHeader, freelist_link));
-                Size offset = (Size)((Char*)nextBlock - (Char*)gKernel.alloc_table.sentinel_begin);
+                AllocBlockHeader* nextBlock = (AllocBlockHeader*)((Char*)next - offsetof(FreeAllocBlockHeader, freelist_link));
+                Size offset = (Size)((Char*)nextBlock - (Char*)global_kernel_state.alloc_table.sentinel_begin);
                 std::print("{} {:<18} ", stateColor, offset);
             }
         } else {
@@ -356,13 +357,13 @@ namespace ak { namespace priv {
     inline Void dump_alloc_block() noexcept 
     {
         using namespace priv;
-        AllocTable* at = &gKernel.alloc_table;
+        AllocTable* at = &global_kernel_state.alloc_table;
         
         PrintTopBorder();
         PrintHeader();
         PrintHeaderSeparator();
-        AllocHeader* head = (AllocHeader*) at->sentinel_begin;
-        AllocHeader* end  = (AllocHeader*) next((AllocHeader*)at->sentinel_end);
+        AllocBlockHeader* head = (AllocBlockHeader*) at->sentinel_begin;
+        AllocBlockHeader* end  = (AllocBlockHeader*) next((AllocBlockHeader*)at->sentinel_end);
         
         for (; head != end; head = next(head)) {
             PrintRow(head);

@@ -99,13 +99,13 @@ CThread co_main(const Char* name) noexcept {
 	ak::init(&r_ready);
 	ak::init(&w_ready);
 
-	CThreadCtxHdl writer = writer_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
-	CThreadCtxHdl reader = reader_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
-	std::print("State of reader: {}; State of writer: {}\n", to_string(get_task_state(reader)), to_string(get_task_state(writer)));
+	CThread::Hdl writer = writer_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
+	CThread::Hdl reader = reader_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
+	std::print("State of reader: {}; State of writer: {}\n", to_string(ak::get_state(reader)), to_string(ak::get_state(writer)));
 	co_await join(reader);
-	std::print("State of reader: {}; State of writer: {}\n", to_string(get_task_state(reader)), to_string(get_task_state(writer)));
+	std::print("State of reader: {}; State of writer: {}\n", to_string(ak::get_state(reader)), to_string(ak::get_state(writer)));
 	co_await join(writer);
-	std::print("State of reader: {}; State of writer: {}\n", to_string(get_task_state(reader)), to_string(get_task_state(writer)));
+	std::print("State of reader: {}; State of writer: {}\n", to_string(ak::get_state(reader)), to_string(ak::get_state(writer)));
 	std::fflush(stdout);
 	
 	co_return 0;
@@ -121,7 +121,7 @@ int main() {
 		.ioEntryCount = 256
   	};
 
-	if (run_main(&config, co_main, "main") != 0) {
+	if (run_main_loop(&config, co_main, "main") != 0) {
 		std::print("main failed\n");
 		std::abort();
 		// Unreachable

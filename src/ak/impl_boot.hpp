@@ -5,35 +5,23 @@
 namespace ak {
     namespace priv 
     {
-        struct RunSchedulerTaskOp;
+        struct RunSchedulerOp;
         struct TerminateSchedulerOp;
-        
-        struct DefineKernelTask {
-            using promise_type = BootContext;
-
-            DefineKernelTask(const BootCtxHdl& hdl) noexcept : hdl(hdl) {}
-            operator BootCtxHdl() const noexcept { return hdl; }
-
-            BootCtxHdl hdl;
-        };
-
-
-        
+                
         // Boot routines
         template <typename... Args>
-        DefineKernelTask KernelTaskProc(CThread(*mainProc)(Args ...) noexcept, Args ... args) noexcept;
+        BootCThread boot_main_proc(CThread(*main)(Args ...) noexcept, Args ... args) noexcept;
 
         template <typename... Args>
-        CThread SchedulerTaskProc(CThread(*mainProc)(Args ...) noexcept, Args... args) noexcept;
+        CThread scheduler_main_proc(CThread(*main)(Args ...) noexcept, Args... args) noexcept;
         
-        int  InitKernel(KernelConfig* config) noexcept;
-        Void FiniKernel() noexcept;
+        int  init_kernel(KernelConfig* config) noexcept;
+        Void fini_kernel() noexcept;
         
-
         // Scheduler task routines
-        constexpr RunSchedulerTaskOp   RunSchedulerTask() noexcept;
-        constexpr TerminateSchedulerOp TerminateSchedulerTask() noexcept;
-        constexpr Void                 DestroySchedulerTask(CThreadCtxHdl hdl) noexcept;
+        constexpr RunSchedulerOp       run_scheduler() noexcept;
+        constexpr TerminateSchedulerOp terminate_scheduler() noexcept;
+        constexpr Void                 destroy_scheduler(CThread hdl) noexcept;
     
     }       
 }
@@ -44,16 +32,16 @@ namespace ak {
 
 namespace ak { namespace priv {
 
-    struct RunSchedulerTaskOp {
+    struct RunSchedulerOp {
         constexpr Bool await_ready() const noexcept { return false; }
         constexpr Void await_resume() const noexcept { }
-        CThreadCtxHdl await_suspend(BootCtxHdl currentTaskHdl) const noexcept;
+        CThread::Hdl   await_suspend(BootCThread::Hdl currentTaskHdl) const noexcept;
     };
 
     struct TerminateSchedulerOp {
-        constexpr Bool await_ready() const noexcept { return false; }
-        constexpr Void await_resume() const noexcept { }
-        BootCtxHdl  await_suspend(CThreadCtxHdl hdl) const noexcept;
+        constexpr Bool   await_ready() const noexcept { return false; }
+        constexpr Void   await_resume() const noexcept { }
+        BootCThread::Hdl await_suspend(CThread::Hdl hdl) const noexcept;
     };
 
 } }
@@ -72,52 +60,52 @@ namespace ak {
     // The SChedulerTask executues the users mainProc
 
     template <typename... Args>
-    inline int run_main(KernelConfig* config, CThread(*mainProc)(Args ...) noexcept , Args... args) noexcept {
+    inline int run_main_loop(KernelConfig* config, CThread(*mainProc)(Args ...) noexcept , Args... args) noexcept {
         using namespace priv;
 
-        std::memset((Void*)&gKernel, 0, sizeof(gKernel));
+        std::memset((Void*)&global_kernel_state, 0, sizeof(global_kernel_state));
 
-        if (InitKernel(config) < 0) {
+        if (init_kernel(config) < 0) {
             return -1;
         }
 
-        BootCtxHdl hdl = KernelTaskProc(mainProc, std::forward<Args>(args) ...);
-        gKernel.kernel_ctx_hdl = hdl;
-        hdl.resume();
-        FiniKernel();
+        auto boot_cthread = boot_main_proc(mainProc, std::forward<Args>(args) ...);
+        global_kernel_state.boot_cthread = boot_cthread;
+        boot_cthread.hdl.resume();
+        fini_kernel();
 
-        return gKernel.mainTaskReturnValue;
+        return global_kernel_state.main_cthread_exit_code;
     }
 
     namespace priv {
 
         template <typename... Args>
-        inline DefineKernelTask KernelTaskProc(CThread(*mainProc)(Args ...) noexcept, Args ... args) noexcept {
+        inline BootCThread boot_main_proc(CThread(*mainProc)(Args ...) noexcept, Args ... args) noexcept {
 
-            CThreadCtxHdl schedulerHdl = SchedulerTaskProc(mainProc, std::forward<Args>(args) ... );
-            gKernel.scheduler_ctx_hdl = schedulerHdl;
+            CThread::Hdl schedulerHdl = scheduler_main_proc(mainProc, std::forward<Args>(args) ... );
+            global_kernel_state.scheduler_cthread = schedulerHdl;
 
-            co_await RunSchedulerTask();
-            DestroySchedulerTask(schedulerHdl);
+            co_await run_scheduler();
+            destroy_scheduler(schedulerHdl);
             dump_task_count();
 
             co_return;
         }
 
         template <typename... Args>
-        inline CThread SchedulerTaskProc(CThread(*mainProc)(Args ...) noexcept, Args... args) noexcept {
+        inline CThread scheduler_main_proc(CThread(*mainProc)(Args ...) noexcept, Args... args) noexcept {
             using namespace priv;
 
-            CThreadCtxHdl mainTask = mainProc(args...);
-            gKernel.co_main_ctx_hdl = mainTask;
+            CThread::Hdl mainTask = mainProc(args...);
+            global_kernel_state.main_cthread = mainTask;
             assert(!mainTask.done());
-            assert(get_task_state(mainTask) == TaskState::READY);
+            assert(get_state(mainTask) == CThread::State::READY);
 
             while (true) {
                 // Sumbit IO operations
-                unsigned ready = io_uring_sq_ready(&gKernel.ioRing);
+                unsigned ready = io_uring_sq_ready(&global_kernel_state.io_uring_state);
                 if (ready > 0) {
-                    int ret = io_uring_submit(&gKernel.ioRing);
+                    int ret = io_uring_submit(&global_kernel_state.io_uring_state);
                     if (ret < 0) {
                         std::print("io_uring_submit failed\n");
                         fflush(stdout);
@@ -126,56 +114,56 @@ namespace ak {
                 }
 
                 // If we have a ready task, resume it
-                if (gKernel.ready_count > 0) {
-                    utl::DLink* nextNode = gKernel.ready_list.prev;
-                    CThreadContext* nextPromise = get_linked_context(nextNode);
-                    CThreadCtxHdl nextTask = CThreadCtxHdl::from_promise(*nextPromise);
-                    assert(nextTask != gKernel.scheduler_ctx_hdl);
-                    co_await ResumeTaskOp(nextTask);
-                    assert(gKernel.current_ctx_hdl);
+                if (global_kernel_state.ready_cthread_count > 0) {
+                    utl::DLink* nextNode = global_kernel_state.ready_list.prev;
+                    CThread::Context* nextPromise = get_linked_cthread_context(nextNode);
+                    CThread::Hdl nextTask = CThread::Hdl::from_promise(*nextPromise);
+                    assert(nextTask != global_kernel_state.scheduler_cthread);
+                    co_await op::ResumeCThread(nextTask);
+                    assert(global_kernel_state.current_cthread);
                     continue;
                 }
 
                 // Zombie bashing
-                while (gKernel.zombie_count > 0) {
+                while (global_kernel_state.zombie_cthread_count > 0) {
                     dump_task_count();
 
-                    utl::DLink* zombieNode = dequeue_link(&gKernel.zombie_list);
-                    CThreadContext& zombiePromise = *get_linked_context(zombieNode);
-                    assert(zombiePromise.state == TaskState::ZOMBIE);
+                    utl::DLink* zombie_link = dequeue_link(&global_kernel_state.zombie_list);
+                    CThread::Context* ctx = get_linked_cthread_context(zombie_link);
+                    assert(ctx->state == CThread::State::ZOMBIE);
 
                     // Remove from zombie list
-                    --gKernel.zombie_count;
-                    detach_link(&zombiePromise.wait_link);
+                    --global_kernel_state.zombie_cthread_count;
+                    detach_link(&ctx->wait_link);
 
                     // Remove from task list
-                    detach_link(&zombiePromise.tasklist_link);
-                    --gKernel.task_count;
+                    detach_link(&ctx->tasklist_link);
+                    --global_kernel_state.cthread_count;
 
                     // Delete
-                    zombiePromise.state = TaskState::DELETING;
-                    CThreadCtxHdl zombieTaskHdl = CThreadCtxHdl::from_promise(zombiePromise);
+                    ctx->state = CThread::State::DELETING;
+                    CThread::Hdl zombieTaskHdl = CThread::Hdl::from_promise(*ctx);
                     zombieTaskHdl.destroy();
 
                     dump_task_count();
                 }
 
-                Bool waitingCC = gKernel.iowaiting_count;
+                Bool waitingCC = global_kernel_state.iowaiting_cthread_count;
                 if (waitingCC) {
                     // Process all available completions
                     struct io_uring_cqe *cqe;
                     unsigned head;
                     unsigned completed = 0;
-                    io_uring_for_each_cqe(&gKernel.ioRing, head, cqe) {
+                    io_uring_for_each_cqe(&global_kernel_state.io_uring_state, head, cqe) {
                         // Return Result to the target Awaitable 
-                        CThreadContext* ctx = (CThreadContext*) io_uring_cqe_get_data(cqe);
-                        assert(ctx->state == TaskState::IO_WAITING);
+                        CThread::Context* ctx = (CThread::Context*) io_uring_cqe_get_data(cqe);
+                        assert(ctx->state == CThread::State::IO_WAITING);
 
                         // Move the target task from IO_WAITING to READY
-                        --gKernel.iowaiting_count;
-                        ctx->state = TaskState::READY;
-                        ++gKernel.ready_count;
-                        enqueue_link(&gKernel.ready_list, &ctx->wait_link);
+                        --global_kernel_state.iowaiting_cthread_count;
+                        ctx->state = CThread::State::READY;
+                        ++global_kernel_state.ready_cthread_count;
+                        enqueue_link(&global_kernel_state.ready_list, &ctx->wait_link);
                         
                         // Complete operation
                         ctx->res = cqe->res;
@@ -183,53 +171,53 @@ namespace ak {
                         ++completed;
                     }
                     // Mark all as seen
-                    io_uring_cq_advance(&gKernel.ioRing, completed);
+                    io_uring_cq_advance(&global_kernel_state.io_uring_state, completed);
                 }
 
-                if (gKernel.ready_count == 0 && gKernel.iowaiting_count == 0) {
+                if (global_kernel_state.ready_cthread_count == 0 && global_kernel_state.iowaiting_cthread_count == 0) {
                     break;
                 }
             }
-            co_await TerminateSchedulerTask();
+            co_await terminate_scheduler();
    
             std::abort(); // Unreachable
         }
 
 
-        inline int InitKernel(KernelConfig* config) noexcept {
+        inline int init_kernel(KernelConfig* config) noexcept {
             using namespace priv;
             
             if (init_alloc_table(config->mem, config->memSize) != 0) {
                 return -1;
             }
 
-            int res = io_uring_queue_init(config->ioEntryCount, &gKernel.ioRing, 0);
+            int res = io_uring_queue_init(config->ioEntryCount, &global_kernel_state.io_uring_state, 0);
             if (res < 0) {
                 std::print("io_uring_queue_init failed\n");
                 return -1;
             }
 
-            gKernel.mem = config->mem;
-            gKernel.memSize = config->memSize;
-            gKernel.task_count = 0;
-            gKernel.ready_count = 0;
-            gKernel.waiting_count = 0;
-            gKernel.iowaiting_count = 0;
-            gKernel.zombie_count = 0;
-            gKernel.interrupted = 0;
+            global_kernel_state.mem = config->mem;
+            global_kernel_state.mem_size = config->memSize;
+            global_kernel_state.cthread_count = 0;
+            global_kernel_state.ready_cthread_count = 0;
+            global_kernel_state.waiting_cthread_count = 0;
+            global_kernel_state.iowaiting_cthread_count = 0;
+            global_kernel_state.zombie_cthread_count = 0;
+            global_kernel_state.interrupted = 0;
 
-            clear(&gKernel.current_ctx_hdl);
-            clear(&gKernel.scheduler_ctx_hdl);
+            global_kernel_state.current_cthread.reset();
+            global_kernel_state.scheduler_cthread.reset();
 
-            utl::init_link(&gKernel.zombie_list);
-            utl::init_link(&gKernel.ready_list);
-            utl::init_link(&gKernel.task_list);
+            utl::init_link(&global_kernel_state.zombie_list);
+            utl::init_link(&global_kernel_state.ready_list);
+            utl::init_link(&global_kernel_state.cthread_list);
             
             return 0;
         }
 
-        inline Void FiniKernel() noexcept {
-            io_uring_queue_exit(&gKernel.ioRing);
+        inline Void fini_kernel() noexcept {
+            io_uring_queue_exit(&global_kernel_state.io_uring_state);
         }
     }
 }
@@ -241,10 +229,10 @@ namespace ak {
 
 namespace ak { 
 
-    inline Void* BootContext::operator new(std::size_t n) noexcept {
+    inline Void* BootCThread::Context::operator new(std::size_t n) noexcept {
         std::print("KernelTaskPromise::operator new with size: {}\n", n);
-        assert(n <= sizeof(gKernel.bootTaskFrame));
-        return (Void*)gKernel.bootTaskFrame;
+        assert(n <= sizeof(global_kernel_state.boot_cthread_frame_buffer));
+        return (Void*)global_kernel_state.boot_cthread_frame_buffer;
     }
     
 }
@@ -260,72 +248,72 @@ namespace ak { namespace priv {
 // RunSchedulerTaskOp
 // ----------------------------------------------------------------------------------------------------------------
 
-inline CThreadCtxHdl RunSchedulerTaskOp::await_suspend(BootCtxHdl currentTaskHdl) const noexcept {
+inline CThread::Hdl RunSchedulerOp::await_suspend(BootCThread::Hdl currentTaskHdl) const noexcept {
     using namespace priv;
 
     (Void)currentTaskHdl;
-    CThreadContext& schedulerPromise = gKernel.scheduler_ctx_hdl.promise();
+    CThread::Context* scheduler_ctx = get_context(global_kernel_state.scheduler_cthread);
 
     // Check expected state post scheduler construction
 
-    assert(gKernel.task_count == 1);
-    assert(gKernel.ready_count == 1);
-    assert(schedulerPromise.state == TaskState::READY);
-    assert(!is_link_detached(&schedulerPromise.wait_link));
-    assert(gKernel.current_ctx_hdl == CThreadCtxHdl());
+    assert(global_kernel_state.cthread_count == 1);
+    assert(global_kernel_state.ready_cthread_count == 1);
+    assert(scheduler_ctx->state == CThread::State::READY);
+    assert(!is_link_detached(&scheduler_ctx->wait_link));
+    assert(global_kernel_state.current_cthread == CThread::Hdl());
 
     // Setup SchedulerTask for execution (from READY -> RUNNING)
-    gKernel.current_ctx_hdl = gKernel.scheduler_ctx_hdl;
-    schedulerPromise.state = TaskState::RUNNING;
-    detach_link(&schedulerPromise.wait_link);
-    --gKernel.ready_count;
+    global_kernel_state.current_cthread = global_kernel_state.scheduler_cthread;
+    scheduler_ctx->state = CThread::State::RUNNING;
+    detach_link(&scheduler_ctx->wait_link);
+    --global_kernel_state.ready_cthread_count;
 
     // Check expected state post task system bootstrap
     check_invariants();
-    return gKernel.scheduler_ctx_hdl;
+    return global_kernel_state.scheduler_cthread;
 }
 
 // TerminateSchedulerOp
 // ----------------------------------------------------------------------------------------------------------------
 
-inline BootCtxHdl TerminateSchedulerOp::await_suspend(CThreadCtxHdl hdl) const noexcept {
+inline BootCThread::Hdl TerminateSchedulerOp::await_suspend(CThread::Hdl hdl) const noexcept {
     using namespace priv;
 
-    assert(gKernel.current_ctx_hdl == gKernel.scheduler_ctx_hdl);
-    assert(gKernel.current_ctx_hdl == hdl);
+    assert(global_kernel_state.current_cthread == global_kernel_state.scheduler_cthread);
+    assert(global_kernel_state.current_cthread == hdl);
 
-    CThreadContext& schedulerPromise = gKernel.scheduler_ctx_hdl.promise();
-    assert(schedulerPromise.state == TaskState::RUNNING);
-    assert(utl::is_link_detached(&schedulerPromise.wait_link));
+    auto* scheduler_context = get_context(global_kernel_state.scheduler_cthread);
+    assert(scheduler_context->state == CThread::State::RUNNING);
+    assert(utl::is_link_detached(&scheduler_context->wait_link));
 
-    schedulerPromise.state = TaskState::ZOMBIE;
-    clear(&gKernel.current_ctx_hdl);
-    enqueue_link(&gKernel.zombie_list, &schedulerPromise.wait_link);
-    ++gKernel.zombie_count;
+    scheduler_context->state = CThread::State::ZOMBIE;
+    global_kernel_state.current_cthread.reset();
+    enqueue_link(&global_kernel_state.zombie_list, &scheduler_context->wait_link);
+    ++global_kernel_state.zombie_cthread_count;
 
-    return gKernel.kernel_ctx_hdl;
+    return global_kernel_state.boot_cthread;
 }
 
 // Boot implementation
 // ----------------------------------------------------------------------------------------------------------------
-constexpr RunSchedulerTaskOp   RunSchedulerTask() noexcept       { return {}; }
+constexpr RunSchedulerOp   run_scheduler() noexcept       { return {}; }
 
-constexpr TerminateSchedulerOp TerminateSchedulerTask() noexcept { return {}; }
+constexpr TerminateSchedulerOp terminate_scheduler() noexcept { return {}; }
 
-inline constexpr Void DestroySchedulerTask(CThreadCtxHdl hdl) noexcept {
+inline constexpr Void destroy_scheduler(CThread ct) noexcept {
     using namespace priv;
-    CThreadContext* promise = &hdl.promise();
+    auto* context = get_context(ct);
 
     // Remove from Task list
-    detach_link(&promise->tasklist_link);
-    --gKernel.task_count;
+    detach_link(&context->tasklist_link);
+    --global_kernel_state.cthread_count;
 
     // Remove from Zombie List
-    detach_link(&promise->wait_link);
-    --gKernel.zombie_count;
+    detach_link(&context->wait_link);
+    --global_kernel_state.zombie_cthread_count;
 
-    promise->state = TaskState::DELETING; //TODO: double check
-    hdl.destroy();
+    context->state = CThread::State::DELETING;
+    ct.hdl.destroy();
 }
 
 // Scheduler implementation routines
@@ -338,28 +326,28 @@ inline constexpr Void DestroySchedulerTask(CThreadCtxHdl hdl) noexcept {
 ///
 /// \return the next Task to be resumed
 /// \internal
-inline CThreadCtxHdl schedule() noexcept {
+inline CThread::Hdl schedule_cthread() noexcept {
     using namespace priv;
 
     // If we have a ready task, resume it
     while (true) {
-        if (gKernel.ready_count > 0) {
-            utl::DLink* link = dequeue_link(&gKernel.ready_list);
-            CThreadContext* ctx = get_linked_context(link);
-            CThreadCtxHdl task = CThreadCtxHdl::from_promise(*ctx);
-            assert(ctx->state == TaskState::READY);
-            ctx->state = TaskState::RUNNING;
-            --gKernel.ready_count;
-            gKernel.current_ctx_hdl = task;
+        if (global_kernel_state.ready_cthread_count > 0) {
+            utl::DLink* link = dequeue_link(&global_kernel_state.ready_list);
+            CThread::Context* ctx = get_linked_cthread_context(link);
+            CThread::Hdl task = CThread::Hdl::from_promise(*ctx);
+            assert(ctx->state == CThread::State::READY);
+            ctx->state = CThread::State::RUNNING;
+            --global_kernel_state.ready_cthread_count;
+            global_kernel_state.current_cthread = task;
             check_invariants();
             return task;
         }
 
-        if (gKernel.iowaiting_count > 0) {
-            unsigned ready = io_uring_sq_ready(&gKernel.ioRing);
+        if (global_kernel_state.iowaiting_cthread_count > 0) {
+            unsigned ready = io_uring_sq_ready(&global_kernel_state.io_uring_state);
             // Submit Ready IO Operations
             if (ready > 0) {
-                int ret = io_uring_submit(&gKernel.ioRing);
+                int ret = io_uring_submit(&global_kernel_state.io_uring_state);
                 if (ret < 0) {
                     std::print("io_uring_submit failed\n");
                     fflush(stdout);
@@ -371,16 +359,16 @@ inline CThreadCtxHdl schedule() noexcept {
             struct io_uring_cqe *cqe;
             unsigned head;
             unsigned completed = 0;
-            io_uring_for_each_cqe(&gKernel.ioRing, head, cqe) {
+            io_uring_for_each_cqe(&global_kernel_state.io_uring_state, head, cqe) {
                 // Return Result to the target Awaitable 
-                CThreadContext* ctx = (CThreadContext*) io_uring_cqe_get_data(cqe);
-                assert(ctx->state == TaskState::IO_WAITING);
+                CThread::Context* ctx = (CThread::Context*) io_uring_cqe_get_data(cqe);
+                assert(ctx->state == CThread::State::IO_WAITING);
 
                 // Move the target task from IO_WAITING to READY
-                --gKernel.iowaiting_count;
-                ctx->state = TaskState::READY;
-                ++gKernel.ready_count;
-                enqueue_link(&gKernel.ready_list, &ctx->wait_link);
+                --global_kernel_state.iowaiting_cthread_count;
+                ctx->state = CThread::State::READY;
+                ++global_kernel_state.ready_cthread_count;
+                enqueue_link(&global_kernel_state.ready_list, &ctx->wait_link);
                 
                 // Complete operation
                 ctx->res = cqe->res;
@@ -388,36 +376,36 @@ inline CThreadCtxHdl schedule() noexcept {
                 ++completed;
             }
             // Mark all as seen
-            io_uring_cq_advance(&gKernel.ioRing, completed);
+            io_uring_cq_advance(&global_kernel_state.io_uring_state, completed);
             
             continue;
         }
 
         // Zombie bashing
-        while (gKernel.zombie_count > 0) {
+        while (global_kernel_state.zombie_cthread_count > 0) {
             dump_task_count();
 
-            utl::DLink* zombieNode = dequeue_link(&gKernel.zombie_list);
-            CThreadContext& zombiePromise = *get_linked_context(zombieNode);
-            assert(zombiePromise.state == TaskState::ZOMBIE);
+            utl::DLink* zombieNode = dequeue_link(&global_kernel_state.zombie_list);
+            CThread::Context& zombiePromise = *get_linked_cthread_context(zombieNode);
+            assert(zombiePromise.state == CThread::State::ZOMBIE);
 
             // Remove from zombie list
-            --gKernel.zombie_count;
+            --global_kernel_state.zombie_cthread_count;
             detach_link(&zombiePromise.wait_link);
 
             // Remove from task list
             detach_link(&zombiePromise.tasklist_link);
-            --gKernel.task_count;
+            --global_kernel_state.cthread_count;
 
             // Delete
-            zombiePromise.state = TaskState::DELETING;
-            CThreadCtxHdl zombieTaskHdl = CThreadCtxHdl::from_promise(zombiePromise);
+            zombiePromise.state = CThread::State::DELETING;
+            CThread::Hdl zombieTaskHdl = CThread::Hdl::from_promise(zombiePromise);
             zombieTaskHdl.destroy();
 
             dump_task_count();
         }
 
-        if (gKernel.ready_count == 0) {
+        if (global_kernel_state.ready_cthread_count == 0) {
             abort();
         }
     }

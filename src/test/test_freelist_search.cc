@@ -228,7 +228,7 @@ int main() {
 		.ioEntryCount = 256
   	};
 	
-	if (run_main(&config, co_main) != 0) {
+	if (run_main_loop(&config, co_main) != 0) {
 		std::print("main failed\n");
 		std::abort();
 		// Unreachable

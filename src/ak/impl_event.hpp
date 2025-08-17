@@ -6,21 +6,21 @@ namespace ak {
     // WaitOp
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline constexpr CThreadCtxHdl WaitEventOp::await_suspend(CThreadCtxHdl hdl) const noexcept {
+    inline constexpr CThread::Hdl op::WaitEvent::await_suspend(CThread::Hdl hdl) const noexcept {
         using namespace priv;
 
-        CThreadContext* ctx = &hdl.promise();
-        assert(gKernel.current_ctx_hdl == hdl);
-        assert(ctx->state == TaskState::RUNNING);
+        CThread::Context* ctx = &hdl.promise();
+        assert(global_kernel_state.current_cthread == hdl);
+        assert(ctx->state == CThread::State::RUNNING);
         
         // Move state from RUNNING to WAITING  
-        ctx->state = TaskState::WAITING;
-        ++gKernel.waiting_count;
+        ctx->state = CThread::State::WAITING;
+        ++global_kernel_state.waiting_cthread_count;
         utl::enqueue_link(&evt->wait_list, &ctx->wait_link);
-        clear(&gKernel.current_ctx_hdl);
+        global_kernel_state.current_cthread.reset();
         check_invariants();
 
-        return schedule();
+        return schedule_cthread();
     }
 
     // Event routines implementation
@@ -39,15 +39,15 @@ namespace ak {
         if (utl::is_link_detached(&event->wait_list)) return 0;
 
         utl::DLink* link = utl::dequeue_link(&event->wait_list);
-        CThreadContext* ctx = get_linked_context(link);
-        assert(ctx->state == TaskState::WAITING);
+        CThread::Context* ctx = get_linked_cthread_context(link);
+        assert(ctx->state == CThread::State::WAITING);
         
         // Move the target task from WAITING to READY
         utl::detach_link(link);
-        --gKernel.waiting_count;
-        ctx->state = TaskState::READY;
-        utl::enqueue_link(&gKernel.ready_list, &ctx->wait_link);
-        ++gKernel.ready_count;
+        --global_kernel_state.waiting_cthread_count;
+        ctx->state = CThread::State::READY;
+        utl::enqueue_link(&global_kernel_state.ready_list, &ctx->wait_link);
+        ++global_kernel_state.ready_cthread_count;
         return 1;
     }
 
@@ -59,15 +59,15 @@ namespace ak {
         int cc = 0;
         while (cc < n && !utl::is_link_detached(&event->wait_list)) {
             utl::DLink* link = utl::dequeue_link(&event->wait_list);
-            CThreadContext* ctx = get_linked_context(link);
-            assert(ctx->state == TaskState::WAITING);
+            CThread::Context* ctx = get_linked_cthread_context(link);
+            assert(ctx->state == CThread::State::WAITING);
             
             // Move the target task from WAITING to READY
             utl::detach_link(link);
-            --gKernel.waiting_count;
-            ctx->state = TaskState::READY;
-            utl::enqueue_link(&gKernel.ready_list, &ctx->wait_link);
-            ++gKernel.ready_count;    
+            --global_kernel_state.waiting_cthread_count;
+            ctx->state = CThread::State::READY;
+            utl::enqueue_link(&global_kernel_state.ready_list, &ctx->wait_link);
+            ++global_kernel_state.ready_cthread_count;    
             ++cc;
         }
         return cc;
@@ -79,24 +79,24 @@ namespace ak {
         int signalled = 0;
         while (!utl::is_link_detached(&event->wait_list)) {
             utl::DLink* link = utl::dequeue_link(&event->wait_list);
-            CThreadContext* ctx = get_linked_context(link);
-            assert(ctx->state == TaskState::WAITING);
+            CThread::Context* ctx = get_linked_cthread_context(link);
+            assert(ctx->state == CThread::State::WAITING);
             
             // Move the target task from WAITING to READY
             utl::detach_link(link);
-            --gKernel.waiting_count;
-            ctx->state = TaskState::READY;
-            utl::enqueue_link(&gKernel.ready_list, &ctx->wait_link);
-            ++gKernel.ready_count;
+            --global_kernel_state.waiting_cthread_count;
+            ctx->state = CThread::State::READY;
+            utl::enqueue_link(&global_kernel_state.ready_list, &ctx->wait_link);
+            ++global_kernel_state.ready_cthread_count;
             
             ++signalled;        
         }
         return signalled;
     }
 
-    inline WaitEventOp wait(Event* event) {
+    inline op::WaitEvent wait(Event* event) {
         assert(event != nullptr);
-        return WaitEventOp{event};
+        return op::WaitEvent{event};
     }
 
 }

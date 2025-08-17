@@ -38,7 +38,7 @@ namespace ak { namespace utl {
         link->prev = nullptr;
     }
 
-    inline Void enqueue_link(DLink* queue, DLink* link) {
+    inline Void enqueue_link(DLink* queue, DLink* link) noexcept {
         assert(queue != nullptr);
         assert(link != nullptr);
         assert(queue->next != nullptr);
@@ -51,7 +51,7 @@ namespace ak { namespace utl {
         queue->next = link;
     }
 
-    inline DLink* dequeue_link(DLink* queue) {
+    inline DLink* dequeue_link(DLink* queue) noexcept {
         assert(queue != nullptr);
         assert(queue->next != nullptr);
         assert(queue->prev != nullptr);
@@ -61,7 +61,7 @@ namespace ak { namespace utl {
         return target;
     }
 
-    inline Void insert_prev_link(DLink* queue, DLink* link) {
+    inline Void insert_prev_link(DLink* queue, DLink* link) noexcept {
         assert(queue != nullptr);
         assert(link != nullptr);
         assert(queue->next != nullptr);
@@ -74,7 +74,7 @@ namespace ak { namespace utl {
         link->prev->next = link;
     }
 
-    inline Void insert_next_link(DLink* queue, DLink* link) {
+    inline Void insert_next_link(DLink* queue, DLink* link) noexcept {
         assert(queue != nullptr);
         assert(link != nullptr);
         assert(queue->next != nullptr);
@@ -87,11 +87,11 @@ namespace ak { namespace utl {
         queue->next = link;
     }
 
-    inline Void push_link(DLink* stack, DLink* link) {
+    inline Void push_link(DLink* stack, DLink* link) noexcept {
         insert_next_link(stack, link);
     }
 
-    inline DLink* pop_link(DLink* stack) {
+    inline DLink* pop_link(DLink* stack) noexcept {
         assert(stack != nullptr);
         assert(stack->next != nullptr);
         assert(stack->prev != nullptr);

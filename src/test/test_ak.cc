@@ -31,10 +31,10 @@ CThread b_thread(const Char* name) noexcept {
 
 CThread co_main(const Char* name) noexcept {
 	std::print("Hello from '{}'\n", name);
-	CThreadCtxHdl a = a_thread("A-TASK");
+	auto a = a_thread("A-TASK");
 	auto b = b_thread("B-TASK");
 	co_await a;
-	co_await join(b);
+	co_await b;
 	co_return 0;
 }
 
@@ -47,7 +47,7 @@ int main() {
 		.ioEntryCount = 256
   	};
 	
-	if (run_main(&config, co_main, "main") != 0) {
+	if (run_main_loop(&config, co_main, "main") != 0) {
 		std::print("main failed\n");
 		std::abort();
 		// Unreachable

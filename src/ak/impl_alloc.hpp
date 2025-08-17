@@ -10,7 +10,7 @@ namespace ak { namespace priv {
     int  FindAllocFreeListBinIndex(__m256i* bitField, Size allocSize) noexcept;
 
 
-    unsigned GetAllocFreeListBinIndex(const AllocHeader* h) noexcept;
+    unsigned GetAllocFreeListBinIndex(const AllocBlockHeader* h) noexcept;
 }}
 
 
@@ -58,9 +58,9 @@ namespace ak { namespace priv {
     }
 
     inline int init_alloc_table(Void* mem, Size size) noexcept {
-        AllocTable* at = &gKernel.alloc_table;
+        AllocTable* at = &global_kernel_state.alloc_table;
         
-        constexpr U64 SENTINEL_SIZE = sizeof(FreeAllocHeader);
+        constexpr U64 SENTINEL_SIZE = sizeof(FreeAllocBlockHeader);
 
         assert(mem != nullptr);
         assert(size >= 4096);
@@ -83,10 +83,10 @@ namespace ak { namespace priv {
 
         // Addresses
         // Layout: [BeginSentinel] ... blocks ... [LargeBlockSentinel] ... largeBlocks ... [EndSentinel]
-        FreeAllocHeader* beginSentinel      = (FreeAllocHeader*)alignedBegin;
-        FreeAllocHeader* wildBlock          = (FreeAllocHeader*)((Char*)beginSentinel + SENTINEL_SIZE);
-        FreeAllocHeader* endSentinel        = (FreeAllocHeader*)((Char*)alignedEnd    - SENTINEL_SIZE); 
-        FreeAllocHeader* largeBlockSentinel = (FreeAllocHeader*)((Char*)endSentinel   - SENTINEL_SIZE);
+        FreeAllocBlockHeader* beginSentinel      = (FreeAllocBlockHeader*)alignedBegin;
+        FreeAllocBlockHeader* wildBlock          = (FreeAllocBlockHeader*)((Char*)beginSentinel + SENTINEL_SIZE);
+        FreeAllocBlockHeader* endSentinel        = (FreeAllocBlockHeader*)((Char*)alignedEnd    - SENTINEL_SIZE); 
+        FreeAllocBlockHeader* largeBlockSentinel = (FreeAllocBlockHeader*)((Char*)endSentinel   - SENTINEL_SIZE);
         utl::init_link(&wildBlock->freelist_link);
         
         // Check alignments
@@ -100,21 +100,21 @@ namespace ak { namespace priv {
         at->sentinel_end        = endSentinel;
         at->sentinel_large_block = largeBlockSentinel;
         
-        beginSentinel->this_size.size       = (U64)SENTINEL_SIZE;
-        beginSentinel->this_size.state      = (U32)AllocState::BEGIN_SENTINEL;
+        beginSentinel->this_desc.size       = (U64)SENTINEL_SIZE;
+        beginSentinel->this_desc.state      = (U32)AllocBlockState::BEGIN_SENTINEL;
         // Initialize prevSize for the begin sentinel to avoid reading
         // uninitialized memory in debug printers.
-        beginSentinel->prev_size            = { 0ull, (U32)AllocState::INVALID, 0ull };
-        wildBlock->this_size.size           = (U64)((U64)largeBlockSentinel - (U64)wildBlock);
-        wildBlock->this_size.state          = (U32)AllocState::WILD_BLOCK;
-        largeBlockSentinel->this_size.size  = (U64)SENTINEL_SIZE;
-        largeBlockSentinel->this_size.state = (U32)AllocState::LARGE_BLOCK_SENTINEL;
-        endSentinel->this_size.size         = (U64)SENTINEL_SIZE;
-        endSentinel->this_size.state        = (U32)AllocState::END_SENTINEL;
-        wildBlock->prev_size                = beginSentinel->this_size;
-        largeBlockSentinel->prev_size       = wildBlock->this_size;
-        endSentinel->prev_size              = largeBlockSentinel->this_size;
-        at->free_mem_size                    = wildBlock->this_size.size;
+        beginSentinel->prev_desc            = { 0ull, (U32)AllocBlockState::INVALID, 0ull };
+        wildBlock->this_desc.size           = (U64)((U64)largeBlockSentinel - (U64)wildBlock);
+        wildBlock->this_desc.state          = (U32)AllocBlockState::WILD_BLOCK;
+        largeBlockSentinel->this_desc.size  = (U64)SENTINEL_SIZE;
+        largeBlockSentinel->this_desc.state = (U32)AllocBlockState::LARGE_BLOCK_SENTINEL;
+        endSentinel->this_desc.size         = (U64)SENTINEL_SIZE;
+        endSentinel->this_desc.state        = (U32)AllocBlockState::END_SENTINEL;
+        wildBlock->prev_desc                = beginSentinel->this_desc;
+        largeBlockSentinel->prev_desc       = wildBlock->this_desc;
+        endSentinel->prev_desc              = largeBlockSentinel->this_desc;
+        at->free_mem_size                    = wildBlock->this_desc.size;
 
         for (int i = 0; i < 255; ++i) { // Wild block (255) stays cleared
             utl::init_link(&at->freelist_head[i]);
@@ -157,16 +157,16 @@ namespace ak { namespace priv {
         std::memcpy(reinterpret_cast<Char*>(bitField) + lane * sizeof(uint64_t), &word, sizeof(uint64_t));
     }
 
-    inline AllocHeader* next(AllocHeader* h) noexcept {
-        size_t sz = (size_t)h->this_size.size;
+    inline AllocBlockHeader* next(AllocBlockHeader* h) noexcept {
+        size_t sz = (size_t)h->this_desc.size;
         if (sz == 0) return h;
-        return (AllocHeader*)((Char*)h + sz);
+        return (AllocBlockHeader*)((Char*)h + sz);
     }
 
-    inline AllocHeader* prev(AllocHeader* h) noexcept {
-        size_t sz = (size_t)h->prev_size.size;
+    inline AllocBlockHeader* prev(AllocBlockHeader* h) noexcept {
+        size_t sz = (size_t)h->prev_desc.size;
         if (sz == 0) return h;
-        return (AllocHeader*)((Char*)h - sz);
+        return (AllocBlockHeader*)((Char*)h - sz);
     }
 
     inline U64 get_alloc_freelist_index(U64 sz) noexcept {
@@ -179,24 +179,24 @@ namespace ak { namespace priv {
         return bin;
     }
 
-    inline unsigned GetAllocFreeListBinIndex(const AllocHeader* h) noexcept {
-        switch ((AllocState)h->this_size.state) {
-            case AllocState::WILD_BLOCK:
+    inline unsigned GetAllocFreeListBinIndex(const AllocBlockHeader* h) noexcept {
+        switch ((AllocBlockState)h->this_desc.state) {
+            case AllocBlockState::WILD_BLOCK:
                 return 255;
-            case AllocState::FREE: 
+            case AllocBlockState::FREE: 
             {
-                const U64 sz = h->this_size.size;
+                const U64 sz = h->this_desc.size;
                 // Same mapping used everywhere: bin = ceil(sz/32) - 1, clamped to 254
                 U64 bin = (U64)((sz - 1ull) >> 5);
                 const U64 mask = (U64)-(bin > 254u);
                 bin = (bin & ~mask) | (254u & mask);
                 return bin;
             }
-            case AllocState::INVALID:
-            case AllocState::USED:
-            case AllocState::BEGIN_SENTINEL:
-            case AllocState::LARGE_BLOCK_SENTINEL:
-            case AllocState::END_SENTINEL:
+            case AllocBlockState::INVALID:
+            case AllocBlockState::USED:
+            case AllocBlockState::BEGIN_SENTINEL:
+            case AllocBlockState::LARGE_BLOCK_SENTINEL:
+            case AllocBlockState::END_SENTINEL:
             default:
             {
                // Unreachable
@@ -218,14 +218,14 @@ namespace ak {
         static constexpr Size ALIGNMENT      = 32;
     }
     
-    inline const Char* to_string(AllocState s) noexcept {
+    inline const Char* to_string(AllocBlockState s) noexcept {
         switch (s) {
-            case AllocState::USED:                 return "USED";
-            case AllocState::FREE:                 return "FREE";
-            case AllocState::WILD_BLOCK:           return "WILD";
-            case AllocState::BEGIN_SENTINEL:       return "SENTINEL B";
-            case AllocState::LARGE_BLOCK_SENTINEL: return "SENTINEL L";
-            case AllocState::END_SENTINEL:         return "SENTINEL E";
+            case AllocBlockState::USED:                 return "USED";
+            case AllocBlockState::FREE:                 return "FREE";
+            case AllocBlockState::WILD_BLOCK:           return "WILD";
+            case AllocBlockState::BEGIN_SENTINEL:       return "SENTINEL B";
+            case AllocBlockState::LARGE_BLOCK_SENTINEL: return "SENTINEL L";
+            case AllocBlockState::END_SENTINEL:         return "SENTINEL E";
             default:                               return "INVALID";
         }
     }
@@ -253,47 +253,47 @@ namespace ak {
         assert(requestedBlockSize >= MIN_BLOCK_SIZE);
         
         // Find bin
-        int binIdx = FindAllocFreeListBinIndex(&gKernel.alloc_table.freelist_mask, requestedBlockSize);
+        int binIdx = FindAllocFreeListBinIndex(&global_kernel_state.alloc_table.freelist_mask, requestedBlockSize);
         
         // Small bin allocation case
         // =========================
         if (binIdx < 254) {
-            assert(gKernel.alloc_table.freelist_count[binIdx] > 0);
-            assert(GetAllocFreeBinBit(&gKernel.alloc_table.freelist_mask, binIdx));
+            assert(global_kernel_state.alloc_table.freelist_count[binIdx] > 0);
+            assert(GetAllocFreeBinBit(&global_kernel_state.alloc_table.freelist_mask, binIdx));
             
-            utl::DLink* freeStack = &gKernel.alloc_table.freelist_head[binIdx];
+            utl::DLink* freeStack = &global_kernel_state.alloc_table.freelist_head[binIdx];
             utl::DLink* link = utl::pop_link(freeStack);
-            --gKernel.alloc_table.freelist_count[binIdx];
-            if (gKernel.alloc_table.freelist_count[binIdx] == 0) {
-                ClearAllocFreeBinBit(&gKernel.alloc_table.freelist_mask, binIdx);
+            --global_kernel_state.alloc_table.freelist_count[binIdx];
+            if (global_kernel_state.alloc_table.freelist_count[binIdx] == 0) {
+                ClearAllocFreeBinBit(&global_kernel_state.alloc_table.freelist_mask, binIdx);
             } 
             
-            AllocHeader* block = (AllocHeader*)((Char*)link - offsetof(FreeAllocHeader, freelist_link));
-            AllocHeader* nextBlock = next(block);
+            AllocBlockHeader* block = (AllocBlockHeader*)((Char*)link - offsetof(FreeAllocBlockHeader, freelist_link));
+            AllocBlockHeader* nextBlock = next(block);
             __builtin_prefetch(nextBlock, 1, 3);
             
             if constexpr (IS_DEBUG_MODE) {
                 utl::clear_link(link);
             }
 
-            Size blockSize = block->this_size.size;
+            Size blockSize = block->this_desc.size;
             
             // Exact match case
             // ----------------
             if (blockSize == requestedBlockSize) {  
                 // Update This State
-                assert(block->this_size.state == (U32)AllocState::FREE);
-                block->this_size.state = (U32)AllocState::USED;
-                assert(block->this_size.state == (U32)AllocState::USED);
+                assert(block->this_desc.state == (U32)AllocBlockState::FREE);
+                block->this_desc.state = (U32)AllocBlockState::USED;
+                assert(block->this_desc.state == (U32)AllocBlockState::USED);
                 
                 // Update Prev State
-                assert(nextBlock->prev_size.state == (U32)AllocState::FREE);
-                nextBlock->prev_size.state = (U32)AllocState::USED;
-                assert(nextBlock->prev_size.state == (U32)AllocState::USED);
+                assert(nextBlock->prev_desc.state == (U32)AllocBlockState::FREE);
+                nextBlock->prev_desc.state = (U32)AllocBlockState::USED;
+                assert(nextBlock->prev_desc.state == (U32)AllocBlockState::USED);
 
-                gKernel.alloc_table.free_mem_size -= requestedBlockSize;
-                ++gKernel.alloc_table.stats.alloc_counter[binIdx];
-                ++gKernel.alloc_table.stats.reused_counter[binIdx];
+                global_kernel_state.alloc_table.free_mem_size -= requestedBlockSize;
+                ++global_kernel_state.alloc_table.stats.alloc_counter[binIdx];
+                ++global_kernel_state.alloc_table.stats.reused_counter[binIdx];
                 
                 return (Void*)((Char*)block + HEADER_SIZE);
             } 
@@ -306,42 +306,42 @@ namespace ak {
             
             // Prefetch the new free block
             // ----------------------------
-            FreeAllocHeader* newFree = (FreeAllocHeader*)((Char*)block + requestedBlockSize);
+            FreeAllocBlockHeader* newFree = (FreeAllocBlockHeader*)((Char*)block + requestedBlockSize);
             __builtin_prefetch(newFree, 1, 3);
 
             // Prefetch stats
             // --------------
             Size newBinIdx = get_alloc_freelist_index(newFreeSize);
-            __builtin_prefetch(&gKernel.alloc_table.stats.split_counter[binIdx], 1, 3);  
-            __builtin_prefetch(&gKernel.alloc_table.stats.alloc_counter[binIdx], 1, 3);
-            __builtin_prefetch(&gKernel.alloc_table.stats.pooled_counter[newBinIdx],  1, 3);
+            __builtin_prefetch(&global_kernel_state.alloc_table.stats.split_counter[binIdx], 1, 3);  
+            __builtin_prefetch(&global_kernel_state.alloc_table.stats.alloc_counter[binIdx], 1, 3);
+            __builtin_prefetch(&global_kernel_state.alloc_table.stats.pooled_counter[newBinIdx],  1, 3);
 
             // Update the new free block
             // -------------------------
-            assert(block->this_size.state == (U32)AllocState::FREE);
+            assert(block->this_desc.state == (U32)AllocBlockState::FREE);
 
-            AllocSizeRecord newAllocRecordSize = { requestedBlockSize, (U32)AllocState::USED, 0 };
-            block->this_size   = newAllocRecordSize;
-            newFree->prev_size = newAllocRecordSize;
+            AllocBlockDesc newAllocRecordSize = { requestedBlockSize, (U32)AllocBlockState::USED, 0 };
+            block->this_desc   = newAllocRecordSize;
+            newFree->prev_desc = newAllocRecordSize;
 
-            AllocSizeRecord newFreeSizeRecord = { newFreeSize, (U32)AllocState::FREE, 0 };
-            newFree->this_size   = newFreeSizeRecord;
-            nextBlock->prev_size = newFreeSizeRecord;
+            AllocBlockDesc newFreeSizeRecord = { newFreeSize, (U32)AllocBlockState::FREE, 0 };
+            newFree->this_desc   = newFreeSizeRecord;
+            nextBlock->prev_desc = newFreeSizeRecord;
             
-            assert(block->this_size.state == (U32)AllocState::USED);
-            assert(nextBlock->prev_size.state == (U32)AllocState::FREE);
-            assert(newFree->this_size.state == (U32)AllocState::FREE);
+            assert(block->this_desc.state == (U32)AllocBlockState::USED);
+            assert(nextBlock->prev_desc.state == (U32)AllocBlockState::FREE);
+            assert(newFree->this_desc.state == (U32)AllocBlockState::FREE);
 
             // Update stats
             // ------------
             
-            ++gKernel.alloc_table.stats.split_counter[binIdx];
-            ++gKernel.alloc_table.stats.alloc_counter[binIdx];
-            utl::push_link(&gKernel.alloc_table.freelist_head[newBinIdx], &newFree->freelist_link);
-            SetAllocFreeBinBit(&gKernel.alloc_table.freelist_mask, newBinIdx);
-            ++gKernel.alloc_table.stats.pooled_counter[newBinIdx];            
-            ++gKernel.alloc_table.freelist_count[newBinIdx];
-            gKernel.alloc_table.free_mem_size -= requestedBlockSize;
+            ++global_kernel_state.alloc_table.stats.split_counter[binIdx];
+            ++global_kernel_state.alloc_table.stats.alloc_counter[binIdx];
+            utl::push_link(&global_kernel_state.alloc_table.freelist_head[newBinIdx], &newFree->freelist_link);
+            SetAllocFreeBinBit(&global_kernel_state.alloc_table.freelist_mask, newBinIdx);
+            ++global_kernel_state.alloc_table.stats.pooled_counter[newBinIdx];            
+            ++global_kernel_state.alloc_table.freelist_count[newBinIdx];
+            global_kernel_state.alloc_table.free_mem_size -= requestedBlockSize;
             
             return (Void*)((Char*)block + HEADER_SIZE);            
         }
@@ -356,36 +356,36 @@ namespace ak {
         // Case we are allocating from the Wild Block (255)
         // ================================================
         if (binIdx == 255) {  
-            assert(gKernel.alloc_table.wild_block != nullptr);                      // Wild block pointer always valid
-            assert(GetAllocFreeBinBit(&gKernel.alloc_table.freelist_mask, 255)); // Wild block is always in the free list
-            assert(gKernel.alloc_table.freelist_count[255] == 1);               // Wild block has always exaclty one block
+            assert(global_kernel_state.alloc_table.wild_block != nullptr);                      // Wild block pointer always valid
+            assert(GetAllocFreeBinBit(&global_kernel_state.alloc_table.freelist_mask, 255)); // Wild block is always in the free list
+            assert(global_kernel_state.alloc_table.freelist_count[255] == 1);               // Wild block has always exaclty one block
 
             // Note: The wild block is a degenerate case; it does not use free bins
             //       and it must always be allocated; which means have at least MIN_BLOCK_SIZE free space
             
-            AllocHeader* oldWild = (AllocHeader*)gKernel.alloc_table.wild_block;            
+            AllocBlockHeader* oldWild = (AllocBlockHeader*)global_kernel_state.alloc_table.wild_block;            
             
             // Prefetch the next block, the prev block and the new wild block
             // --------------------------------------------------------------
             
             // 1. Prefetch the next block
-            AllocHeader* nextBlock = next(oldWild);
+            AllocBlockHeader* nextBlock = next(oldWild);
             __builtin_prefetch(nextBlock, 1, 3);
             
             // 2. Prefetch the new wild block
-            FreeAllocHeader* newWild = (FreeAllocHeader*)((Char*)oldWild + requestedBlockSize);
+            FreeAllocBlockHeader* newWild = (FreeAllocBlockHeader*)((Char*)oldWild + requestedBlockSize);
             __builtin_prefetch(newWild, 1, 3);
 
             // 3. Prefetch stats
-            __builtin_prefetch(&gKernel.alloc_table.stats.alloc_counter[255], 1, 3);
-            __builtin_prefetch(&gKernel.alloc_table.stats.split_counter[255], 1, 3);
+            __builtin_prefetch(&global_kernel_state.alloc_table.stats.alloc_counter[255], 1, 3);
+            __builtin_prefetch(&global_kernel_state.alloc_table.stats.split_counter[255], 1, 3);
             
             // Case there the wild block is full; memory is exhausted
             // ------------------------------------------------------
-            Size oldSize = oldWild->this_size.size;
+            Size oldSize = oldWild->this_desc.size;
             if (requestedBlockSize > oldSize - MIN_BLOCK_SIZE) {
                 // the wild block must have at least MIN_BLOCK_SIZE free space
-                ++gKernel.alloc_table.stats.failed_counter[255];
+                ++global_kernel_state.alloc_table.stats.failed_counter[255];
                 return nullptr; // not enough space
             }
             
@@ -394,20 +394,20 @@ namespace ak {
             Size newWildSize = oldSize - requestedBlockSize;
             assert(newWildSize >= MIN_BLOCK_SIZE && newWildSize % ALIGNMENT == 0);
             
-            AllocSizeRecord allocatedSize = { requestedBlockSize, (U32)AllocState::USED, 0 };
-            AllocHeader* allocated = oldWild;
-            allocated->this_size = allocatedSize;
+            AllocBlockDesc allocatedSize = { requestedBlockSize, (U32)AllocBlockState::USED, 0 };
+            AllocBlockHeader* allocated = oldWild;
+            allocated->this_desc = allocatedSize;
             
-            AllocSizeRecord newWildSizeRecord = { newWildSize, (U32)AllocState::WILD_BLOCK, 0 };
-            newWild->this_size = newWildSizeRecord;
-            newWild->prev_size = allocated->this_size;
-            gKernel.alloc_table.wild_block = newWild;
-            nextBlock->prev_size = newWild->this_size;
+            AllocBlockDesc newWildSizeRecord = { newWildSize, (U32)AllocBlockState::WILD_BLOCK, 0 };
+            newWild->this_desc = newWildSizeRecord;
+            newWild->prev_desc = allocated->this_desc;
+            global_kernel_state.alloc_table.wild_block = newWild;
+            nextBlock->prev_desc = newWild->this_desc;
             
             // Update stats
-            ++gKernel.alloc_table.stats.alloc_counter[255];
-            ++gKernel.alloc_table.stats.split_counter[255];
-            gKernel.alloc_table.free_mem_size -= requestedBlockSize;
+            ++global_kernel_state.alloc_table.stats.alloc_counter[255];
+            ++global_kernel_state.alloc_table.stats.split_counter[255];
+            global_kernel_state.alloc_table.free_mem_size -= requestedBlockSize;
             
             return (Void*)((Char*)allocated + HEADER_SIZE);
         }
@@ -437,31 +437,31 @@ namespace ak {
 
         // Release Block
         // -------------
-        FreeAllocHeader* block = (FreeAllocHeader*)((Char*)ptr - HEADER_SIZE);
-        AllocSizeRecord thisSize = block->this_size;
+        FreeAllocBlockHeader* block = (FreeAllocBlockHeader*)((Char*)ptr - HEADER_SIZE);
+        AllocBlockDesc thisSize = block->this_desc;
         Size blockSize = thisSize.size;
 
         // Update block state
         // -------------------
-        AllocState blockState = (AllocState)thisSize.state;
-        assert(blockState == AllocState::USED);        
-        block->this_size.state = (U32)AllocState::FREE;
+        AllocBlockState blockState = (AllocBlockState)thisSize.state;
+        assert(blockState == AllocBlockState::USED);        
+        block->this_desc.state = (U32)AllocBlockState::FREE;
 
         // Update next block prevSize
         // --------------------------
-        AllocHeader* nextBlock = next((AllocHeader*)block);
-        nextBlock->prev_size = block->this_size;
+        AllocBlockHeader* nextBlock = next((AllocBlockHeader*)block);
+        nextBlock->prev_desc = block->this_desc;
         
         // Update stats
         // ------------
         unsigned origBinIdx = get_alloc_freelist_index(blockSize);
         assert(origBinIdx < 255);
-        utl::push_link(&gKernel.alloc_table.freelist_head[origBinIdx], &block->freelist_link);
-        ++gKernel.alloc_table.stats.free_counter[origBinIdx];
-        ++gKernel.alloc_table.stats.pooled_counter[origBinIdx];
-        ++gKernel.alloc_table.freelist_count[origBinIdx];
-        SetAllocFreeBinBit(&gKernel.alloc_table.freelist_mask, origBinIdx);
-        gKernel.alloc_table.free_mem_size += blockSize;
+        utl::push_link(&global_kernel_state.alloc_table.freelist_head[origBinIdx], &block->freelist_link);
+        ++global_kernel_state.alloc_table.stats.free_counter[origBinIdx];
+        ++global_kernel_state.alloc_table.stats.pooled_counter[origBinIdx];
+        ++global_kernel_state.alloc_table.freelist_count[origBinIdx];
+        SetAllocFreeBinBit(&global_kernel_state.alloc_table.freelist_mask, origBinIdx);
+        global_kernel_state.alloc_table.free_mem_size += blockSize;
         
     }
 }

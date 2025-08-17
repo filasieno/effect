@@ -16,13 +16,13 @@ namespace ak { namespace priv {
     // Allocator routines
     int          init_alloc_table(Void* mem, Size size) noexcept;
     U64          get_alloc_freelist_index(U64 allocation_size) noexcept;
-    AllocHeader* next(AllocHeader* h) noexcept;
-    AllocHeader* prev(AllocHeader* h) noexcept;
+    AllocBlockHeader* next(AllocBlockHeader* h) noexcept;
+    AllocBlockHeader* prev(AllocBlockHeader* h) noexcept;
     
 
     // Scheduling routines
-    CThreadCtxHdl   schedule() noexcept;
-    CThreadContext* get_linked_context(const utl::DLink* link) noexcept;
+    CThread::Hdl      schedule_cthread() noexcept;
+    CThread::Context* get_linked_cthread_context(const utl::DLink* link) noexcept;
     
     // Debug routines
     Void dump_task_count() noexcept;
