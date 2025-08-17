@@ -9,9 +9,9 @@ CThread co_main() noexcept {
     priv::DebugDumpAllocTable();
     priv::DebugPrintAllocBlocks();
 	Size bins = 253;
-	Size maxSize = bins * 32  - 16;
-	for (U64 memSize = 16; memSize <= maxSize; memSize += 32) {
-		Void* buff = try_alloc_mem(memSize);
+	Size max_size = bins * 32  - 16;
+	for (U64 size = 16; size <= max_size; size += 32) {
+		Void* buff = try_alloc_mem(size);
 		assert(buff != nullptr);
 		free_mem(buff);
 	}
@@ -19,14 +19,14 @@ CThread co_main() noexcept {
 }
 
 int main() {
-	U64 bufferSize = 1024 * 1024;
-	Void* buffer = malloc(bufferSize);
+	U64 buffer_size = 1024 * 1024;
+	Void* buffer = malloc(buffer_size);
 	KernelConfig config = {
 		.mem          = buffer,
-		.memSize      = bufferSize,
+		.memSize      = buffer_size,
 		.ioEntryCount = 256
 	};
-	if (RunMain(&config, co_main) != 0) {
+	if (run_main(&config, co_main) != 0) {
 		std::print("main failed\n");
 		std::abort();
 		// Unreachable

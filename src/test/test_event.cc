@@ -5,7 +5,7 @@
 
 using namespace ak;
 
-CThread ReaderTask(Event* canRead, Event* canWrite, int *readSignal, int* writeSignal, int* value) noexcept {
+CThread reader_thread(Event* r_ready, Event* w_ready, int *r_signal, int* w_signal, int* value) noexcept {
 	std::print("ReaderTask started\n");
 	int outValue = -1;
 	int check = 0;
@@ -13,16 +13,16 @@ CThread ReaderTask(Event* canRead, Event* canWrite, int *readSignal, int* writeS
 		assert(check < 12);
 
     	// Begin wait read signal
-		std::print("read signal: {}\n", *readSignal); 
-		if (*readSignal == 0) {
+		std::print("read signal: {}\n", *r_signal); 
+		if (*r_signal == 0) {
 			std::print("ReaderTask about to await ...\n");
-			co_await WaitEvent(canRead);
-			assert(*readSignal == 1);
-			*readSignal = 0;
+			co_await ak::wait(r_ready);
+			assert(*r_signal == 1);
+			*r_signal = 0;
 			std::print("ReaderTask resumed\n");
 		} else {
-			assert(*readSignal == 1);
-			*readSignal = 0;
+			assert(*r_signal == 1);
+			*r_signal = 0;
 		}
     	// End wait read signal
 
@@ -35,10 +35,10 @@ CThread ReaderTask(Event* canRead, Event* canWrite, int *readSignal, int* writeS
 		}
 
     	// Begin Signal writer
-		assert(*writeSignal == 0);
-		*writeSignal = 1;
-		int cc = SignalEventOne(canWrite);
-		assert(*writeSignal == 1); 
+		assert(*w_signal == 0);
+		*w_signal = 1;
+		int cc = ak::signal(w_ready);
+		assert(*w_signal == 1); 
 		std::print("`writeSignal` to {} writers\n", cc); 
 	    // End Signal writer
 
@@ -46,7 +46,7 @@ CThread ReaderTask(Event* canRead, Event* canWrite, int *readSignal, int* writeS
 	}
 }
 
-CThread WriterTask(Event* canRead, Event* canWrite, int *readSignal, int* writeSignal, int* value) noexcept {
+CThread writer_thread(Event* r_ready, Event* w_ready, int *r_signal, int* w_signal, int* value) noexcept {
 	int check = 0;
 
 	std::print("WriterTask started\n");
@@ -57,10 +57,10 @@ CThread WriterTask(Event* canRead, Event* canWrite, int *readSignal, int* writeS
 		std::print("Written: {}\n", *value); 
 
 		// Begin signal
-		assert(*readSignal == 0); 
-		*readSignal = 1;
-		int cc = SignalEventOne(canRead);
-		assert(*readSignal == 1);
+		assert(*r_signal == 0); 
+		*r_signal = 1;
+		int cc = ak::signal(r_ready);
+		assert(*r_signal == 1);
 		std::print("`readSignal` fired {} readers\n", cc);
     	// End signal
 
@@ -72,16 +72,16 @@ CThread WriterTask(Event* canRead, Event* canWrite, int *readSignal, int* writeS
 		--i;
 
 		// Begin wait write signal
-		std::print("write signal: {}\n", *writeSignal);
-		if (*writeSignal == 0) {
+		std::print("write signal: {}\n", *w_signal);
+		if (*w_signal == 0) {
 			std::print("WriterTask about to await ...\n");
-			co_await WaitEvent(canWrite);
-			assert(*writeSignal == 1);
-			*writeSignal = 0;
+			co_await ak::wait(w_ready);
+			assert(*w_signal == 1);
+			*w_signal = 0;
 			std::print("WriterTask resumed\n");
 		} else {
-			assert(*writeSignal == 1);
-			*writeSignal = 0;
+			assert(*w_signal == 1);
+			*w_signal = 0;
 		}
     	// End wait write signal
 		++check;
@@ -91,21 +91,21 @@ CThread WriterTask(Event* canRead, Event* canWrite, int *readSignal, int* writeS
 
 CThread co_main(const Char* name) noexcept {
 	int   value = -1;
-	int   readSignal = 0;
-	int   writeSignal = 0; 
-	Event readyToRead;
-	Event readyToWrite;
+	int   r_signal = 0;
+	int   w_signal = 0; 
+	Event r_ready;
+	Event w_ready;
 
-	InitEvent(&readyToRead);
-	InitEvent(&readyToWrite);
+	ak::init(&r_ready);
+	ak::init(&w_ready);
 
-	TaskHdl writer = WriterTask(&readyToRead, &readyToWrite, &readSignal, &writeSignal, &value);
-	TaskHdl reader = ReaderTask(&readyToRead, &readyToWrite, &readSignal, &writeSignal, &value);
-	std::print("State of reader: {}; State of writer: {}\n", to_string(GetTaskState(reader)), to_string(GetTaskState(writer)));
-	co_await JoinTask(reader);
-	std::print("State of reader: {}; State of writer: {}\n", to_string(GetTaskState(reader)), to_string(GetTaskState(writer)));
-	co_await JoinTask(writer);
-	std::print("State of reader: {}; State of writer: {}\n", to_string(GetTaskState(reader)), to_string(GetTaskState(writer)));
+	CThreadCtxHdl writer = writer_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
+	CThreadCtxHdl reader = reader_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
+	std::print("State of reader: {}; State of writer: {}\n", to_string(get_task_state(reader)), to_string(get_task_state(writer)));
+	co_await join(reader);
+	std::print("State of reader: {}; State of writer: {}\n", to_string(get_task_state(reader)), to_string(get_task_state(writer)));
+	co_await join(writer);
+	std::print("State of reader: {}; State of writer: {}\n", to_string(get_task_state(reader)), to_string(get_task_state(writer)));
 	std::fflush(stdout);
 	
 	co_return 0;
@@ -121,7 +121,7 @@ int main() {
 		.ioEntryCount = 256
   	};
 
-	if (RunMain(&config, co_main, "main") != 0) {
+	if (run_main(&config, co_main, "main") != 0) {
 		std::print("main failed\n");
 		std::abort();
 		// Unreachable

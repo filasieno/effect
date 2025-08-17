@@ -19,8 +19,8 @@ namespace ak { namespace priv {
     AllocHeader* PrevAllocHeaderPtr(AllocHeader* h) noexcept;
     U64          GetAllocSmallBinIndexFromSize(U64 sz) noexcept;
     // Scheduling routines
-    TaskHdl      ScheduleNextTask() noexcept;
-    TaskContext* GetLinkedTaskContext(const utl::DLink* link) noexcept;
+    CThreadCtxHdl   ScheduleNextTask() noexcept;
+    CThreadContext* get_linked_context(const utl::DLink* link) noexcept;
     
     // Debug routines
     Void DebugTaskCount() noexcept;

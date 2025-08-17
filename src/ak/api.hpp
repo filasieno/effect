@@ -12,7 +12,7 @@
 
 namespace ak 
 {
-    struct TaskContext;
+    struct CThreadContext;
     struct ResumeTaskOp;
     struct JoinTaskOp;
     struct SuspendOp;
@@ -38,62 +38,62 @@ namespace ak
 
     /// \brief Coroutine handle for a Task
     /// \ingroup Task
-    using TaskHdl = std::coroutine_handle<TaskContext>;
+    using CThreadCtxHdl = std::coroutine_handle<CThreadContext>;
 
     /// \brief Cooperative thread handle
     /// \ingroup Task
     struct CThread {
-        using promise_type = TaskContext;
+        using promise_type = CThreadContext;
 
-        CThread(const TaskHdl& hdl) : hdl(hdl) {}
-        operator TaskHdl() const noexcept { return hdl; }
+        CThread(const CThreadCtxHdl& hdl) : hdl(hdl) {}
+        operator CThreadCtxHdl() const noexcept { return hdl; }
 
-        TaskHdl hdl;
+        CThreadCtxHdl hdl;
     };
 
     /// \brief Defines a Task function type-erased pointer (no std::function)
     /// \ingroup Task
     template <typename... Args>
-    using TaskFn = CThread(*)(Args...);
+    using CThreadProc = CThread(*)(Args...);
 
     // TODO: Add size Probing for TaskContext
     struct TaskContextSizeProbe {};
 
-    struct TaskContext {
+    struct CThreadContext {
         using DLink = utl::DLink;
 
         struct InitialSuspendTaskOp {
             constexpr Bool await_ready() const noexcept { return false; }
-            Void           await_suspend(TaskHdl hdl) const noexcept;
+            Void           await_suspend(CThreadCtxHdl hdl) const noexcept;
             constexpr Void await_resume() const noexcept {}
         };
 
         struct FinalSuspendTaskOp {
             constexpr Bool await_ready() const noexcept { return false; }
-            TaskHdl        await_suspend(TaskHdl hdl) const noexcept;
+            CThreadCtxHdl  await_suspend(CThreadCtxHdl hdl) const noexcept;
             constexpr Void await_resume() const noexcept {}
         };
 
-        static Void* operator new(std::size_t n) noexcept;
-        static Void  operator delete(Void* ptr, std::size_t sz);
-        static TaskHdl        get_return_object_on_allocation_failure() noexcept { return {}; }
+        static Void*  operator new(std::size_t n) noexcept;
+        static Void   operator delete(Void* ptr, std::size_t sz);
+        static CThreadCtxHdl get_return_object_on_allocation_failure() noexcept { return {}; }
 
         template <typename... Args>
-        TaskContext(Args&&...);
-        ~TaskContext();
+        CThreadContext(Args&&...);
+        ~CThreadContext();
         
-        TaskHdl        get_return_object() noexcept { return TaskHdl::from_promise(*this);}
+        CThreadCtxHdl  get_return_object() noexcept { return CThreadCtxHdl::from_promise(*this);}
         constexpr auto initial_suspend() const noexcept { return InitialSuspendTaskOp{}; }
         constexpr auto final_suspend () const noexcept { return FinalSuspendTaskOp{}; }
         Void           return_value(int value) noexcept;
         Void           unhandled_exception() noexcept  { std::abort(); /* unreachable */ }
 
         TaskState state;
-        int       ioResult;
-        unsigned  enqueuedIO;
-        DLink     waitLink;                // Used to enqueue tasks waiting for Critical Section
-        DLink     taskListLink;            // Global Task list
-        DLink     awaitingTerminationList; // The list of all tasks waiting for this task
+        int       res;
+        U32       prepared_io;
+        DLink     wait_link;     //< Used to enqueue tasks waiting for Critical Section
+        DLink     tasklist_link; //< Global Task list
+        DLink     awaiter_list;  //< The list of all tasks waiting for this task
     };
 
     // Allocator
@@ -117,57 +117,57 @@ namespace ak
     };
 
     struct AllocHeader {
-        AllocSizeRecord thisSize;
-        AllocSizeRecord prevSize;
+        AllocSizeRecord this_size;
+        AllocSizeRecord prev_size;
     };
 
     struct FreeAllocHeader {
-        AllocSizeRecord thisSize;
-        AllocSizeRecord prevSize;
-        utl::DLink freeListLink;
+        AllocSizeRecord this_size;
+        AllocSizeRecord prev_size;
+        utl::DLink      freelist_link;
     };
     static_assert(sizeof(FreeAllocHeader) == 32);
 
     struct AllocStats {
         static constexpr int ALLOCATOR_BIN_COUNT = 256;
 
-        Size alloc_cc[ALLOCATOR_BIN_COUNT];
-        Size realloc_cc[ALLOCATOR_BIN_COUNT];
-        Size free_cc[ALLOCATOR_BIN_COUNT];
-        Size failed_cc[ALLOCATOR_BIN_COUNT];
-        Size split_cc[ALLOCATOR_BIN_COUNT];
-        Size merge_cc[ALLOCATOR_BIN_COUNT];
-        Size reused_cc[ALLOCATOR_BIN_COUNT];
-        Size pooled_cc[ALLOCATOR_BIN_COUNT];
+        Size alloc_counter[ALLOCATOR_BIN_COUNT];
+        Size realloc_counter[ALLOCATOR_BIN_COUNT];
+        Size free_counter[ALLOCATOR_BIN_COUNT];
+        Size failed_counter[ALLOCATOR_BIN_COUNT];
+        Size split_counter[ALLOCATOR_BIN_COUNT];
+        Size merged_counter[ALLOCATOR_BIN_COUNT];
+        Size reused_counter[ALLOCATOR_BIN_COUNT];
+        Size pooled_counter[ALLOCATOR_BIN_COUNT];
     };
 
     struct AllocTable {
         static constexpr int ALLOCATOR_BIN_COUNT = AllocStats::ALLOCATOR_BIN_COUNT;
         using DLink = utl::DLink;
         // FREE LIST MANAGEMENT
-        alignas(64) __m256i freeListbinMask;                         
-        alignas(64) DLink   freeListBins[ALLOCATOR_BIN_COUNT];
-        alignas(64) U32     freeListBinsCount[ALLOCATOR_BIN_COUNT];
+        alignas(64) __m256i freelist_mask;                         
+        alignas(64) DLink   freelist_head[ALLOCATOR_BIN_COUNT];
+        alignas(64) U32     freelist_count[ALLOCATOR_BIN_COUNT];
 
         // HEAP BOUNDARY MANAGEMENT
-        alignas(8) Char* heapBegin;
-        alignas(8) Char* heapEnd;
-        alignas(8) Char* memBegin;
-        alignas(8) Char* memEnd;
+        alignas(8) Char* heap_begin;
+        alignas(8) Char* heap_end;
+        alignas(8) Char* mem_begin;
+        alignas(8) Char* mem_end;
         
         // MEMORY ACCOUNTING
-        Size memSize;
-        Size freeMemSize;
-        Size maxFreeBlockSize;
+        Size mem_size;
+        Size free_mem_size;
+        Size max_free_block_size;
         
         // ALLOCATION STATISTICS
         AllocStats stats;
         
         // SENTINEL BLOCKS
-        alignas(8) FreeAllocHeader* beginSentinel;
-        alignas(8) FreeAllocHeader* wildBlock;
-        alignas(8) FreeAllocHeader* largeBlockSentinel;
-        alignas(8) FreeAllocHeader* endSentinel;
+        alignas(8) FreeAllocHeader* sentinel_begin;
+        alignas(8) FreeAllocHeader* sentinel_large_block;
+        alignas(8) FreeAllocHeader* sentinel_end;
+        alignas(8) FreeAllocHeader* wild_block;
     };
 
     namespace priv {
@@ -181,21 +181,21 @@ namespace ak
 
     // Kernel
     // ----------------------------------------------------------------------------------------------------------------
-    struct KernelTaskPromise;
-    using KernelTaskHdl = std::coroutine_handle<KernelTaskPromise>;
+    struct BootContext;
+    using BootCtxHdl = std::coroutine_handle<BootContext>;
 
-    struct KernelTaskPromise {
+    struct BootContext {
         using InitialSuspend = std::suspend_always;
         using FinalSuspend   = std::suspend_never;
 
-        static Void*         operator new(std::size_t) noexcept;
-        static Void          operator delete(Void*, std::size_t) noexcept {};
-        static KernelTaskHdl get_return_object_on_allocation_failure() noexcept { std::abort(); /* unreachable */ }
+        static Void*      operator new(std::size_t) noexcept;
+        static Void       operator delete(Void*, std::size_t) noexcept {};
+        static BootCtxHdl get_return_object_on_allocation_failure() noexcept { std::abort(); /* unreachable */ }
 
         template <typename... Args>
-        KernelTaskPromise(CThread(*)(Args ...) noexcept, Args... ) noexcept : returnValue(0) {}
+        BootContext(CThread(*)(Args ...) noexcept, Args... ) noexcept : returnValue(0) {}
         
-        KernelTaskHdl            get_return_object() noexcept { return KernelTaskHdl::from_promise(*this); }
+        BootCtxHdl               get_return_object() noexcept { return BootCtxHdl::from_promise(*this); }
         constexpr InitialSuspend initial_suspend() noexcept { return {}; }
         constexpr FinalSuspend   final_suspend() noexcept { return {}; }
         constexpr Void           return_void() noexcept { }
@@ -211,24 +211,24 @@ namespace ak
         AllocTable alloc_table;
         
         // Task management
-        TaskHdl currentTaskHdl;
-        TaskHdl schedulerTaskHdl;
-        TaskHdl mainTaskHdl;
-        DLink   zombieList;
-        DLink   readyList;
-        DLink   taskList;
+        CThreadCtxHdl current_ctx_hdl;
+        CThreadCtxHdl scheduler_ctx_hdl;
+        CThreadCtxHdl co_main_ctx_hdl;
+        DLink   zombie_list;
+        DLink   ready_list;
+        DLink   task_list;
         Void*   mem;
         Size    memSize;
         I32     mainTaskReturnValue;
-        I32     taskCount;
-        I32     readyCount;
-        I32     waitingCount;
-        I32     ioWaitingCount;
-        I32     zombieCount;
+        I32     task_count;
+        I32     ready_count;
+        I32     waiting_count;
+        I32     iowaiting_count;
+        I32     zombie_count;
         I32     interrupted;
         
         // Kernnel Storage 
-        KernelTaskHdl kernelTask;
+        BootCtxHdl kernel_ctx_hdl;
         Char bootTaskFrame[64];
 
         // IOManagement
@@ -247,20 +247,20 @@ namespace ak
     };
 
     template <typename... Args>
-    int RunMain(KernelConfig* config, CThread (*mainProc)(Args ...) noexcept, Args... args) noexcept;
+    int run_main(KernelConfig* cfg, CThread (*co_main)(Args ...) noexcept, Args... args) noexcept;
 
     // Task routines
-    Void                       ClearTaskHdl(TaskHdl* hdl) noexcept;
-    Bool                       IsTaskHdlValid(TaskHdl hdl) noexcept;
-    TaskContext*               GetTaskContext(TaskHdl hdl) noexcept;
-    TaskContext*               GetTaskContext() noexcept;
-    constexpr GetCurrentTaskOp GetCurrentTask() noexcept;
-    constexpr SuspendOp        SuspendTask() noexcept;
-    JoinTaskOp                 JoinTask(TaskHdl hdl) noexcept;
-    JoinTaskOp                 operator co_await(TaskHdl hdl) noexcept;
-    TaskState                  GetTaskState(TaskHdl hdl) noexcept;
-    Bool                       IsTaskDone(TaskHdl hdl) noexcept;
-    ResumeTaskOp               ResumeTask(TaskHdl hdl) noexcept;
+    Void                       clear(CThreadCtxHdl* hdl) noexcept;
+    Bool                       is_valid(CThreadCtxHdl hdl) noexcept;
+    CThreadContext*            get_task_context(CThreadCtxHdl hdl) noexcept;
+    CThreadContext*            get_task_context() noexcept;
+    constexpr GetCurrentTaskOp get_current_context() noexcept;
+    constexpr SuspendOp        suspend() noexcept;
+    JoinTaskOp                 join(CThreadCtxHdl hdl) noexcept;
+    JoinTaskOp                 operator co_await(CThreadCtxHdl hdl) noexcept;
+    TaskState                  get_task_state(CThreadCtxHdl hdl) noexcept;
+    Bool                       is_done(CThreadCtxHdl hdl) noexcept;
+    ResumeTaskOp               resume(CThreadCtxHdl hdl) noexcept;
     constexpr ExitOp           ExitTask(int value = 0) noexcept;
 
     // IO Routines
@@ -314,14 +314,14 @@ namespace ak
 
     // Concurrency Tools
     struct Event {  
-        utl::DLink waitingList;
+        utl::DLink wait_list;
     };
 
-    Void InitEvent(Event* event);
-    int  SignalEvent(Event* event);
-    int  SignalEventSome(Event* event, int n);
-    int  SignalEventAll(Event* event);
-    WaitEventOp WaitEvent(Event* event);
+    Void        init(Event* event);
+    int         signal(Event* event);
+    int         signal_n(Event* event, int n);
+    int         signal_all(Event* event);
+    WaitEventOp wait(Event* event);
 
 }
 
@@ -329,45 +329,45 @@ namespace ak
 {
     // Declarations for ops 
     struct ResumeTaskOp {
-        explicit ResumeTaskOp(TaskHdl hdl) : hdl(hdl) {};
+        explicit ResumeTaskOp(CThreadCtxHdl hdl) : hdl(hdl) {};
 
         constexpr Bool await_ready() const noexcept { return false; }
-        TaskHdl        await_suspend(TaskHdl currentTaskHdl) const noexcept;
+        CThreadCtxHdl  await_suspend(CThreadCtxHdl currentTaskHdl) const noexcept;
         constexpr Void await_resume() const noexcept {}
 
-        TaskHdl hdl;
+        CThreadCtxHdl hdl;
     };
 
     struct JoinTaskOp {
-        explicit JoinTaskOp(TaskHdl hdl) : joinedTaskHdl(hdl) {};
+        explicit JoinTaskOp(CThreadCtxHdl hdl) : joinedTaskHdl(hdl) {};
 
         constexpr Bool await_ready() const noexcept { return false; }
-        TaskHdl        await_suspend(TaskHdl currentTaskHdl) const noexcept;
-        constexpr int  await_resume() const noexcept { return joinedTaskHdl.promise().ioResult; }
+        CThreadCtxHdl  await_suspend(CThreadCtxHdl currentTaskHdl) const noexcept;
+        constexpr int  await_resume() const noexcept { return joinedTaskHdl.promise().res; }
 
-        TaskHdl joinedTaskHdl;
+        CThreadCtxHdl joinedTaskHdl;
     };
 
     struct SuspendOp {
         constexpr Bool await_ready() const noexcept { return false; }
-        TaskHdl        await_suspend(TaskHdl hdl) const noexcept;
+        CThreadCtxHdl  await_suspend(CThreadCtxHdl hdl) const noexcept;
         constexpr Void await_resume() const noexcept {}
     };
 
     struct GetCurrentTaskOp {
         constexpr Bool    await_ready() const noexcept { return false; }
-        constexpr TaskHdl await_suspend(TaskHdl hdl) noexcept;
-        constexpr TaskHdl await_resume() const noexcept { return hdl; }
+        constexpr CThreadCtxHdl await_suspend(CThreadCtxHdl hdl) noexcept;
+        constexpr CThreadCtxHdl await_resume() const noexcept { return hdl; }
 
-        TaskHdl hdl;
+        CThreadCtxHdl hdl;
     };
 
    
 
     struct ExecIOOp {
         constexpr Bool    await_ready() const noexcept { return false; }
-        constexpr TaskHdl await_suspend(TaskHdl currentTaskHdl) noexcept;
-        constexpr int     await_resume() const noexcept { return gKernel.currentTaskHdl.promise().ioResult; }
+        constexpr CThreadCtxHdl  await_suspend(CThreadCtxHdl currentTaskHdl) noexcept;
+        constexpr int     await_resume() const noexcept { return gKernel.current_ctx_hdl.promise().res; }
     };
 
     struct ExitOp {
@@ -381,11 +381,11 @@ namespace ak
         constexpr Bool    await_ready() const noexcept { return false; }
         constexpr int     await_resume() const noexcept { return returnValue; }
         
-        TaskHdl await_suspend(TaskHdl currentTaskHdl) noexcept { 
+        CThreadCtxHdl await_suspend(CThreadCtxHdl currentTaskHdl) noexcept { 
             (Void)currentTaskHdl;
             std::print("unimplemented ExitOp\n");
             std::fflush(stdout);
-            std::abort(); 
+            std::abort();
         }
 
         int returnValue;
@@ -394,9 +394,9 @@ namespace ak
     struct WaitEventOp {
         WaitEventOp(Event* event) : evt(event) {}
 
-        constexpr Bool    await_ready() const noexcept { return false; }
-        constexpr TaskHdl await_suspend(TaskHdl hdl) const noexcept;
-        constexpr Void    await_resume() const noexcept {}
+        constexpr Bool          await_ready() const noexcept { return false; }
+        constexpr CThreadCtxHdl await_suspend(CThreadCtxHdl hdl) const noexcept;
+        constexpr Void          await_resume() const noexcept {}
 
         Event* evt;
     };

@@ -17,30 +17,30 @@ namespace ak {
     // ExecIOOp
     // ----------------------------------------------------------------------------------------------------------------
 
-    constexpr TaskHdl ExecIOOp::await_suspend(TaskHdl curr_task_htl) noexcept {
+    constexpr CThreadCtxHdl ExecIOOp::await_suspend(CThreadCtxHdl curr_task_htl) noexcept {
         // if suspend is called we know that the operation has been submitted
         using namespace priv;
 
         // Move the current Task from RUNNING to IO_WAITING
-        TaskContext* ctx = &curr_task_htl.promise();
+        CThreadContext* ctx = &curr_task_htl.promise();
         assert(ctx->state == TaskState::RUNNING);
         ctx->state = TaskState::IO_WAITING;
-        ++gKernel.ioWaitingCount;
-        ClearTaskHdl(&gKernel.currentTaskHdl);
+        ++gKernel.iowaiting_count;
+        clear(&gKernel.current_ctx_hdl);
         CheckInvariants();
         DebugTaskCount();
 
         // Move the scheduler task from READY to RUNNING
-        TaskContext* sched_ctx = &gKernel.schedulerTaskHdl.promise();
+        CThreadContext* sched_ctx = &gKernel.scheduler_ctx_hdl.promise();
         assert(sched_ctx->state == TaskState::READY);
         sched_ctx->state = TaskState::RUNNING;
-        utl::detach_link(&sched_ctx->waitLink);
-        --gKernel.readyCount;
-        gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
+        utl::detach_link(&sched_ctx->wait_link);
+        --gKernel.ready_count;
+        gKernel.current_ctx_hdl = gKernel.scheduler_ctx_hdl;
         CheckInvariants();
         DebugTaskCount();
 
-        return gKernel.schedulerTaskHdl;
+        return gKernel.scheduler_ctx_hdl;
     }
 
     // PrepareIO
@@ -52,7 +52,7 @@ namespace ak {
         inline ExecIOOp prep_io(PrepFn prep_fn) noexcept {
             using namespace priv;
             
-            TaskContext* ctx = &gKernel.currentTaskHdl.promise();
+            CThreadContext* ctx = &gKernel.current_ctx_hdl.promise();
     
             // Ensure free submission slot 
             unsigned int free_slots = io_uring_sq_space_left(&gKernel.ioRing);
@@ -69,8 +69,8 @@ namespace ak {
             io_uring_sqe* sqe = io_uring_get_sqe(&gKernel.ioRing);
             io_uring_sqe_set_data(sqe, (Void*) ctx);
             prep_fn(sqe);  // Call the preparation function
-            ctx->ioResult = 0;
-            ++ctx->enqueuedIO;
+            ctx->res = 0;
+            ++ctx->prepared_io;
             return {};
         }
 

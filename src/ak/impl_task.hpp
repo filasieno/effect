@@ -22,122 +22,122 @@ namespace ak {
     // TaskContext implementation 
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline Void TaskContext::InitialSuspendTaskOp::await_suspend(TaskHdl hdl) const noexcept {
+    inline Void CThreadContext::InitialSuspendTaskOp::await_suspend(CThreadCtxHdl hdl) const noexcept {
         using namespace priv;
         using namespace utl;
 
-        TaskContext* promise = &hdl.promise();
+        CThreadContext* promise = &hdl.promise();
 
         // Check initial preconditions
         assert(promise->state == TaskState::CREATED);
-        assert(is_link_detached(&promise->waitLink));
+        assert(is_link_detached(&promise->wait_link));
         CheckInvariants();
 
         // Add task to the kernel
-        ++gKernel.taskCount;
-        enqueue_link(&gKernel.taskList, &promise->taskListLink);
+        ++gKernel.task_count;
+        enqueue_link(&gKernel.task_list, &promise->tasklist_link);
 
-        ++gKernel.readyCount;
-        enqueue_link(&gKernel.readyList, &promise->waitLink);
+        ++gKernel.ready_count;
+        enqueue_link(&gKernel.ready_list, &promise->wait_link);
         promise->state = TaskState::READY;
 
         // Check post-conditions
         assert(promise->state == TaskState::READY);
-        assert(!is_link_detached(&promise->waitLink));
+        assert(!is_link_detached(&promise->wait_link));
         CheckInvariants();
         priv::DebugTaskCount();
     }
 
-    inline TaskHdl TaskContext::FinalSuspendTaskOp::await_suspend(TaskHdl hdl) const noexcept {
+    inline CThreadCtxHdl CThreadContext::FinalSuspendTaskOp::await_suspend(CThreadCtxHdl hdl) const noexcept {
         using namespace priv;
         using namespace utl;
 
         // Check preconditions
-        TaskContext* ctx = &hdl.promise();
-        assert(gKernel.currentTaskHdl == hdl);
+        CThreadContext* ctx = &hdl.promise();
+        assert(gKernel.current_ctx_hdl == hdl);
         assert(ctx->state == TaskState::RUNNING);
-        assert(is_link_detached(&ctx->waitLink));
+        assert(is_link_detached(&ctx->wait_link));
         CheckInvariants();
 
         // Move the current task from RUNNING to ZOMBIE
         ctx->state = TaskState::ZOMBIE;
-        ++gKernel.zombieCount;
-        enqueue_link(&gKernel.zombieList, &ctx->waitLink);
-        ClearTaskHdl(&gKernel.currentTaskHdl);
+        ++gKernel.zombie_count;
+        enqueue_link(&gKernel.zombie_list, &ctx->wait_link);
+        clear(&gKernel.current_ctx_hdl);
         CheckInvariants();
 
         return ScheduleNextTask();
     }
 
     // TaskContext ctor/dtor definitions
-    inline TaskContext::~TaskContext() {
+    inline CThreadContext::~CThreadContext() {
         using namespace priv;
         assert(state == TaskState::DELETING);
-        assert(is_link_detached(&taskListLink));
-        assert(is_link_detached(&waitLink));
+        assert(is_link_detached(&tasklist_link));
+        assert(is_link_detached(&wait_link));
         DebugTaskCount();
         CheckInvariants();
     }
 
     template <typename... Args>
-    inline TaskContext::TaskContext(Args&&... ) {
+    inline CThreadContext::CThreadContext(Args&&... ) {
         using namespace priv;
 
-        init_link(&taskListLink);
-        init_link(&waitLink);
-        init_link(&awaitingTerminationList);
+        init_link(&tasklist_link);
+        init_link(&wait_link);
+        init_link(&awaiter_list);
         state = TaskState::CREATED;
-        enqueuedIO = 0;
-        ioResult = -1;
+        prepared_io = 0;
+        res = -1;
 
         // Check post-conditions
-        assert(is_link_detached(&taskListLink));
-        assert(is_link_detached(&waitLink));
+        assert(is_link_detached(&tasklist_link));
+        assert(is_link_detached(&wait_link));
         assert(state == TaskState::CREATED);
         CheckInvariants();
     }
 
-    inline Void* TaskContext::operator new(std::size_t n) noexcept {
+    inline Void* CThreadContext::operator new(std::size_t n) noexcept {
         Void* mem = try_alloc_mem(n);
         if (!mem) return nullptr;
         return mem;
     }
 
-    inline Void TaskContext::operator delete(Void* ptr, std::size_t sz) {
+    inline Void CThreadContext::operator delete(Void* ptr, std::size_t sz) {
         (Void)sz;
         free_mem(ptr);
     }
 
-    inline Void TaskContext::return_value(int value) noexcept {
+    inline Void CThreadContext::return_value(int value) noexcept {
         using namespace priv;
 
         CheckInvariants();
 
-        TaskHdl currentTaskHdl = gKernel.currentTaskHdl;
-        TaskContext* ctx = &currentTaskHdl.promise();
-        ctx->ioResult = value;
-        if (currentTaskHdl == gKernel.mainTaskHdl) {
+        CThreadCtxHdl currentTaskHdl = gKernel.current_ctx_hdl;
+        CThreadContext* ctx = &currentTaskHdl.promise();
+        ctx->res = value;
+        if (currentTaskHdl == gKernel.co_main_ctx_hdl) {
             std::print("MainTask done; returning: {}\n", value);
             gKernel.mainTaskReturnValue = value;
         }
 
         // Wake up all tasks waiting for this task
-        if (is_link_detached(&awaitingTerminationList)) {
+        if (is_link_detached(&awaiter_list)) {
             return;
         }
 
         do {
-            utl::DLink* next = dequeue_link(&awaitingTerminationList);
-            TaskContext* ctx = GetLinkedTaskContext(next);
+            utl::DLink* next = dequeue_link(&awaiter_list);
+            CThreadContext* ctx = get_linked_context(next);
             DebugTaskCount();
             assert(ctx->state == TaskState::WAITING);
-            --gKernel.waitingCount;
+            --gKernel.waiting_count;
             ctx->state = TaskState::READY;
-            enqueue_link(&gKernel.readyList, &ctx->waitLink);
-            ++gKernel.readyCount;
+            enqueue_link(&gKernel.ready_list, &ctx->wait_link);
+            ++gKernel.ready_count;
             DebugTaskCount();
 
-        } while (!is_link_detached(&awaitingTerminationList));
+        } while (!is_link_detached(&awaiter_list));
 
     }
 
@@ -145,26 +145,26 @@ namespace ak {
     // SuspendOp implmentation
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline TaskHdl SuspendOp::await_suspend(TaskHdl currentTask) const noexcept {
+    inline CThreadCtxHdl SuspendOp::await_suspend(CThreadCtxHdl currentTask) const noexcept {
         using namespace priv;
         using namespace utl;
 
-        assert(gKernel.currentTaskHdl);
+        assert(gKernel.current_ctx_hdl);
 
-        TaskContext* currentPromise = &currentTask.promise();
+        CThreadContext* currentPromise = &currentTask.promise();
 
         if constexpr (IS_DEBUG_MODE) {
-            assert(gKernel.currentTaskHdl == currentTask);
+            assert(gKernel.current_ctx_hdl == currentTask);
             assert(currentPromise->state == TaskState::RUNNING);
-            assert(is_link_detached(&currentPromise->waitLink));
+            assert(is_link_detached(&currentPromise->wait_link));
             CheckInvariants();
         }
 
         // Move the current task from RUNNINIG to READY
         currentPromise->state = TaskState::READY;
-        ++gKernel.readyCount;
-        enqueue_link(&gKernel.readyList, &currentPromise->waitLink);
-        ClearTaskHdl(&gKernel.currentTaskHdl);
+        ++gKernel.ready_count;
+        enqueue_link(&gKernel.ready_list, &currentPromise->wait_link);
+        clear(&gKernel.current_ctx_hdl);
         CheckInvariants();
 
         return ScheduleNextTask();
@@ -173,54 +173,54 @@ namespace ak {
     // ResumeTaskOp implementation
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline TaskHdl ResumeTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept {
+    inline CThreadCtxHdl ResumeTaskOp::await_suspend(CThreadCtxHdl currentTaskHdl) const noexcept {
         using namespace priv;
         using namespace utl;
 
-        assert(gKernel.currentTaskHdl == currentTaskHdl);
+        assert(gKernel.current_ctx_hdl == currentTaskHdl);
 
         // Check the current Task
-        TaskContext* currentPromise = &gKernel.currentTaskHdl.promise();
-        assert(is_link_detached(&currentPromise->waitLink));
+        CThreadContext* currentPromise = &gKernel.current_ctx_hdl.promise();
+        assert(is_link_detached(&currentPromise->wait_link));
         assert(currentPromise->state == TaskState::RUNNING);
         CheckInvariants();
 
         // Suspend the current Task
         currentPromise->state = TaskState::READY;
-        ++gKernel.readyCount;
-        enqueue_link(&gKernel.readyList, &currentPromise->waitLink);
-        ClearTaskHdl(&gKernel.currentTaskHdl);
+        ++gKernel.ready_count;
+        enqueue_link(&gKernel.ready_list, &currentPromise->wait_link);
+        clear(&gKernel.current_ctx_hdl);
         CheckInvariants();
 
         // Move the target task from READY to RUNNING
-        TaskContext* promise = &hdl.promise();
+        CThreadContext* promise = &hdl.promise();
         promise->state = TaskState::RUNNING;
-        detach_link(&promise->waitLink);
-        --gKernel.readyCount;
-        gKernel.currentTaskHdl = hdl;
+        detach_link(&promise->wait_link);
+        --gKernel.ready_count;
+        gKernel.current_ctx_hdl = hdl;
         CheckInvariants();
 
-        assert(gKernel.currentTaskHdl);
+        assert(gKernel.current_ctx_hdl);
         return hdl;
     }
 
     // JoinTaskOp implementation
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline TaskHdl JoinTaskOp::await_suspend(TaskHdl currentTaskHdl) const noexcept
+    inline CThreadCtxHdl JoinTaskOp::await_suspend(CThreadCtxHdl currentTaskHdl) const noexcept
     {
         using namespace priv;
         using namespace utl;
 
-        TaskContext* currentTaskCtx = &currentTaskHdl.promise();
+        CThreadContext* currentTaskCtx = &currentTaskHdl.promise();
 
         // Check CurrentTask preconditions
         assert(currentTaskCtx->state == TaskState::RUNNING);
-        assert(is_link_detached(&currentTaskCtx->waitLink));
-        assert(gKernel.currentTaskHdl == currentTaskHdl);
+        assert(is_link_detached(&currentTaskCtx->wait_link));
+        assert(gKernel.current_ctx_hdl == currentTaskHdl);
         CheckInvariants();
 
-        TaskContext* joinedTaskCtx = &joinedTaskHdl.promise();                
+        CThreadContext* joinedTaskCtx = &joinedTaskHdl.promise();                
         TaskState joinedTaskState = joinedTaskCtx->state;
         switch (joinedTaskState) {
             case TaskState::READY:
@@ -228,17 +228,17 @@ namespace ak {
 
                 // Move current Task from READY to WAITING
                 currentTaskCtx->state = TaskState::WAITING;
-                ++gKernel.waitingCount;
-                enqueue_link(&joinedTaskCtx->awaitingTerminationList, &currentTaskCtx->waitLink); 
-                ClearTaskHdl(&gKernel.currentTaskHdl);
+                ++gKernel.waiting_count;
+                enqueue_link(&joinedTaskCtx->awaiter_list, &currentTaskCtx->wait_link); 
+                clear(&gKernel.current_ctx_hdl);
                 CheckInvariants();
                 DebugTaskCount();
 
                 // Move the joined TASK from READY to RUNNING
                 joinedTaskCtx->state = TaskState::RUNNING;
-                detach_link(&joinedTaskCtx->waitLink);
-                --gKernel.readyCount;
-                gKernel.currentTaskHdl = joinedTaskHdl;
+                detach_link(&joinedTaskCtx->wait_link);
+                --gKernel.ready_count;
+                gKernel.current_ctx_hdl = joinedTaskHdl;
                 CheckInvariants();
                 DebugTaskCount();
                 return joinedTaskHdl;
@@ -249,23 +249,23 @@ namespace ak {
             {
                  // Move current Task from READY to WAITING
                 currentTaskCtx->state = TaskState::WAITING;
-                ++gKernel.waitingCount;
-                enqueue_link(&joinedTaskCtx->awaitingTerminationList, &currentTaskCtx->waitLink); 
-                ClearTaskHdl(&gKernel.currentTaskHdl);
+                ++gKernel.waiting_count;
+                enqueue_link(&joinedTaskCtx->awaiter_list, &currentTaskCtx->wait_link); 
+                clear(&gKernel.current_ctx_hdl);
                 CheckInvariants();
                 DebugTaskCount();
 
                 // Move the Scheduler Task from READY to RUNNING
-                TaskContext* schedCtx = &gKernel.schedulerTaskHdl.promise();
+                CThreadContext* schedCtx = &gKernel.scheduler_ctx_hdl.promise();
                 assert(schedCtx->state == TaskState::READY);
                 schedCtx->state = TaskState::RUNNING;
-                detach_link(&schedCtx->waitLink);
-                --gKernel.readyCount;
-                gKernel.currentTaskHdl = gKernel.schedulerTaskHdl;
+                detach_link(&schedCtx->wait_link);
+                --gKernel.ready_count;
+                gKernel.current_ctx_hdl = gKernel.scheduler_ctx_hdl;
                 CheckInvariants();
                 DebugTaskCount();
 
-                return gKernel.schedulerTaskHdl;
+                return gKernel.scheduler_ctx_hdl;
             }
             
             case TaskState::DELETING:
@@ -288,27 +288,27 @@ namespace ak {
     // Task API Implementation
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline Void ClearTaskHdl(TaskHdl* hdl) noexcept { *hdl = TaskHdl{}; }
+    inline Void clear(CThreadCtxHdl* hdl) noexcept { *hdl = CThreadCtxHdl{}; }
 
-    inline Bool IsTaskHdlValid(TaskHdl hdl) noexcept { return hdl.address() != nullptr; }
+    inline Bool is_valid(CThreadCtxHdl hdl) noexcept { return hdl.address() != nullptr; }
 
-    inline TaskContext* GetTaskContext(TaskHdl hdl) noexcept { return &hdl.promise(); }
+    inline CThreadContext* get_task_context(CThreadCtxHdl hdl) noexcept { return &hdl.promise(); }
 
-    inline TaskContext* GetTaskContext() noexcept { return &gKernel.currentTaskHdl.promise(); }
+    inline CThreadContext* get_task_context() noexcept { return &gKernel.current_ctx_hdl.promise(); }
 
-    inline constexpr GetCurrentTaskOp GetCurrentTask() noexcept { return {}; }
+    inline constexpr GetCurrentTaskOp get_current_context() noexcept { return {}; }
 
-    inline constexpr SuspendOp SuspendTask() noexcept { return {}; }
+    inline constexpr SuspendOp suspend() noexcept { return {}; }
 
-    inline JoinTaskOp JoinTask(TaskHdl hdl) noexcept { return JoinTaskOp(hdl); }
+    inline JoinTaskOp join(CThreadCtxHdl hdl) noexcept { return JoinTaskOp(hdl); }
 
-    inline JoinTaskOp operator co_await(TaskHdl hdl) noexcept { return JoinTaskOp(hdl); }
+    inline JoinTaskOp operator co_await(CThreadCtxHdl hdl) noexcept { return JoinTaskOp(hdl); }
 
-    inline TaskState GetTaskState(TaskHdl hdl) noexcept { return hdl.promise().state; }
+    inline TaskState get_task_state(CThreadCtxHdl hdl) noexcept { return hdl.promise().state; }
 
-    inline Bool IsTaskDone(TaskHdl hdl) noexcept { return hdl.done(); }
+    inline Bool is_done(CThreadCtxHdl hdl) noexcept { return hdl.done(); }
 
-    inline ResumeTaskOp ResumeTask(TaskHdl hdl) noexcept { return ResumeTaskOp(hdl); }
+    inline ResumeTaskOp resume(CThreadCtxHdl hdl) noexcept { return ResumeTaskOp(hdl); }
 
 }
 
@@ -317,8 +317,8 @@ namespace ak {
 
 namespace ak { namespace priv {
 
-    inline TaskContext* GetLinkedTaskContext(const utl::DLink* link) noexcept {
-        unsigned long long promise_off = ((unsigned long long)link) - offsetof(TaskContext, waitLink);
-        return reinterpret_cast<TaskContext*>(promise_off);
+    inline CThreadContext* get_linked_context(const utl::DLink* link) noexcept {
+        unsigned long long promise_off = ((unsigned long long)link) - offsetof(CThreadContext, wait_link);
+        return reinterpret_cast<CThreadContext*>(promise_off);
     }
 }} // namespace ak::priv

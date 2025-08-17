@@ -46,7 +46,7 @@ int main() {
 		.memSize      = bufferSize,
 		.ioEntryCount = 256
 	};
-	if (RunMain(&config, co_main) != 0) {
+	if (run_main(&config, co_main) != 0) {
 		std::print("main failed\n");
 		std::abort();
 		// Unreachable

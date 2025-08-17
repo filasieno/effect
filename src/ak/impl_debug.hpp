@@ -9,12 +9,12 @@ namespace ak { namespace priv {
 
     inline Void DebugTaskCount() noexcept {
         if constexpr (priv::TRACE_DEBUG_CODE) {
-            int runningCount = gKernel.currentTaskHdl != TaskHdl() ? 1 : 0;
+            int runningCount = gKernel.current_ctx_hdl != CThreadCtxHdl() ? 1 : 0;
             std::print("- {} Running\n", runningCount);
-            std::print("  {} Ready\n", gKernel.readyCount);
-            std::print("  {} Waiting\n", gKernel.waitingCount);
-            std::print("  {} IO waiting\n", gKernel.ioWaitingCount);
-            std::print("  {} Zombie\n", gKernel.zombieCount);
+            std::print("  {} Ready\n", gKernel.ready_count);
+            std::print("  {} Waiting\n", gKernel.waiting_count);
+            std::print("  {} IO waiting\n", gKernel.iowaiting_count);
+            std::print("  {} Zombie\n", gKernel.zombie_count);
         }
     }
 
@@ -22,8 +22,8 @@ namespace ak { namespace priv {
     // ----------------------------------------------------------------------------------------------------------------
 
     inline Void DoCheckTaskCountInvariant() noexcept {
-        int running_count = gKernel.currentTaskHdl != TaskHdl() ? 1 : 0;
-        Bool condition = gKernel.taskCount == running_count + gKernel.readyCount + gKernel.waitingCount + gKernel.ioWaitingCount + gKernel.zombieCount;
+        int running_count = gKernel.current_ctx_hdl != CThreadCtxHdl() ? 1 : 0;
+        Bool condition = gKernel.task_count == running_count + gKernel.ready_count + gKernel.waiting_count + gKernel.iowaiting_count + gKernel.zombie_count;
         if (!condition) {
             DebugTaskCount();
             abort();
@@ -124,25 +124,25 @@ namespace ak { namespace priv {
         // Basic layout and sizes
         std::print("AllocTable: {}\n", (Void*)at);
         
-        std::print("  heapBegin        : {}\n", (Void*)at->heapBegin);
-        std::print("  heapEnd          : {}; size: {}\n", (Void*)at->heapEnd, (intptr_t)(at->heapEnd - at->heapBegin));
-        std::print("  memBegin         : {}\n", (Void*)at->memBegin);
-        std::print("  memEnd           : {}; size: {}\n", (Void*)at->memEnd,  (intptr_t)(at->memEnd  - at->memBegin));
-        std::print("  memSize          : {}\n", at->memSize);
-        std::print("  freeMemSize      : {}\n", at->freeMemSize);
+        std::print("  heapBegin        : {}\n", (Void*)at->heap_begin);
+        std::print("  heapEnd          : {}; size: {}\n", (Void*)at->heap_end, (intptr_t)(at->heap_end - at->heap_begin));
+        std::print("  memBegin         : {}\n", (Void*)at->mem_begin);
+        std::print("  memEnd           : {}; size: {}\n", (Void*)at->mem_end,  (intptr_t)(at->mem_end  - at->mem_begin));
+        std::print("  memSize          : {}\n", at->mem_size);
+        std::print("  freeMemSize      : {}\n", at->free_mem_size);
     
         // Sentinels and wild/large tracking (addresses only; do not dereference)
         std::print("  Key Offsets:\n");
-        std::print("    Begin sentinel offset: {}\n", (intptr_t)at->beginSentinel      - (intptr_t)at->memBegin);
-        std::print("    Wild  block    offset: {}\n", (intptr_t)at->wildBlock          - (intptr_t)at->memBegin);
-        std::print("    LB    sentinel offset: {}\n", (intptr_t)at->largeBlockSentinel - (intptr_t)at->memBegin);
-        std::print("    End   sentinel offset: {}\n", (intptr_t)at->endSentinel        - (intptr_t)at->memBegin);
+        std::print("    Begin sentinel offset: {}\n", (intptr_t)at->sentinel_begin      - (intptr_t)at->mem_begin);
+        std::print("    Wild  block    offset: {}\n", (intptr_t)at->wild_block          - (intptr_t)at->mem_begin);
+        std::print("    LB    sentinel offset: {}\n", (intptr_t)at->sentinel_large_block - (intptr_t)at->mem_begin);
+        std::print("    End   sentinel offset: {}\n", (intptr_t)at->sentinel_end        - (intptr_t)at->mem_begin);
     
         // Free list availability mask as a bit array (256 bits)
         std::print("  FreeListbinMask:");
         alignas(32) uint64_t lanesPrint[4] = {0,0,0,0};
         static_assert(sizeof(lanesPrint) == 32, "lanesPrint must be 256 bits");
-        std::memcpy(lanesPrint, &at->freeListbinMask, 32);
+        std::memcpy(lanesPrint, &at->freelist_mask, 32);
         for (unsigned i = 0; i < 256; i++) {
             if (i % 64 == 0) std::print("\n    ");
             unsigned lane = i >> 6;
@@ -155,12 +155,12 @@ namespace ak { namespace priv {
         
         std::print("  FreeListBinsSizes begin\n");
         for (unsigned i = 0; i < 254; ++i) {
-            unsigned cc = at->freeListBinsCount[i];
+            unsigned cc = at->freelist_count[i];
             if (cc == 0) continue;
             std::print("    {:>5} bytes class  : {}\n", (i + 1) * 32, cc);
         }
-        std::print("     medium     class  : {}\n", at->freeListBinsCount[254]);
-        std::print("     wild       class  : {}\n", at->freeListBinsCount[255]);
+        std::print("     medium     class  : {}\n", at->freelist_count[254]);
+        std::print("     wild       class  : {}\n", at->freelist_count[255]);
         std::print("  FreeListBinsSizes end\n");
         
     
@@ -291,12 +291,12 @@ namespace ak { namespace priv {
 
     static inline Void PrintRow(const AllocHeader* h) {
         const AllocTable* at = &gKernel.alloc_table;
-        uintptr_t beginAddr = (uintptr_t)at->beginSentinel;
+        uintptr_t beginAddr = (uintptr_t)at->sentinel_begin;
         uintptr_t off = (uintptr_t)h - beginAddr;
-        uint64_t  sz  = (uint64_t)h->thisSize.size;
-        uint64_t  psz = (uint64_t)h->prevSize.size;
-        AllocState st = (AllocState)h->thisSize.state;
-        AllocState pst = (AllocState)h->prevSize.state;
+        uint64_t  sz  = (uint64_t)h->this_size.size;
+        uint64_t  psz = (uint64_t)h->prev_size.size;
+        AllocState st = (AllocState)h->this_size.state;
+        AllocState pst = (AllocState)h->prev_size.state;
 
         const Char* stateText = to_string(st);
         const Char* previousStateText = to_string(pst);
@@ -314,18 +314,18 @@ namespace ak { namespace priv {
         std::print("{} {:<10} ", stateColor, previousStateText);
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         
-        Size binIdx = GetAllocSmallBinIndexFromSize(h->thisSize.size);  
+        Size binIdx = GetAllocSmallBinIndexFromSize(h->this_size.size);  
         
         // Print FreeListPrev
-        if (h->thisSize.state == (U32)AllocState::FREE) {
-            utl::DLink* freeListLink = &((FreeAllocHeader*)h)->freeListLink;
+        if (h->this_size.state == (U32)AllocState::FREE) {
+            utl::DLink* freeListLink = &((FreeAllocHeader*)h)->freelist_link;
             utl::DLink* prev = freeListLink->prev;
-            utl::DLink* head = &gKernel.alloc_table.freeListBins[binIdx];
+            utl::DLink* head = &gKernel.alloc_table.freelist_head[binIdx];
             if (prev == head) {
                 std::print("{} {:<18} ", stateColor, "HEAD");
             } else {
-                AllocHeader* prevBlock = (AllocHeader*)((Char*)prev - offsetof(FreeAllocHeader, freeListLink));
-                Size offset = (Size)((Char*)prevBlock - (Char*)gKernel.alloc_table.beginSentinel);
+                AllocHeader* prevBlock = (AllocHeader*)((Char*)prev - offsetof(FreeAllocHeader, freelist_link));
+                Size offset = (Size)((Char*)prevBlock - (Char*)gKernel.alloc_table.sentinel_begin);
                 std::print("{} {:<18} ", stateColor, offset);
             }
         } else {
@@ -335,15 +335,15 @@ namespace ak { namespace priv {
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
 
         // Print FreeList Next
-        if (h->thisSize.state == (U32)AllocState::FREE) {
-            utl::DLink* freeListLink = &((FreeAllocHeader*)h)->freeListLink;
+        if (h->this_size.state == (U32)AllocState::FREE) {
+            utl::DLink* freeListLink = &((FreeAllocHeader*)h)->freelist_link;
             utl::DLink* next = freeListLink->next;
-            utl::DLink* head = &gKernel.alloc_table.freeListBins[binIdx];
+            utl::DLink* head = &gKernel.alloc_table.freelist_head[binIdx];
             if (next == head) {
                 std::print("{} {:<18} ", stateColor, "HEAD");
             } else {
-                AllocHeader* nextBlock = (AllocHeader*)((Char*)next - offsetof(FreeAllocHeader, freeListLink));
-                Size offset = (Size)((Char*)nextBlock - (Char*)gKernel.alloc_table.beginSentinel);
+                AllocHeader* nextBlock = (AllocHeader*)((Char*)next - offsetof(FreeAllocHeader, freelist_link));
+                Size offset = (Size)((Char*)nextBlock - (Char*)gKernel.alloc_table.sentinel_begin);
                 std::print("{} {:<18} ", stateColor, offset);
             }
         } else {
@@ -361,8 +361,8 @@ namespace ak { namespace priv {
         PrintTopBorder();
         PrintHeader();
         PrintHeaderSeparator();
-        AllocHeader* head = (AllocHeader*) at->beginSentinel;
-        AllocHeader* end  = (AllocHeader*) NextAllocHeaderPtr((AllocHeader*)at->endSentinel);
+        AllocHeader* head = (AllocHeader*) at->sentinel_begin;
+        AllocHeader* end  = (AllocHeader*) NextAllocHeaderPtr((AllocHeader*)at->sentinel_end);
         
         for (; head != end; head = NextAllocHeaderPtr(head)) {
             PrintRow(head);
