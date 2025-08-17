@@ -108,7 +108,7 @@ namespace ak
         LARGE_BLOCK_SENTINEL = 0b0110,
         END_SENTINEL         = 0b1100,
     };
-    const Char* ToString(AllocState s) noexcept;
+    const Char* to_string(AllocState s) noexcept;
 
     struct AllocSizeRecord {
         U64 size      : 48;
@@ -131,14 +131,14 @@ namespace ak
     struct AllocStats {
         static constexpr int ALLOCATOR_BIN_COUNT = 256;
 
-        Size binAllocCount[ALLOCATOR_BIN_COUNT];
-        Size binReallocCount[ALLOCATOR_BIN_COUNT];
-        Size binFreeCount[ALLOCATOR_BIN_COUNT];
-        Size binFailedCount[ALLOCATOR_BIN_COUNT];
-        Size binSplitCount[ALLOCATOR_BIN_COUNT];
-        Size binMergeCount[ALLOCATOR_BIN_COUNT];
-        Size binReuseCount[ALLOCATOR_BIN_COUNT];
-        Size binPoolCount[ALLOCATOR_BIN_COUNT];
+        Size alloc_cc[ALLOCATOR_BIN_COUNT];
+        Size realloc_cc[ALLOCATOR_BIN_COUNT];
+        Size free_cc[ALLOCATOR_BIN_COUNT];
+        Size failed_cc[ALLOCATOR_BIN_COUNT];
+        Size split_cc[ALLOCATOR_BIN_COUNT];
+        Size merge_cc[ALLOCATOR_BIN_COUNT];
+        Size reused_cc[ALLOCATOR_BIN_COUNT];
+        Size pooled_cc[ALLOCATOR_BIN_COUNT];
     };
 
     struct AllocTable {

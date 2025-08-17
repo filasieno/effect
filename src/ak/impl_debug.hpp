@@ -298,8 +298,8 @@ namespace ak { namespace priv {
         AllocState st = (AllocState)h->thisSize.state;
         AllocState pst = (AllocState)h->prevSize.state;
 
-        const Char* stateText = ToString(st);
-        const Char* previousStateText = ToString(pst);
+        const Char* stateText = to_string(st);
+        const Char* previousStateText = to_string(pst);
         const Char* stateColor = StateColor(st);
 
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);

@@ -218,7 +218,7 @@ namespace ak {
         static constexpr Size ALIGNMENT      = 32;
     }
     
-    inline const Char* ToString(AllocState s) noexcept {
+    inline const Char* to_string(AllocState s) noexcept {
         switch (s) {
             case AllocState::USED:                 return "USED";
             case AllocState::FREE:                 return "FREE";
@@ -292,8 +292,8 @@ namespace ak {
                 assert(nextBlock->prevSize.state == (U32)AllocState::USED);
 
                 gKernel.alloc_table.freeMemSize -= requestedBlockSize;
-                ++gKernel.alloc_table.stats.binAllocCount[binIdx];
-                ++gKernel.alloc_table.stats.binReuseCount[binIdx];
+                ++gKernel.alloc_table.stats.alloc_cc[binIdx];
+                ++gKernel.alloc_table.stats.reused_cc[binIdx];
                 
                 return (Void*)((Char*)block + HEADER_SIZE);
             } 
@@ -312,9 +312,9 @@ namespace ak {
             // Prefetch stats
             // --------------
             Size newBinIdx = GetAllocSmallBinIndexFromSize(newFreeSize);
-            __builtin_prefetch(&gKernel.alloc_table.stats.binSplitCount[binIdx], 1, 3);  
-            __builtin_prefetch(&gKernel.alloc_table.stats.binAllocCount[binIdx], 1, 3);
-            __builtin_prefetch(&gKernel.alloc_table.stats.binPoolCount[newBinIdx],  1, 3);
+            __builtin_prefetch(&gKernel.alloc_table.stats.split_cc[binIdx], 1, 3);  
+            __builtin_prefetch(&gKernel.alloc_table.stats.alloc_cc[binIdx], 1, 3);
+            __builtin_prefetch(&gKernel.alloc_table.stats.pooled_cc[newBinIdx],  1, 3);
 
             // Update the new free block
             // -------------------------
@@ -335,11 +335,11 @@ namespace ak {
             // Update stats
             // ------------
             
-            ++gKernel.alloc_table.stats.binSplitCount[binIdx];
-            ++gKernel.alloc_table.stats.binAllocCount[binIdx];
+            ++gKernel.alloc_table.stats.split_cc[binIdx];
+            ++gKernel.alloc_table.stats.alloc_cc[binIdx];
             utl::push_link(&gKernel.alloc_table.freeListBins[newBinIdx], &newFree->freeListLink);
             SetAllocFreeBinBit(&gKernel.alloc_table.freeListbinMask, newBinIdx);
-            ++gKernel.alloc_table.stats.binPoolCount[newBinIdx];            
+            ++gKernel.alloc_table.stats.pooled_cc[newBinIdx];            
             ++gKernel.alloc_table.freeListBinsCount[newBinIdx];
             gKernel.alloc_table.freeMemSize -= requestedBlockSize;
             
@@ -377,15 +377,15 @@ namespace ak {
             __builtin_prefetch(newWild, 1, 3);
 
             // 3. Prefetch stats
-            __builtin_prefetch(&gKernel.alloc_table.stats.binAllocCount[255], 1, 3);
-            __builtin_prefetch(&gKernel.alloc_table.stats.binSplitCount[255], 1, 3);
+            __builtin_prefetch(&gKernel.alloc_table.stats.alloc_cc[255], 1, 3);
+            __builtin_prefetch(&gKernel.alloc_table.stats.split_cc[255], 1, 3);
             
             // Case there the wild block is full; memory is exhausted
             // ------------------------------------------------------
             Size oldSize = oldWild->thisSize.size;
             if (requestedBlockSize > oldSize - MIN_BLOCK_SIZE) {
                 // the wild block must have at least MIN_BLOCK_SIZE free space
-                ++gKernel.alloc_table.stats.binFailedCount[255];
+                ++gKernel.alloc_table.stats.failed_cc[255];
                 return nullptr; // not enough space
             }
             
@@ -405,8 +405,8 @@ namespace ak {
             nextBlock->prevSize = newWild->thisSize;
             
             // Update stats
-            ++gKernel.alloc_table.stats.binAllocCount[255];
-            ++gKernel.alloc_table.stats.binSplitCount[255];
+            ++gKernel.alloc_table.stats.alloc_cc[255];
+            ++gKernel.alloc_table.stats.split_cc[255];
             gKernel.alloc_table.freeMemSize -= requestedBlockSize;
             
             return (Void*)((Char*)allocated + HEADER_SIZE);
@@ -457,8 +457,8 @@ namespace ak {
         unsigned origBinIdx = GetAllocSmallBinIndexFromSize(blockSize);
         assert(origBinIdx < 255);
         utl::push_link(&gKernel.alloc_table.freeListBins[origBinIdx], &block->freeListLink);
-        ++gKernel.alloc_table.stats.binFreeCount[origBinIdx];
-        ++gKernel.alloc_table.stats.binPoolCount[origBinIdx];
+        ++gKernel.alloc_table.stats.free_cc[origBinIdx];
+        ++gKernel.alloc_table.stats.pooled_cc[origBinIdx];
         ++gKernel.alloc_table.freeListBinsCount[origBinIdx];
         SetAllocFreeBinBit(&gKernel.alloc_table.freeListbinMask, origBinIdx);
         gKernel.alloc_table.freeMemSize += blockSize;
