@@ -269,7 +269,7 @@ namespace ak
     };
 
     template <typename... Args>
-    int run_main_loop(KernelConfig* cfg, CThread (*co_main)(Args ...) noexcept, Args... args) noexcept;
+    int run_main_cthread(KernelConfig* cfg, CThread (*co_main)(Args ...) noexcept, Args... args) noexcept;
 
     //
     // Declarations for ops 

@@ -60,7 +60,7 @@ namespace ak {
     // The SChedulerTask executues the users mainProc
 
     template <typename... Args>
-    inline int run_main_loop(KernelConfig* config, CThread(*mainProc)(Args ...) noexcept , Args... args) noexcept {
+    inline int run_main_cthread(KernelConfig* config, CThread(*mainProc)(Args ...) noexcept , Args... args) noexcept {
         using namespace priv;
 
         std::memset((Void*)&global_kernel_state, 0, sizeof(global_kernel_state));
