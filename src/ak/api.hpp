@@ -178,7 +178,7 @@ namespace ak
     };
 
     namespace priv {
-
+        // TODO: move to alloc table
         constexpr U64 ALLOC_STATE_IS_USED_MASK     = 0;
         constexpr U64 ALLOC_STATE_IS_FREE_MASK     = 1;
         constexpr U64 ALLOC_STATE_IS_SENTINEL_MASK = 4;    

@@ -99,15 +99,11 @@ CThread co_main(const Char* name) noexcept {
 	ak::init(&r_ready);
 	ak::init(&w_ready);
 
-	CThread::Hdl writer = writer_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
-	CThread::Hdl reader = reader_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
-	std::print("State of reader: {}; State of writer: {}\n", to_string(ak::get_state(reader)), to_string(ak::get_state(writer)));
-	co_await join(reader);
-	std::print("State of reader: {}; State of writer: {}\n", to_string(ak::get_state(reader)), to_string(ak::get_state(writer)));
-	co_await join(writer);
-	std::print("State of reader: {}; State of writer: {}\n", to_string(ak::get_state(reader)), to_string(ak::get_state(writer)));
-	std::fflush(stdout);
-	
+	CThread writer = writer_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
+	CThread reader = reader_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
+	co_await reader;
+	co_await writer;
+	std::fflush(stdout);	
 	co_return 0;
 }
 
