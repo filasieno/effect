@@ -18,9 +18,9 @@ namespace ak {
         ++gKernel.waiting_count;
         utl::enqueue_link(&evt->wait_list, &ctx->wait_link);
         clear(&gKernel.current_ctx_hdl);
-        CheckInvariants();
+        check_invariants();
 
-        return ScheduleNextTask();
+        return schedule();
     }
 
     // Event routines implementation

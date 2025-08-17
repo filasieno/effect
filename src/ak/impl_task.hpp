@@ -31,7 +31,7 @@ namespace ak {
         // Check initial preconditions
         assert(promise->state == TaskState::CREATED);
         assert(is_link_detached(&promise->wait_link));
-        CheckInvariants();
+        check_invariants();
 
         // Add task to the kernel
         ++gKernel.task_count;
@@ -44,8 +44,8 @@ namespace ak {
         // Check post-conditions
         assert(promise->state == TaskState::READY);
         assert(!is_link_detached(&promise->wait_link));
-        CheckInvariants();
-        priv::DebugTaskCount();
+        check_invariants();
+        priv::dump_task_count();
     }
 
     inline CThreadCtxHdl CThreadContext::FinalSuspendTaskOp::await_suspend(CThreadCtxHdl hdl) const noexcept {
@@ -57,16 +57,16 @@ namespace ak {
         assert(gKernel.current_ctx_hdl == hdl);
         assert(ctx->state == TaskState::RUNNING);
         assert(is_link_detached(&ctx->wait_link));
-        CheckInvariants();
+        check_invariants();
 
         // Move the current task from RUNNING to ZOMBIE
         ctx->state = TaskState::ZOMBIE;
         ++gKernel.zombie_count;
         enqueue_link(&gKernel.zombie_list, &ctx->wait_link);
         clear(&gKernel.current_ctx_hdl);
-        CheckInvariants();
+        check_invariants();
 
-        return ScheduleNextTask();
+        return schedule();
     }
 
     // TaskContext ctor/dtor definitions
@@ -75,8 +75,8 @@ namespace ak {
         assert(state == TaskState::DELETING);
         assert(is_link_detached(&tasklist_link));
         assert(is_link_detached(&wait_link));
-        DebugTaskCount();
-        CheckInvariants();
+        dump_task_count();
+        check_invariants();
     }
 
     template <typename... Args>
@@ -94,7 +94,7 @@ namespace ak {
         assert(is_link_detached(&tasklist_link));
         assert(is_link_detached(&wait_link));
         assert(state == TaskState::CREATED);
-        CheckInvariants();
+        check_invariants();
     }
 
     inline Void* CThreadContext::operator new(std::size_t n) noexcept {
@@ -111,7 +111,7 @@ namespace ak {
     inline Void CThreadContext::return_value(int value) noexcept {
         using namespace priv;
 
-        CheckInvariants();
+        check_invariants();
 
         CThreadCtxHdl currentTaskHdl = gKernel.current_ctx_hdl;
         CThreadContext* ctx = &currentTaskHdl.promise();
@@ -129,13 +129,13 @@ namespace ak {
         do {
             utl::DLink* next = dequeue_link(&awaiter_list);
             CThreadContext* ctx = get_linked_context(next);
-            DebugTaskCount();
+            dump_task_count();
             assert(ctx->state == TaskState::WAITING);
             --gKernel.waiting_count;
             ctx->state = TaskState::READY;
             enqueue_link(&gKernel.ready_list, &ctx->wait_link);
             ++gKernel.ready_count;
-            DebugTaskCount();
+            dump_task_count();
 
         } while (!is_link_detached(&awaiter_list));
 
@@ -157,7 +157,7 @@ namespace ak {
             assert(gKernel.current_ctx_hdl == currentTask);
             assert(currentPromise->state == TaskState::RUNNING);
             assert(is_link_detached(&currentPromise->wait_link));
-            CheckInvariants();
+            check_invariants();
         }
 
         // Move the current task from RUNNINIG to READY
@@ -165,9 +165,9 @@ namespace ak {
         ++gKernel.ready_count;
         enqueue_link(&gKernel.ready_list, &currentPromise->wait_link);
         clear(&gKernel.current_ctx_hdl);
-        CheckInvariants();
+        check_invariants();
 
-        return ScheduleNextTask();
+        return schedule();
     }
     
     // ResumeTaskOp implementation
@@ -183,14 +183,14 @@ namespace ak {
         CThreadContext* currentPromise = &gKernel.current_ctx_hdl.promise();
         assert(is_link_detached(&currentPromise->wait_link));
         assert(currentPromise->state == TaskState::RUNNING);
-        CheckInvariants();
+        check_invariants();
 
         // Suspend the current Task
         currentPromise->state = TaskState::READY;
         ++gKernel.ready_count;
         enqueue_link(&gKernel.ready_list, &currentPromise->wait_link);
         clear(&gKernel.current_ctx_hdl);
-        CheckInvariants();
+        check_invariants();
 
         // Move the target task from READY to RUNNING
         CThreadContext* promise = &hdl.promise();
@@ -198,7 +198,7 @@ namespace ak {
         detach_link(&promise->wait_link);
         --gKernel.ready_count;
         gKernel.current_ctx_hdl = hdl;
-        CheckInvariants();
+        check_invariants();
 
         assert(gKernel.current_ctx_hdl);
         return hdl;
@@ -218,7 +218,7 @@ namespace ak {
         assert(currentTaskCtx->state == TaskState::RUNNING);
         assert(is_link_detached(&currentTaskCtx->wait_link));
         assert(gKernel.current_ctx_hdl == currentTaskHdl);
-        CheckInvariants();
+        check_invariants();
 
         CThreadContext* joinedTaskCtx = &joinedTaskHdl.promise();                
         TaskState joinedTaskState = joinedTaskCtx->state;
@@ -231,16 +231,16 @@ namespace ak {
                 ++gKernel.waiting_count;
                 enqueue_link(&joinedTaskCtx->awaiter_list, &currentTaskCtx->wait_link); 
                 clear(&gKernel.current_ctx_hdl);
-                CheckInvariants();
-                DebugTaskCount();
+                check_invariants();
+                dump_task_count();
 
                 // Move the joined TASK from READY to RUNNING
                 joinedTaskCtx->state = TaskState::RUNNING;
                 detach_link(&joinedTaskCtx->wait_link);
                 --gKernel.ready_count;
                 gKernel.current_ctx_hdl = joinedTaskHdl;
-                CheckInvariants();
-                DebugTaskCount();
+                check_invariants();
+                dump_task_count();
                 return joinedTaskHdl;
             }
 
@@ -252,8 +252,8 @@ namespace ak {
                 ++gKernel.waiting_count;
                 enqueue_link(&joinedTaskCtx->awaiter_list, &currentTaskCtx->wait_link); 
                 clear(&gKernel.current_ctx_hdl);
-                CheckInvariants();
-                DebugTaskCount();
+                check_invariants();
+                dump_task_count();
 
                 // Move the Scheduler Task from READY to RUNNING
                 CThreadContext* schedCtx = &gKernel.scheduler_ctx_hdl.promise();
@@ -262,8 +262,8 @@ namespace ak {
                 detach_link(&schedCtx->wait_link);
                 --gKernel.ready_count;
                 gKernel.current_ctx_hdl = gKernel.scheduler_ctx_hdl;
-                CheckInvariants();
-                DebugTaskCount();
+                check_invariants();
+                dump_task_count();
 
                 return gKernel.scheduler_ctx_hdl;
             }

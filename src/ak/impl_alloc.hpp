@@ -57,7 +57,7 @@ namespace ak { namespace priv {
         return 255;
     }
 
-    inline int InitAllocTable(Void* mem, Size size) noexcept {
+    inline int init_alloc_table(Void* mem, Size size) noexcept {
         AllocTable* at = &gKernel.alloc_table;
         
         constexpr U64 SENTINEL_SIZE = sizeof(FreeAllocHeader);
@@ -157,19 +157,19 @@ namespace ak { namespace priv {
         std::memcpy(reinterpret_cast<Char*>(bitField) + lane * sizeof(uint64_t), &word, sizeof(uint64_t));
     }
 
-    inline AllocHeader* NextAllocHeaderPtr(AllocHeader* h) noexcept {
+    inline AllocHeader* next(AllocHeader* h) noexcept {
         size_t sz = (size_t)h->this_size.size;
         if (sz == 0) return h;
         return (AllocHeader*)((Char*)h + sz);
     }
 
-    inline AllocHeader* PrevAllocHeaderPtr(AllocHeader* h) noexcept {
+    inline AllocHeader* prev(AllocHeader* h) noexcept {
         size_t sz = (size_t)h->prev_size.size;
         if (sz == 0) return h;
         return (AllocHeader*)((Char*)h - sz);
     }
 
-    inline U64 GetAllocSmallBinIndexFromSize(U64 sz) noexcept {
+    inline U64 get_alloc_freelist_index(U64 sz) noexcept {
         // Bin mapping: bin = ceil(sz/32) - 1, clamped to [0, 254]
         // Examples: 1..32 -> 0, 33..64 -> 1, ..., 8160 -> 254
         assert(sz > 0);
@@ -269,7 +269,7 @@ namespace ak {
             } 
             
             AllocHeader* block = (AllocHeader*)((Char*)link - offsetof(FreeAllocHeader, freelist_link));
-            AllocHeader* nextBlock = NextAllocHeaderPtr(block);
+            AllocHeader* nextBlock = next(block);
             __builtin_prefetch(nextBlock, 1, 3);
             
             if constexpr (IS_DEBUG_MODE) {
@@ -311,7 +311,7 @@ namespace ak {
 
             // Prefetch stats
             // --------------
-            Size newBinIdx = GetAllocSmallBinIndexFromSize(newFreeSize);
+            Size newBinIdx = get_alloc_freelist_index(newFreeSize);
             __builtin_prefetch(&gKernel.alloc_table.stats.split_counter[binIdx], 1, 3);  
             __builtin_prefetch(&gKernel.alloc_table.stats.alloc_counter[binIdx], 1, 3);
             __builtin_prefetch(&gKernel.alloc_table.stats.pooled_counter[newBinIdx],  1, 3);
@@ -369,7 +369,7 @@ namespace ak {
             // --------------------------------------------------------------
             
             // 1. Prefetch the next block
-            AllocHeader* nextBlock = NextAllocHeaderPtr(oldWild);
+            AllocHeader* nextBlock = next(oldWild);
             __builtin_prefetch(nextBlock, 1, 3);
             
             // 2. Prefetch the new wild block
@@ -449,12 +449,12 @@ namespace ak {
 
         // Update next block prevSize
         // --------------------------
-        AllocHeader* nextBlock = NextAllocHeaderPtr((AllocHeader*)block);
+        AllocHeader* nextBlock = next((AllocHeader*)block);
         nextBlock->prev_size = block->this_size;
         
         // Update stats
         // ------------
-        unsigned origBinIdx = GetAllocSmallBinIndexFromSize(blockSize);
+        unsigned origBinIdx = get_alloc_freelist_index(blockSize);
         assert(origBinIdx < 255);
         utl::push_link(&gKernel.alloc_table.freelist_head[origBinIdx], &block->freelist_link);
         ++gKernel.alloc_table.stats.free_counter[origBinIdx];

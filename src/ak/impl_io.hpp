@@ -27,8 +27,8 @@ namespace ak {
         ctx->state = TaskState::IO_WAITING;
         ++gKernel.iowaiting_count;
         clear(&gKernel.current_ctx_hdl);
-        CheckInvariants();
-        DebugTaskCount();
+        check_invariants();
+        dump_task_count();
 
         // Move the scheduler task from READY to RUNNING
         CThreadContext* sched_ctx = &gKernel.scheduler_ctx_hdl.promise();
@@ -37,8 +37,8 @@ namespace ak {
         utl::detach_link(&sched_ctx->wait_link);
         --gKernel.ready_count;
         gKernel.current_ctx_hdl = gKernel.scheduler_ctx_hdl;
-        CheckInvariants();
-        DebugTaskCount();
+        check_invariants();
+        dump_task_count();
 
         return gKernel.scheduler_ctx_hdl;
     }

@@ -10,26 +10,28 @@ namespace ak { namespace priv {
         // Promise Table: Set of allocated promises pointing to the `address()` of the Task frame
     };
 
-    inline KernelDebug gKernelDebug;
+    inline KernelDebug g_debug_kernel_state;
 #endif
 
     // Allocator routines
-    int          InitAllocTable(Void* mem, Size size) noexcept;
-    AllocHeader* NextAllocHeaderPtr(AllocHeader* h) noexcept;
-    AllocHeader* PrevAllocHeaderPtr(AllocHeader* h) noexcept;
-    U64          GetAllocSmallBinIndexFromSize(U64 sz) noexcept;
+    int          init_alloc_table(Void* mem, Size size) noexcept;
+    U64          get_alloc_freelist_index(U64 allocation_size) noexcept;
+    AllocHeader* next(AllocHeader* h) noexcept;
+    AllocHeader* prev(AllocHeader* h) noexcept;
+    
+
     // Scheduling routines
-    CThreadCtxHdl   ScheduleNextTask() noexcept;
+    CThreadCtxHdl   schedule() noexcept;
     CThreadContext* get_linked_context(const utl::DLink* link) noexcept;
     
     // Debug routines
-    Void DebugTaskCount() noexcept;
-    Void DebugIOURingParams(const io_uring_params* p);
-    Void DebugDumpAllocTable() noexcept;
-    Void DebugPrintAllocBlocks() noexcept;
+    Void dump_task_count() noexcept;
+    Void dump_io_uring_params(const io_uring_params* p);
+    Void dump_alloc_table() noexcept;
+    Void dump_alloc_block() noexcept;
     
     // Invariant checking routines
-    Void CheckInvariants() noexcept;
+    Void check_invariants() noexcept;
     
 }} // namespace ak::priv
 

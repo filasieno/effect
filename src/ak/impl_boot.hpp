@@ -99,7 +99,7 @@ namespace ak {
 
             co_await RunSchedulerTask();
             DestroySchedulerTask(schedulerHdl);
-            DebugTaskCount();
+            dump_task_count();
 
             co_return;
         }
@@ -138,7 +138,7 @@ namespace ak {
 
                 // Zombie bashing
                 while (gKernel.zombie_count > 0) {
-                    DebugTaskCount();
+                    dump_task_count();
 
                     utl::DLink* zombieNode = dequeue_link(&gKernel.zombie_list);
                     CThreadContext& zombiePromise = *get_linked_context(zombieNode);
@@ -157,7 +157,7 @@ namespace ak {
                     CThreadCtxHdl zombieTaskHdl = CThreadCtxHdl::from_promise(zombiePromise);
                     zombieTaskHdl.destroy();
 
-                    DebugTaskCount();
+                    dump_task_count();
                 }
 
                 Bool waitingCC = gKernel.iowaiting_count;
@@ -199,7 +199,7 @@ namespace ak {
         inline int InitKernel(KernelConfig* config) noexcept {
             using namespace priv;
             
-            if (InitAllocTable(config->mem, config->memSize) != 0) {
+            if (init_alloc_table(config->mem, config->memSize) != 0) {
                 return -1;
             }
 
@@ -281,7 +281,7 @@ inline CThreadCtxHdl RunSchedulerTaskOp::await_suspend(BootCtxHdl currentTaskHdl
     --gKernel.ready_count;
 
     // Check expected state post task system bootstrap
-    CheckInvariants();
+    check_invariants();
     return gKernel.scheduler_ctx_hdl;
 }
 
@@ -338,7 +338,7 @@ inline constexpr Void DestroySchedulerTask(CThreadCtxHdl hdl) noexcept {
 ///
 /// \return the next Task to be resumed
 /// \internal
-inline CThreadCtxHdl ScheduleNextTask() noexcept {
+inline CThreadCtxHdl schedule() noexcept {
     using namespace priv;
 
     // If we have a ready task, resume it
@@ -351,7 +351,7 @@ inline CThreadCtxHdl ScheduleNextTask() noexcept {
             ctx->state = TaskState::RUNNING;
             --gKernel.ready_count;
             gKernel.current_ctx_hdl = task;
-            CheckInvariants();
+            check_invariants();
             return task;
         }
 
@@ -395,7 +395,7 @@ inline CThreadCtxHdl ScheduleNextTask() noexcept {
 
         // Zombie bashing
         while (gKernel.zombie_count > 0) {
-            DebugTaskCount();
+            dump_task_count();
 
             utl::DLink* zombieNode = dequeue_link(&gKernel.zombie_list);
             CThreadContext& zombiePromise = *get_linked_context(zombieNode);
@@ -414,7 +414,7 @@ inline CThreadCtxHdl ScheduleNextTask() noexcept {
             CThreadCtxHdl zombieTaskHdl = CThreadCtxHdl::from_promise(zombiePromise);
             zombieTaskHdl.destroy();
 
-            DebugTaskCount();
+            dump_task_count();
         }
 
         if (gKernel.ready_count == 0) {

@@ -7,7 +7,7 @@ namespace ak { namespace priv {
     // Task runtime debug utilities
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline Void DebugTaskCount() noexcept {
+    inline Void dump_task_count() noexcept {
         if constexpr (priv::TRACE_DEBUG_CODE) {
             int runningCount = gKernel.current_ctx_hdl != CThreadCtxHdl() ? 1 : 0;
             std::print("- {} Running\n", runningCount);
@@ -25,7 +25,7 @@ namespace ak { namespace priv {
         int running_count = gKernel.current_ctx_hdl != CThreadCtxHdl() ? 1 : 0;
         Bool condition = gKernel.task_count == running_count + gKernel.ready_count + gKernel.waiting_count + gKernel.iowaiting_count + gKernel.zombie_count;
         if (!condition) {
-            DebugTaskCount();
+            dump_task_count();
             abort();
         }
     }
@@ -36,7 +36,7 @@ namespace ak { namespace priv {
         }
     }
 
-    inline Void CheckInvariants() noexcept {
+    inline Void check_invariants() noexcept {
         if constexpr (IS_DEBUG_MODE) {
             // check the Task invariants
             DoCheckTaskCountInvariant();
@@ -73,7 +73,7 @@ namespace ak { namespace priv {
         if (flags & IORING_SETUP_ATTACH_WQ) std::print("  ATTACH_WQ\n");
     }
 
-    inline Void DebugIOURingParams(const io_uring_params* p) {
+    inline Void dump_io_uring_params(const io_uring_params* p) {
         std::print("IO uring parameters:\n");
         
         // Main parameters
@@ -118,7 +118,7 @@ namespace ak { namespace priv {
     // Allocator Debug utils
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline Void DebugDumpAllocTable() noexcept {
+    inline Void dump_alloc_table() noexcept {
         AllocTable* at = &gKernel.alloc_table;
 
         // Basic layout and sizes
@@ -314,7 +314,7 @@ namespace ak { namespace priv {
         std::print("{} {:<10} ", stateColor, previousStateText);
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         
-        Size binIdx = GetAllocSmallBinIndexFromSize(h->this_size.size);  
+        Size binIdx = get_alloc_freelist_index(h->this_size.size);  
         
         // Print FreeListPrev
         if (h->this_size.state == (U32)AllocState::FREE) {
@@ -353,7 +353,7 @@ namespace ak { namespace priv {
         std::print("{}│{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
 
-    inline Void DebugPrintAllocBlocks() noexcept 
+    inline Void dump_alloc_block() noexcept 
     {
         using namespace priv;
         AllocTable* at = &gKernel.alloc_table;
@@ -362,9 +362,9 @@ namespace ak { namespace priv {
         PrintHeader();
         PrintHeaderSeparator();
         AllocHeader* head = (AllocHeader*) at->sentinel_begin;
-        AllocHeader* end  = (AllocHeader*) NextAllocHeaderPtr((AllocHeader*)at->sentinel_end);
+        AllocHeader* end  = (AllocHeader*) next((AllocHeader*)at->sentinel_end);
         
-        for (; head != end; head = NextAllocHeaderPtr(head)) {
+        for (; head != end; head = next(head)) {
             PrintRow(head);
         }
 

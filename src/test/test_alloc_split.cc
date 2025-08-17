@@ -6,32 +6,32 @@
 using namespace ak;
 
 CThread co_main() noexcept {
-    priv::DebugPrintAllocBlocks();
-	priv::DebugDumpAllocTable();
+    priv::dump_alloc_block();
+	priv::dump_alloc_table();
     	
 	U64 memSize01 = 8096;
 	Void* buff01 = try_alloc_mem(memSize01);
 	assert(buff01 != nullptr);
 	
-	priv::DebugPrintAllocBlocks();
-	priv::DebugDumpAllocTable();
+	priv::dump_alloc_block();
+	priv::dump_alloc_table();
 
 	free_mem(buff01);
 
-	priv::DebugPrintAllocBlocks();
-	priv::DebugDumpAllocTable();
+	priv::dump_alloc_block();
+	priv::dump_alloc_table();
 
 	U64 memSize02 = 16;
 	Void* buff02 = try_alloc_mem(memSize02);
 	assert(buff02 != nullptr);
 
-	priv::DebugPrintAllocBlocks();
-	priv::DebugDumpAllocTable();
+	priv::dump_alloc_block();
+	priv::dump_alloc_table();
 
 	free_mem(buff02);
 
-	priv::DebugPrintAllocBlocks();
-	priv::DebugDumpAllocTable();
+	priv::dump_alloc_block();
+	priv::dump_alloc_table();
 	
   	co_return 0;
 }
