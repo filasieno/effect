@@ -12,7 +12,7 @@ static Void ResetBitField(__m256i* bitField) {
 
 alignas(64) static __m256i bitFieldStorage = _mm256_setzero_si256();
 
-DefineTask MainTask() noexcept {
+CThread co_main() noexcept {
     using namespace ak::priv;
 	__m256i* bitField = &bitFieldStorage;
     
@@ -228,7 +228,7 @@ int main() {
 		.ioEntryCount = 256
   	};
 	
-	if (RunMain(&config, MainTask) != 0) {
+	if (RunMain(&config, co_main) != 0) {
 		std::print("main failed\n");
 		std::abort();
 		// Unreachable

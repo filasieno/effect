@@ -5,7 +5,7 @@
 
 using namespace ak;
 
-DefineTask MainTask(const Char* name) noexcept {
+CThread co_main(const Char* name) noexcept {
 	int res;
 
 	const Char* path = "test.txt";
@@ -30,7 +30,7 @@ int main() {
 		.ioEntryCount = 256
   	};
 	
-	if (RunMain(&config, MainTask, "main") != 0) {
+	if (RunMain(&config, co_main, "main") != 0) {
 		std::print("main failed\n");
 		std::abort();
 		// Unreachable

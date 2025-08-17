@@ -5,7 +5,7 @@
 
 using namespace ak;
 
-DefineTask MainTask() noexcept {
+CThread co_main() noexcept {
     priv::DebugPrintAllocBlocks();
 	priv::DebugDumpAllocTable();
     	
@@ -46,7 +46,7 @@ int main() {
 		.memSize      = bufferSize,
 		.ioEntryCount = 256
 	};
-	if (RunMain(&config, MainTask) != 0) {
+	if (RunMain(&config, co_main) != 0) {
 		std::print("main failed\n");
 		std::abort();
 		// Unreachable

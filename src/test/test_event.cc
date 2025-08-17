@@ -5,7 +5,7 @@
 
 using namespace ak;
 
-DefineTask ReaderTask(Event* canRead, Event* canWrite, int *readSignal, int* writeSignal, int* value) noexcept {
+CThread ReaderTask(Event* canRead, Event* canWrite, int *readSignal, int* writeSignal, int* value) noexcept {
 	std::print("ReaderTask started\n");
 	int outValue = -1;
 	int check = 0;
@@ -46,7 +46,7 @@ DefineTask ReaderTask(Event* canRead, Event* canWrite, int *readSignal, int* wri
 	}
 }
 
-DefineTask WriterTask(Event* canRead, Event* canWrite, int *readSignal, int* writeSignal, int* value) noexcept {
+CThread WriterTask(Event* canRead, Event* canWrite, int *readSignal, int* writeSignal, int* value) noexcept {
 	int check = 0;
 
 	std::print("WriterTask started\n");
@@ -89,7 +89,7 @@ DefineTask WriterTask(Event* canRead, Event* canWrite, int *readSignal, int* wri
 }
 
 
-DefineTask MainTask(const Char* name) noexcept {
+CThread co_main(const Char* name) noexcept {
 	int   value = -1;
 	int   readSignal = 0;
 	int   writeSignal = 0; 
@@ -121,7 +121,7 @@ int main() {
 		.ioEntryCount = 256
   	};
 
-	if (RunMain(&config, MainTask, "main") != 0) {
+	if (RunMain(&config, co_main, "main") != 0) {
 		std::print("main failed\n");
 		std::abort();
 		// Unreachable

@@ -5,7 +5,7 @@
 
 using namespace ak;
 
-DefineTask MainTask() noexcept {
+CThread co_main() noexcept {
     priv::DebugDumpAllocTable();
     priv::DebugPrintAllocBlocks();
 	Size bins = 253;
@@ -18,8 +18,6 @@ DefineTask MainTask() noexcept {
   	co_return 0;
 }
 
-
-
 int main() {
 	U64 bufferSize = 1024 * 1024;
 	Void* buffer = malloc(bufferSize);
@@ -28,7 +26,7 @@ int main() {
 		.memSize      = bufferSize,
 		.ioEntryCount = 256
 	};
-	if (RunMain(&config, MainTask) != 0) {
+	if (RunMain(&config, co_main) != 0) {
 		std::print("main failed\n");
 		std::abort();
 		// Unreachable

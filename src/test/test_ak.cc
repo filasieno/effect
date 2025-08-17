@@ -5,7 +5,7 @@
 
 using namespace ak;
 
-DefineTask aTask(const Char* name) noexcept { 
+CThread a_thread(const Char* name) noexcept { 
 	std::print("Hello from {}: Step 1\n", name);
 	co_await SuspendTask();
 
@@ -24,15 +24,15 @@ DefineTask aTask(const Char* name) noexcept {
 	co_return 0;
 }
 
-DefineTask bTask(const Char* name) noexcept { 
+CThread b_thread(const Char* name) noexcept { 
 	std::print("Hello from {}\n", name);
 	co_return 0;
 }
 
-DefineTask MainTask(const Char* name) noexcept {
+CThread co_main(const Char* name) noexcept {
 	std::print("Hello from '{}'\n", name);
-	TaskHdl a = aTask("A-TASK");
-	auto b = bTask("B-TASK");
+	TaskHdl a = a_thread("A-TASK");
+	auto b = b_thread("B-TASK");
 	co_await a;
 	co_await JoinTask(b);
 	co_return 0;
@@ -47,7 +47,7 @@ int main() {
 		.ioEntryCount = 256
   	};
 	
-	if (RunMain(&config, MainTask, "main") != 0) {
+	if (RunMain(&config, co_main, "main") != 0) {
 		std::print("main failed\n");
 		std::abort();
 		// Unreachable

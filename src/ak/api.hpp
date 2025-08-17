@@ -40,10 +40,12 @@ namespace ak
     /// \ingroup Task
     using TaskHdl = std::coroutine_handle<TaskContext>;
 
-    struct DefineTask {
+    /// \brief Cooperative thread handle
+    /// \ingroup Task
+    struct CThread {
         using promise_type = TaskContext;
 
-        DefineTask(const TaskHdl& hdl) : hdl(hdl) {}
+        CThread(const TaskHdl& hdl) : hdl(hdl) {}
         operator TaskHdl() const noexcept { return hdl; }
 
         TaskHdl hdl;
@@ -52,7 +54,7 @@ namespace ak
     /// \brief Defines a Task function type-erased pointer (no std::function)
     /// \ingroup Task
     template <typename... Args>
-    using TaskFn = DefineTask(*)(Args...);
+    using TaskFn = CThread(*)(Args...);
 
     // TODO: Add size Probing for TaskContext
     struct TaskContextSizeProbe {};
@@ -81,8 +83,8 @@ namespace ak
         ~TaskContext();
         
         TaskHdl        get_return_object() noexcept { return TaskHdl::from_promise(*this);}
-        constexpr auto initial_suspend() noexcept { return InitialSuspendTaskOp{}; }
-        constexpr auto final_suspend() noexcept { return FinalSuspendTaskOp{}; }
+        constexpr auto initial_suspend() const noexcept { return InitialSuspendTaskOp{}; }
+        constexpr auto final_suspend () const noexcept { return FinalSuspendTaskOp{}; }
         Void           return_value(int value) noexcept;
         Void           unhandled_exception() noexcept  { std::abort(); /* unreachable */ }
 
@@ -191,7 +193,7 @@ namespace ak
         static KernelTaskHdl get_return_object_on_allocation_failure() noexcept { std::abort(); /* unreachable */ }
 
         template <typename... Args>
-        KernelTaskPromise(DefineTask(*)(Args ...) noexcept, Args... ) noexcept : returnValue(0) {}
+        KernelTaskPromise(CThread(*)(Args ...) noexcept, Args... ) noexcept : returnValue(0) {}
         
         KernelTaskHdl            get_return_object() noexcept { return KernelTaskHdl::from_promise(*this); }
         constexpr InitialSuspend initial_suspend() noexcept { return {}; }
@@ -245,7 +247,7 @@ namespace ak
     };
 
     template <typename... Args>
-    int RunMain(KernelConfig* config, DefineTask(*mainProc)(Args ...) noexcept , Args... args) noexcept;
+    int RunMain(KernelConfig* config, CThread (*mainProc)(Args ...) noexcept, Args... args) noexcept;
 
     // Task routines
     Void                       ClearTaskHdl(TaskHdl* hdl) noexcept;

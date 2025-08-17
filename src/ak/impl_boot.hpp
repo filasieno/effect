@@ -21,10 +21,10 @@ namespace ak {
         
         // Boot routines
         template <typename... Args>
-        DefineKernelTask KernelTaskProc(DefineTask(*mainProc)(Args ...) noexcept, Args ... args) noexcept;
+        DefineKernelTask KernelTaskProc(CThread(*mainProc)(Args ...) noexcept, Args ... args) noexcept;
 
         template <typename... Args>
-        DefineTask SchedulerTaskProc(DefineTask(*mainProc)(Args ...) noexcept, Args... args) noexcept;
+        CThread SchedulerTaskProc(CThread(*mainProc)(Args ...) noexcept, Args... args) noexcept;
         
         int  InitKernel(KernelConfig* config) noexcept;
         Void FiniKernel() noexcept;
@@ -72,7 +72,7 @@ namespace ak {
     // The SChedulerTask executues the users mainProc
 
     template <typename... Args>
-    inline int RunMain(KernelConfig* config, DefineTask(*mainProc)(Args ...) noexcept , Args... args) noexcept {
+    inline int RunMain(KernelConfig* config, CThread(*mainProc)(Args ...) noexcept , Args... args) noexcept {
         using namespace priv;
 
         std::memset((Void*)&gKernel, 0, sizeof(gKernel));
@@ -92,7 +92,7 @@ namespace ak {
     namespace priv {
 
         template <typename... Args>
-        inline DefineKernelTask KernelTaskProc(DefineTask(*mainProc)(Args ...) noexcept, Args ... args) noexcept {
+        inline DefineKernelTask KernelTaskProc(CThread(*mainProc)(Args ...) noexcept, Args ... args) noexcept {
 
             TaskHdl schedulerHdl = SchedulerTaskProc(mainProc, std::forward<Args>(args) ... );
             gKernel.schedulerTaskHdl = schedulerHdl;
@@ -105,7 +105,7 @@ namespace ak {
         }
 
         template <typename... Args>
-        inline DefineTask SchedulerTaskProc(DefineTask(*mainProc)(Args ...) noexcept, Args... args) noexcept {
+        inline CThread SchedulerTaskProc(CThread(*mainProc)(Args ...) noexcept, Args... args) noexcept {
             using namespace priv;
 
             TaskHdl mainTask = mainProc(args...);
