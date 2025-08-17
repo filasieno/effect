@@ -56,8 +56,8 @@ namespace ak {
         using namespace priv;
         assert(event != nullptr);
         assert(n >= 0);
-        int cc = 0;
-        while (cc < n && !utl::is_link_detached(&event->wait_list)) {
+        int count = 0;
+        while (count < n && !utl::is_link_detached(&event->wait_list)) {
             utl::DLink* link = utl::dequeue_link(&event->wait_list);
             CThread::Context* ctx = get_linked_cthread_context(link);
             assert(ctx->state == CThread::State::WAITING);
@@ -68,9 +68,9 @@ namespace ak {
             ctx->state = CThread::State::READY;
             utl::enqueue_link(&global_kernel_state.ready_list, &ctx->wait_link);
             ++global_kernel_state.ready_cthread_count;    
-            ++cc;
+            ++count;
         }
-        return cc;
+        return count;
     }
 
     inline int signal_all(Event* event) {

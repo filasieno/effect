@@ -10,10 +10,10 @@ namespace ak {
                 
         // Boot routines
         template <typename... Args>
-        BootCThread boot_main_proc(CThread(*main)(Args ...) noexcept, Args ... args) noexcept;
+        BootCThread boot_main_proc(CThread(*main_proc)(Args ...) noexcept, Args ... args) noexcept;
 
         template <typename... Args>
-        CThread scheduler_main_proc(CThread(*main)(Args ...) noexcept, Args... args) noexcept;
+        CThread scheduler_main_proc(CThread(*main_proc)(Args ...) noexcept, Args... args) noexcept;
         
         int  init_kernel(KernelConfig* config) noexcept;
         Void fini_kernel() noexcept;
@@ -35,7 +35,7 @@ namespace ak { namespace priv {
     struct RunSchedulerOp {
         constexpr Bool await_ready() const noexcept { return false; }
         constexpr Void await_resume() const noexcept { }
-        CThread::Hdl   await_suspend(BootCThread::Hdl currentTaskHdl) const noexcept;
+        CThread::Hdl   await_suspend(BootCThread::Hdl current_task_hdl) const noexcept;
     };
 
     struct TerminateSchedulerOp {
@@ -60,7 +60,7 @@ namespace ak {
     // The SChedulerTask executues the users mainProc
 
     template <typename... Args>
-    inline int run_main_cthread(KernelConfig* config, CThread(*mainProc)(Args ...) noexcept , Args... args) noexcept {
+    inline int run_main_cthread(KernelConfig* config, CThread(*main_proc)(Args ...) noexcept , Args... args) noexcept {
         using namespace priv;
 
         std::memset((Void*)&global_kernel_state, 0, sizeof(global_kernel_state));
@@ -69,7 +69,7 @@ namespace ak {
             return -1;
         }
 
-        auto boot_cthread = boot_main_proc(mainProc, std::forward<Args>(args) ...);
+        auto boot_cthread = boot_main_proc(main_proc, std::forward<Args>(args) ...);
         global_kernel_state.boot_cthread = boot_cthread;
         boot_cthread.hdl.resume();
         fini_kernel();
@@ -80,26 +80,26 @@ namespace ak {
     namespace priv {
 
         template <typename... Args>
-        inline BootCThread boot_main_proc(CThread(*mainProc)(Args ...) noexcept, Args ... args) noexcept {
+        inline BootCThread boot_main_proc(CThread(*main_proc)(Args ...) noexcept, Args ... args) noexcept {
 
-            CThread::Hdl schedulerHdl = scheduler_main_proc(mainProc, std::forward<Args>(args) ... );
-            global_kernel_state.scheduler_cthread = schedulerHdl;
+            CThread::Hdl scheduler_hdl = scheduler_main_proc(main_proc, std::forward<Args>(args) ... );
+            global_kernel_state.scheduler_cthread = scheduler_hdl;
 
             co_await run_scheduler();
-            destroy_scheduler(schedulerHdl);
+            destroy_scheduler(scheduler_hdl);
             dump_task_count();
 
             co_return;
         }
 
         template <typename... Args>
-        inline CThread scheduler_main_proc(CThread(*mainProc)(Args ...) noexcept, Args... args) noexcept {
+        inline CThread scheduler_main_proc(CThread(*main_proc)(Args ...) noexcept, Args... args) noexcept {
             using namespace priv;
 
-            CThread::Hdl mainTask = mainProc(args...);
-            global_kernel_state.main_cthread = mainTask;
-            assert(!mainTask.done());
-            assert(get_state(mainTask) == CThread::State::READY);
+            CThread::Hdl main_task = main_proc(args...);
+            global_kernel_state.main_cthread = main_task;
+            assert(!main_task.done());
+            assert(get_state(main_task) == CThread::State::READY);
 
             while (true) {
                 // Sumbit IO operations
@@ -115,11 +115,11 @@ namespace ak {
 
                 // If we have a ready task, resume it
                 if (global_kernel_state.ready_cthread_count > 0) {
-                    utl::DLink* nextNode = global_kernel_state.ready_list.prev;
-                    CThread::Context* nextPromise = get_linked_cthread_context(nextNode);
-                    CThread::Hdl nextTask = CThread::Hdl::from_promise(*nextPromise);
-                    assert(nextTask != global_kernel_state.scheduler_cthread);
-                    co_await op::ResumeCThread(nextTask);
+                    utl::DLink* next_node = global_kernel_state.ready_list.prev;
+                    CThread::Context* next_promise = get_linked_cthread_context(next_node);
+                    CThread::Hdl next_task = CThread::Hdl::from_promise(*next_promise);
+                    assert(next_task != global_kernel_state.scheduler_cthread);
+                    co_await op::ResumeCThread(next_task);
                     assert(global_kernel_state.current_cthread);
                     continue;
                 }
@@ -148,8 +148,8 @@ namespace ak {
                     dump_task_count();
                 }
 
-                Bool waitingCC = global_kernel_state.iowaiting_cthread_count;
-                if (waitingCC) {
+                Bool waiting_cc = global_kernel_state.iowaiting_cthread_count;
+                if (waiting_cc) {
                     // Process all available completions
                     struct io_uring_cqe *cqe;
                     unsigned head;
@@ -248,10 +248,10 @@ namespace ak { namespace priv {
 // RunSchedulerTaskOp
 // ----------------------------------------------------------------------------------------------------------------
 
-inline CThread::Hdl RunSchedulerOp::await_suspend(BootCThread::Hdl currentTaskHdl) const noexcept {
+inline CThread::Hdl RunSchedulerOp::await_suspend(BootCThread::Hdl current_task_hdl) const noexcept {
     using namespace priv;
 
-    (Void)currentTaskHdl;
+    (Void)current_task_hdl;
     CThread::Context* scheduler_ctx = get_context(global_kernel_state.scheduler_cthread);
 
     // Check expected state post scheduler construction
@@ -385,22 +385,22 @@ inline CThread::Hdl schedule_cthread() noexcept {
         while (global_kernel_state.zombie_cthread_count > 0) {
             dump_task_count();
 
-            utl::DLink* zombieNode = dequeue_link(&global_kernel_state.zombie_list);
-            CThread::Context& zombiePromise = *get_linked_cthread_context(zombieNode);
-            assert(zombiePromise.state == CThread::State::ZOMBIE);
+            utl::DLink* zombie_node = dequeue_link(&global_kernel_state.zombie_list);
+            CThread::Context& zombie_promise = *get_linked_cthread_context(zombie_node);
+            assert(zombie_promise.state == CThread::State::ZOMBIE);
 
             // Remove from zombie list
             --global_kernel_state.zombie_cthread_count;
-            detach_link(&zombiePromise.wait_link);
+            detach_link(&zombie_promise.wait_link);
 
             // Remove from task list
-            detach_link(&zombiePromise.tasklist_link);
+            detach_link(&zombie_promise.tasklist_link);
             --global_kernel_state.cthread_count;
 
             // Delete
-            zombiePromise.state = CThread::State::DELETING;
-            CThread::Hdl zombieTaskHdl = CThread::Hdl::from_promise(zombiePromise);
-            zombieTaskHdl.destroy();
+            zombie_promise.state = CThread::State::DELETING;
+            CThread::Hdl zombie_task_hdl = CThread::Hdl::from_promise(zombie_promise);
+            zombie_task_hdl.destroy();
 
             dump_task_count();
         }

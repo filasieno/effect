@@ -144,25 +144,25 @@ namespace ak {
     // SuspendOp implmentation
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline CThread::Hdl op::Suspend::await_suspend(CThread::Hdl currentTask) const noexcept {
+    inline CThread::Hdl op::Suspend::await_suspend(CThread::Hdl current_task) const noexcept {
         using namespace priv;
         using namespace utl;
 
         assert(global_kernel_state.current_cthread);
 
-        CThread::Context* currentPromise = &currentTask.promise();
+        CThread::Context* current_promise = &current_task.promise();
 
         if constexpr (IS_DEBUG_MODE) {
-            assert(global_kernel_state.current_cthread == currentTask);
-            assert(currentPromise->state == CThread::State::RUNNING);
-            assert(is_link_detached(&currentPromise->wait_link));
+            assert(global_kernel_state.current_cthread == current_task);
+            assert(current_promise->state == CThread::State::RUNNING);
+            assert(is_link_detached(&current_promise->wait_link));
             check_invariants();
         }
 
         // Move the current task from RUNNINIG to READY
-        currentPromise->state = CThread::State::READY;
+        current_promise->state = CThread::State::READY;
         ++global_kernel_state.ready_cthread_count;
-        enqueue_link(&global_kernel_state.ready_list, &currentPromise->wait_link);
+        enqueue_link(&global_kernel_state.ready_list, &current_promise->wait_link);
         global_kernel_state.current_cthread.reset();
         check_invariants();
 
@@ -172,22 +172,22 @@ namespace ak {
     // ResumeTaskOp implementation
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline CThread::Hdl op::ResumeCThread::await_suspend(CThread::Hdl currentTaskHdl) const noexcept {
+    inline CThread::Hdl op::ResumeCThread::await_suspend(CThread::Hdl current_task_hdl) const noexcept {
         using namespace priv;
         using namespace utl;
 
-        assert(global_kernel_state.current_cthread == currentTaskHdl);
+        assert(global_kernel_state.current_cthread == current_task_hdl);
 
         // Check the current Task
-        CThread::Context* currentPromise = get_context(global_kernel_state.current_cthread);
-        assert(is_link_detached(&currentPromise->wait_link));
-        assert(currentPromise->state == CThread::State::RUNNING);
+        CThread::Context* current_promise = get_context(global_kernel_state.current_cthread);
+        assert(is_link_detached(&current_promise->wait_link));
+        assert(current_promise->state == CThread::State::RUNNING);
         check_invariants();
 
         // Suspend the current Task
-        currentPromise->state = CThread::State::READY;
+        current_promise->state = CThread::State::READY;
         ++global_kernel_state.ready_cthread_count;
-        enqueue_link(&global_kernel_state.ready_list, &currentPromise->wait_link);
+        enqueue_link(&global_kernel_state.ready_list, &current_promise->wait_link);
         global_kernel_state.current_cthread.reset();
         check_invariants();
 
@@ -206,36 +206,36 @@ namespace ak {
     // JoinTaskOp implementation
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline CThread::Hdl op::JoinCThread::await_suspend(CThread::Hdl currentTaskHdl) const noexcept
+    inline CThread::Hdl op::JoinCThread::await_suspend(CThread::Hdl current_task_hdl) const noexcept
     {
         using namespace priv;
         using namespace utl;
 
-        CThread::Context* currentTaskCtx = &currentTaskHdl.promise();
+        CThread::Context* current_task_ctx = &current_task_hdl.promise();
 
         // Check CurrentTask preconditions
-        assert(currentTaskCtx->state == CThread::State::RUNNING);
-        assert(is_link_detached(&currentTaskCtx->wait_link));
-        assert(global_kernel_state.current_cthread == currentTaskHdl);
+        assert(current_task_ctx->state == CThread::State::RUNNING);
+        assert(is_link_detached(&current_task_ctx->wait_link));
+        assert(global_kernel_state.current_cthread == current_task_hdl);
         check_invariants();
 
-        CThread::Context* joinedTaskCtx = &hdl.promise();                
-        CThread::State joinedTaskState = joinedTaskCtx->state;
-        switch (joinedTaskState) {
+        CThread::Context* joined_task_ctx = &hdl.promise();                
+        CThread::State joined_task_state = joined_task_ctx->state;
+        switch (joined_task_state) {
             case CThread::State::READY:
             {
 
                 // Move current Task from READY to WAITING
-                currentTaskCtx->state = CThread::State::WAITING;
+                current_task_ctx->state = CThread::State::WAITING;
                 ++global_kernel_state.waiting_cthread_count;
-                enqueue_link(&joinedTaskCtx->awaiter_list, &currentTaskCtx->wait_link); 
+                enqueue_link(&joined_task_ctx->awaiter_list, &current_task_ctx->wait_link); 
                 global_kernel_state.current_cthread.reset();
                 check_invariants();
                 dump_task_count();
 
                 // Move the joined TASK from READY to RUNNING
-                joinedTaskCtx->state = CThread::State::RUNNING;
-                detach_link(&joinedTaskCtx->wait_link);
+                joined_task_ctx->state = CThread::State::RUNNING;
+                detach_link(&joined_task_ctx->wait_link);
                 --global_kernel_state.ready_cthread_count;
                 global_kernel_state.current_cthread = hdl;
                 check_invariants();
@@ -247,18 +247,18 @@ namespace ak {
             case CThread::State::WAITING:
             {
                  // Move current Task from READY to WAITING
-                currentTaskCtx->state = CThread::State::WAITING;
+                current_task_ctx->state = CThread::State::WAITING;
                 ++global_kernel_state.waiting_cthread_count;
-                enqueue_link(&joinedTaskCtx->awaiter_list, &currentTaskCtx->wait_link); 
+                enqueue_link(&joined_task_ctx->awaiter_list, &current_task_ctx->wait_link); 
                 global_kernel_state.current_cthread.reset();
                 check_invariants();
                 dump_task_count();
 
                 // Move the Scheduler Task from READY to RUNNING
-                CThread::Context* schedCtx = get_context(global_kernel_state.scheduler_cthread);
-                assert(schedCtx->state == CThread::State::READY);
-                schedCtx->state = CThread::State::RUNNING;
-                detach_link(&schedCtx->wait_link);
+                CThread::Context* sched_ctx = get_context(global_kernel_state.scheduler_cthread);
+                assert(sched_ctx->state == CThread::State::READY);
+                sched_ctx->state = CThread::State::RUNNING;
+                detach_link(&sched_ctx->wait_link);
                 --global_kernel_state.ready_cthread_count;
                 global_kernel_state.current_cthread = global_kernel_state.scheduler_cthread;
                 check_invariants();
@@ -270,7 +270,7 @@ namespace ak {
             case CThread::State::DELETING:
             case CThread::State::ZOMBIE:
             {
-                return currentTaskHdl;
+                return current_task_hdl;
             }
             
             case CThread::State::INVALID:

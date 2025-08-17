@@ -10,8 +10,8 @@ namespace ak { namespace priv {
 
     inline Void dump_task_count() noexcept {
         if constexpr (priv::TRACE_DEBUG_CODE) {
-            int runningCount = global_kernel_state.current_cthread != CThread::Hdl() ? 1 : 0;
-            std::print("- {} Running\n", runningCount);
+            int running_count = global_kernel_state.current_cthread != CThread::Hdl() ? 1 : 0;
+            std::print("- {} Running\n", running_count);
             std::print("  {} Ready\n", global_kernel_state.ready_cthread_count);
             std::print("  {} Waiting\n", global_kernel_state.waiting_cthread_count);
             std::print("  {} IO waiting\n", global_kernel_state.iowaiting_cthread_count);
@@ -74,44 +74,44 @@ namespace ak { namespace priv {
         if (flags & IORING_SETUP_ATTACH_WQ) std::print("  ATTACH_WQ\n");
     }
 
-    inline Void dump_io_uring_params(const io_uring_params* p) {
+    inline Void dump_io_uring_params(const io_uring_params* params) {
         std::print("IO uring parameters:\n");
         
         // Main parameters
         std::print("Main Configuration:\n");
-        std::print("  sq_entries: {}\n", p->sq_entries);
-        std::print("  cq_entries: {}\n", p->cq_entries);
-        std::print("  sq_thread_cpu: {}\n", p->sq_thread_cpu);
-        std::print("  sq_thread_idle: {}\n", p->sq_thread_idle);
-        std::print("  wq_fd: {}\n", p->wq_fd);
+        std::print("  sq_entries: {}\n", params->sq_entries);
+        std::print("  cq_entries: {}\n", params->cq_entries);
+        std::print("  sq_thread_cpu: {}\n", params->sq_thread_cpu);
+        std::print("  sq_thread_idle: {}\n", params->sq_thread_idle);
+        std::print("  wq_fd: {}\n", params->wq_fd);
 
         // Print flags
-        DebugIOURingSetupFlags(p->flags);
+        DebugIOURingSetupFlags(params->flags);
 
         // Print features
-        DebugIOURingFeatures(p->features);
+        DebugIOURingFeatures(params->features);
 
         // Submission Queue Offsets
 
         std::print("Submission Queue Offsets:\n");
-        std::print("  head: {}\n", p->sq_off.head);
-        std::print("  tail: {}\n", p->sq_off.tail);
-        std::print("  ring_mask: {}\n", p->sq_off.ring_mask);
-        std::print("  ring_entries: {}\n", p->sq_off.ring_entries);
-        std::print("  flags: {}\n", p->sq_off.flags);
-        std::print("  dropped: {}\n", p->sq_off.dropped);
-        std::print("  array: {}\n", p->sq_off.array);
+        std::print("  head: {}\n", params->sq_off.head);
+        std::print("  tail: {}\n", params->sq_off.tail);
+        std::print("  ring_mask: {}\n", params->sq_off.ring_mask);
+        std::print("  ring_entries: {}\n", params->sq_off.ring_entries);
+        std::print("  flags: {}\n", params->sq_off.flags);
+        std::print("  dropped: {}\n", params->sq_off.dropped);
+        std::print("  array: {}\n", params->sq_off.array);
 
         // Completion Queue Offsets
 
         std::print("Completion Queue Offsets:\n");
-        std::print("  head: {}\n", p->cq_off.head);
-        std::print("  tail: {}\n", p->cq_off.tail);
-        std::print("  ring_mask: {}\n", p->cq_off.ring_mask);
-        std::print("  ring_entries: {}\n", p->cq_off.ring_entries);
-        std::print("  overflow: {}\n", p->cq_off.overflow);
-        std::print("  cqes: {}\n", p->cq_off.cqes);
-        std::print("  flags: {}\n", p->cq_off.flags);
+        std::print("  head: {}\n", params->cq_off.head);
+        std::print("  tail: {}\n", params->cq_off.tail);
+        std::print("  ring_mask: {}\n", params->cq_off.ring_mask);
+        std::print("  ring_entries: {}\n", params->cq_off.ring_entries);
+        std::print("  overflow: {}\n", params->cq_off.overflow);
+        std::print("  cqes: {}\n", params->cq_off.cqes);
+        std::print("  flags: {}\n", params->cq_off.flags);
         std::print("\n");
         std::fflush(stdout);
     }
@@ -141,14 +141,14 @@ namespace ak { namespace priv {
     
         // Free list availability mask as a bit array (256 bits)
         std::print("  FreeListbinMask:");
-        alignas(32) uint64_t lanesPrint[4] = {0,0,0,0};
-        static_assert(sizeof(lanesPrint) == 32, "lanesPrint must be 256 bits");
-        std::memcpy(lanesPrint, &at->freelist_mask, 32);
+        alignas(32) uint64_t lanes_print[4] = {0,0,0,0};
+        static_assert(sizeof(lanes_print) == 32, "lanes_print must be 256 bits");
+        std::memcpy(lanes_print, &at->freelist_mask, 32);
         for (unsigned i = 0; i < 256; i++) {
             if (i % 64 == 0) std::print("\n    ");
             unsigned lane = i >> 6;
             unsigned bit  = i & 63u;
-            std::print("{}", (lanesPrint[lane] >> bit) & 1ull);
+            std::print("{}", (lanes_print[lane] >> bit) & 1ull);
         }
             std::print("\n");
     
@@ -292,63 +292,63 @@ namespace ak { namespace priv {
 
     static inline Void PrintRow(const AllocBlockHeader* h) {
         const AllocTable* at = &global_kernel_state.alloc_table;
-        uintptr_t beginAddr = (uintptr_t)at->sentinel_begin;
-        uintptr_t off = (uintptr_t)h - beginAddr;
+        uintptr_t begin_addr = (uintptr_t)at->sentinel_begin;
+        uintptr_t off = (uintptr_t)h - begin_addr;
         uint64_t  sz  = (uint64_t)h->this_desc.size;
         uint64_t  psz = (uint64_t)h->prev_desc.size;
         AllocBlockState st = (AllocBlockState)h->this_desc.state;
         AllocBlockState pst = (AllocBlockState)h->prev_desc.state;
 
-        const Char* stateText = to_string(st);
-        const Char* previousStateText = to_string(pst);
-        const Char* stateColor = StateColor(st);
+        const Char* state_text = to_string(st);
+        const Char* previous_state_text = to_string(pst);
+        const Char* state_color = StateColor(st);
 
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<18} ", stateColor, (unsigned long long)off);
+        std::print("{} {:<18} ", state_color, (unsigned long long)off);
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<12} ", stateColor, (unsigned long long)sz);
+        std::print("{} {:<12} ", state_color, (unsigned long long)sz);
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<10} ", stateColor, stateText);
+        std::print("{} {:<10} ", state_color, state_text);
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<12} ", stateColor, (unsigned long long)psz);
+        std::print("{} {:<12} ", state_color, (unsigned long long)psz);
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<10} ", stateColor, previousStateText);
+        std::print("{} {:<10} ", state_color, previous_state_text);
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         
-        Size binIdx = get_alloc_freelist_index(h->this_desc.size);  
+        Size bin_idx = get_alloc_freelist_index(h->this_desc.size);  
         
         // Print FreeListPrev
         if (h->this_desc.state == (U32)AllocBlockState::FREE) {
-            utl::DLink* freeListLink = &((FreeAllocBlockHeader*)h)->freelist_link;
-            utl::DLink* prev = freeListLink->prev;
-            utl::DLink* head = &global_kernel_state.alloc_table.freelist_head[binIdx];
+            utl::DLink* free_list_link = &((FreeAllocBlockHeader*)h)->freelist_link;
+            utl::DLink* prev = free_list_link->prev;
+            utl::DLink* head = &global_kernel_state.alloc_table.freelist_head[bin_idx];
             if (prev == head) {
-                std::print("{} {:<18} ", stateColor, "HEAD");
+                std::print("{} {:<18} ", state_color, "HEAD");
             } else {
-                AllocBlockHeader* prevBlock = (AllocBlockHeader*)((Char*)prev - offsetof(FreeAllocBlockHeader, freelist_link));
-                Size offset = (Size)((Char*)prevBlock - (Char*)global_kernel_state.alloc_table.sentinel_begin);
-                std::print("{} {:<18} ", stateColor, offset);
+                AllocBlockHeader* prev_block = (AllocBlockHeader*)((Char*)prev - offsetof(FreeAllocBlockHeader, freelist_link));
+                Size offset = (Size)((Char*)prev_block - (Char*)global_kernel_state.alloc_table.sentinel_begin);
+                std::print("{} {:<18} ", state_color, offset);
             }
         } else {
-            std::print("{} {:<18} ", stateColor, "");
+            std::print("{} {:<18} ", state_color, "");
         }
 
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
 
         // Print FreeList Next
         if (h->this_desc.state == (U32)AllocBlockState::FREE) {
-            utl::DLink* freeListLink = &((FreeAllocBlockHeader*)h)->freelist_link;
-            utl::DLink* next = freeListLink->next;
-            utl::DLink* head = &global_kernel_state.alloc_table.freelist_head[binIdx];
+            utl::DLink* free_list_link = &((FreeAllocBlockHeader*)h)->freelist_link;
+            utl::DLink* next = free_list_link->next;
+            utl::DLink* head = &global_kernel_state.alloc_table.freelist_head[bin_idx];
             if (next == head) {
-                std::print("{} {:<18} ", stateColor, "HEAD");
+                std::print("{} {:<18} ", state_color, "HEAD");
             } else {
-                AllocBlockHeader* nextBlock = (AllocBlockHeader*)((Char*)next - offsetof(FreeAllocBlockHeader, freelist_link));
-                Size offset = (Size)((Char*)nextBlock - (Char*)global_kernel_state.alloc_table.sentinel_begin);
-                std::print("{} {:<18} ", stateColor, offset);
+                AllocBlockHeader* next_block = (AllocBlockHeader*)((Char*)next - offsetof(FreeAllocBlockHeader, freelist_link));
+                Size offset = (Size)((Char*)next_block - (Char*)global_kernel_state.alloc_table.sentinel_begin);
+                std::print("{} {:<18} ", state_color, offset);
             }
         } else {
-            std::print("{} {:<18} ", stateColor, "");
+            std::print("{} {:<18} ", state_color, "");
         }
 
         std::print("{}│{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
