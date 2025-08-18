@@ -56,6 +56,6 @@ vgcore.*
 #others
 *.original
 scratch.*
-# compile_commands.json
+compile_commands.json
 
 
