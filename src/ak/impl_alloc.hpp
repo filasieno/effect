@@ -3,17 +3,122 @@
 #include "ak/api_priv.hpp"
 
 namespace ak { namespace priv {
-    // FreeBin utilities
-    Void set_alloc_freelist_mask(__m256i* bit_field, U64 bin_idx) noexcept;
-    Bool get_alloc_freelist_mask(__m256i* bit_field, U64 bin_idx) noexcept;
-    Void clear_alloc_freelist_mask(__m256i* bit_field, U64 bin_idx) noexcept;
-    int  find_alloc_freelist_index(__m256i* bit_field, Size alloc_size) noexcept;
+    // alloc_freelist utilities
+    using Vec256i = __m256i;
+    
+    Void set_alloc_freelist_mask(Vec256i* bit_field, U64 bin_idx) noexcept;
+    Bool get_alloc_freelist_mask(Vec256i* bit_field, U64 bin_idx) noexcept;
+    Void clear_alloc_freelist_mask(Vec256i* bit_field, U64 bin_idx) noexcept;
+    U32  find_alloc_freelist_index(Vec256i* bit_field, Size alloc_size) noexcept;
+    U32  get_alloc_freelist_index(const AllocBlockHeader* header) noexcept;
 
+    /// \brief Block allocation index
+    namespace memidx {
+        static constexpr U64 PAGE_SIZE      = 8192;
+        static constexpr U64 MINI_PAGE_SIZE = 128;
 
-    unsigned get_alloc_freelist_index(const AllocBlockHeader* header) noexcept;
+        void* u48_to_ptr(U64 val) noexcept 
+        {
+            bool sign = (val & (1ULL << 47)) != 0;
+            val |= sign ? (0xFFFFULL << 48) : 0;
+            return reinterpret_cast<void*>(val);
+        }
+
+        enum class MiniPageType : U8
+        {
+            INVALID = 0,
+            HEADER,
+            KEY_TREE_ROOT,
+            KEY_TREE_INNER,
+            KEY_TREE_LEAF,
+            VALUE_VEC_1,
+            VALUE_VEC_2,
+            VALUE_VEC_3,
+            VALUE_LIST_HEAD,
+            VALUE_LIST_NEXT,
+            VALUEXT_VEC1,
+        };
+
+        struct ValueVecMiniPage
+        {
+            static constexpr U64 SLOT_CAPACITY = 6;            
+            MiniPageType type; 
+            U8  count;
+            U8  free_mask;
+            U8  minipage_count;
+            U8  next_minipage;
+            U8  prev_minipage;
+            U8  _p1[2];
+            U32 slot_size_hi[SLOT_CAPACITY];
+            U32 slot_addr_hi[SLOT_CAPACITY];
+            U16 slot_size_low[SLOT_CAPACITY];
+            U16 slot_addr_low[SLOT_CAPACITY];
+
+        } AK_PACKED_ATTR;
+        static_assert(sizeof(ValueVecMiniPage) == MINI_PAGE_SIZE, "Unexpected ValueVecMiniPage size");   
+
+        struct PagePID
+        {
+            U8 minipage_idx : 7; // MAX < 128
+            U8 slot_idx     : 6; // MAX < 6
+            U8 offset       : 2; // MAX < 3
+        };
+
+        struct KeyTreeLeaf
+        {
+            static constexpr U64 SLOT_CAPACITY = 12;
+            MiniPageType type; 
+            U8           key_count;
+            U8           next_minipage;
+            U8           prev_minipage;
+            U8           _p1[4];
+            U8           slots_idx[SLOT_CAPACITY];
+            U8           minipage_idx[SLOT_CAPACITY];                                    
+            U64          key_vec[SLOT_CAPACITY];                           
+        } AK_PACKED_ATTR;
+        static_assert(sizeof(KeyTreeLeaf) == MINI_PAGE_SIZE, "Unexpected KeyTreeLeaf size");   
+
+        // struct Header : public AllocBlockHeader {
+        //     MiniPageType type;
+        //     U64          free_mask[2];
+        // } AK_PACKED_ATTR;
+        // static_assert(sizeof(Header) == MINI_PAGE_SIZE, "Unexpected Header size");   
+
+        // struct ValueVecPoolMiniPage {
+        //     static constexpr U64 SLOT_CAPACITY = 6;            
+        //     U32 size_hi[SLOT_CAPACITY];
+        //     U32 addr_hi[SLOT_CAPACITY];
+        //     U16 size_low[SLOT_CAPACITY];
+        //     U16 addr_low[SLOT_CAPACITY];
+        //     U8  free_mask;
+        //     U8  count;
+        //     U8  next_mpage;
+        //     U8  prev_mpage;
+        //     U8  page_count;
+        // } AK_PACKED_ATTR;
+        // static_assert(sizeof(ValueVecPoolMiniPage) == MINI_PAGE_SIZE, "Unexpected ValueMiniPage1 size"); 
+
+        // struct ValueMiniPage2  {
+        //     static constexpr U64 SLOT_COUNT = MINI_PAGE_SIZE / sizeof(ValuePair);
+        //     ValuePair slots[SLOT_COUNT];
+        // } AK_PACKED_ATTR;
+        // static_assert(sizeof(ValueMiniPage2) == MINI_PAGE_SIZE, "Unexpected ValueMiniPage2 size");
+
+        // struct ValueMiniPage4  {
+        //     static constexpr U64 SLOT_COUNT = MINI_PAGE_SIZE / sizeof(ValueQuad);
+        //     ValueQuad slots[SLOT_COUNT];
+        // } AK_PACKED_ATTR;
+        // static_assert(sizeof(ValueMiniPage4) == MINI_PAGE_SIZE, "Unexpected ValueMiniPage4 size");
+
+        // struct ValueFullMiniPage {
+        //     Value
+        // } AK_PACKED_ATTR;
+        // static_assert(sizeof(ValueFullMiniPage) == MINI_PAGE_SIZE, "Unexpected ValueFullMiniPage size");
+       
+    }
+    
+
 }}
-
-
 
 // Private Allocator API implementation
 // ----------------------------------------------------------------------------------------------------------------
@@ -28,29 +133,29 @@ namespace ak { namespace priv {
     /// \pre AVX2 is available
     /// \pre bitField is 64 byte aligned
     /// \internal
-    inline int find_alloc_freelist_index(__m256i* bit_field, Size alloc_size) noexcept {
+    inline U32 find_alloc_freelist_index(__m256i* bit_field, Size alloc_size) noexcept {
         assert(bit_field != nullptr);
-        assert(((uintptr_t)bit_field % 64ull) == 0ull);
+        assert(((U64)bit_field % 64ull) == 0ull);
 
         // Compute the starting bin index (ceil(alloc_size/32) - 1), clamped to [0,255]
-        unsigned required_bin = 0u;
+        U64 required_bin = 0ull;
         if (alloc_size != 0) {
-            required_bin = (unsigned)((alloc_size - 1u) >> 5); // floor((allocSize-1)/32)
+            required_bin = (U64)((alloc_size - 1u) >> 5); // floor((allocSize-1)/32)
         }
-        if (required_bin > 255u) required_bin = 255u;
+        if (required_bin > 255ull) required_bin = 255ull;
 
         // Safely load as 4x64-bit words to avoid strict-aliasing pitfalls
-        uint64_t words[4];
+        U64 words[4];
         std::memcpy(words, bit_field, sizeof(words));
 
-        const unsigned starting_word_index = required_bin >> 6; // 0..3
-        const unsigned bit_in_word         = required_bin & 63u; // 0..63
+        const U64 starting_word_index = required_bin >> 6; // 0..3
+        const U64 bit_in_word         = required_bin & 63u; // 0..63
 
-        for (unsigned word_index = starting_word_index; word_index < 4u; ++word_index) {
-            const uint64_t mask = (word_index == starting_word_index) ? (~0ull << bit_in_word) : ~0ull;
-            const uint64_t value = words[word_index] & mask;
+        for (U64 word_index = starting_word_index; word_index < 4u; ++word_index) {
+            const U64 mask = (word_index == starting_word_index) ? (~0ull << bit_in_word) : ~0ull;
+            const U64 value = words[word_index] & mask;
             if (value != 0ull) {
-                return (int)(word_index * 64u + (unsigned)__builtin_ctzll(value));
+                return (U32)((word_index * 64ull + (U64)__builtin_ctzll(value)));
             }
         }
         // No small bin available at or after required -> use wild (255)
@@ -179,7 +284,7 @@ namespace ak { namespace priv {
         return bin;
     }
 
-    inline unsigned get_alloc_freelist_index(const AllocBlockHeader* header) noexcept {
+    inline U32 get_alloc_freelist_index(const AllocBlockHeader* header) noexcept {
         switch ((AllocBlockState)header->this_desc.state) {
             case AllocBlockState::WILD_BLOCK:
                 return 255;

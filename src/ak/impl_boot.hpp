@@ -296,7 +296,7 @@ inline BootCThread::Hdl TerminateSchedulerOp::await_suspend(CThread::Hdl hdl) co
 
 // Boot implementation
 // ----------------------------------------------------------------------------------------------------------------
-constexpr RunSchedulerOp   run_scheduler() noexcept       { return {}; }
+constexpr RunSchedulerOp run_scheduler() noexcept { return {}; }
 
 constexpr TerminateSchedulerOp terminate_scheduler() noexcept { return {}; }
 

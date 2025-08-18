@@ -55,5 +55,6 @@ vgcore.*
 
 #others
 *.original
+scratch.*
 
 

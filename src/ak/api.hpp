@@ -63,7 +63,7 @@ namespace ak
             ~Context();
             
             CThread        get_return_object() noexcept { return {Hdl::from_promise(*this)};}
-            constexpr auto initial_suspend() const noexcept { return InitialSuspendTaskOp{}; }
+            constexpr auto initial_suspend() const noexcept { return InitialSuspendTaskOp {}; }
             constexpr auto final_suspend () const noexcept { return FinalSuspendTaskOp{}; }
             Void           return_value(int value) noexcept;
             Void           unhandled_exception() noexcept  { std::abort(); /* unreachable */ }
@@ -105,6 +105,13 @@ namespace ak
     }
     // Allocator
     // ----------------------------------------------------------------------------------------------------------------
+    // alloc::BlockState
+    // alloc::BlockKind
+    // alloc::BlockDesc
+    // alloc::FreeBlock
+    // alloc::UsedBlock
+    // alloc::Table
+    // alloc::Stats
 
     enum class AllocBlockState {
         INVALID              = 0b0000,
@@ -117,10 +124,18 @@ namespace ak
     };
     const Char* to_string(AllocBlockState s) noexcept;
 
+    enum class AllocKind {
+        INVALID = 0,
+        GENERIC_MALLOC,
+        PROMISE,
+        FREE_SEGMENT_INDEX_LEAF,
+        FREE_SEGMENT_INDEX_INNER,
+        FREE_SEGMENT_INDEX_LEAF_EXTENSION
+    };
     struct AllocBlockDesc {
-        U64 size      : 48;
-        U64 state     : 4;
-        U64 _reserved : 12;
+        U64 size  : 48;
+        U64 state : 4;
+        U64 kind  : 12;
     };
 
     struct AllocBlockHeader {

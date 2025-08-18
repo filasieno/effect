@@ -33,5 +33,9 @@ namespace ak {
         constexpr Bool ENABLE_AVX2      = false;
         constexpr Bool TRACE_DEBUG_CODE = false;
 
+        constexpr U64 CACHE_LINE = 64;
     } // namespace ak::priv
+
 } // namespace ak
+
+#define AK_PACKED_ATTR __attribute__((packed))
