@@ -3,7 +3,9 @@
     "myIncludePath": [
       "${workspaceFolder}/src",
       "/nix/store/gbwf7by78vgqjmcjf1smbh1zib0mycf8-libcxx-20.1.6-dev/include",
-      "/nix/store/qqjsw1fzand71ajx326r84zgi485mqb8-liburing-2.11-dev/include"
+      "/nix/store/qqjsw1fzand71ajx326r84zgi485mqb8-liburing-2.11-dev/include",
+      "/nix/store/5xrzl2s73vp8ff9ywz748hnkg0kflxsr-gtest-1.17.0-dev/include",
+      "/nix/store/08w3zci7z09fnpkfir56pi3rby58cj7z-gbenchmark-1.9.4/include"
     ],
     "myDefines": ["DEBUG", "_LIBCPP_HAS_NO_VENDOR_AVAILABILITY_ANNOTATIONS"]
   },

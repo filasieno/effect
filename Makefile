@@ -29,8 +29,10 @@ CXXFLAGS += -g
 endif
 
 LDFLAGS =
-LDLIBS = -luring 
+LDLIBS = -luring -lgtest -lgtest_main -lbenchmark -lbenchmark_main
 CPPFLAGS = -I./src
+
+
 CC := $(CXX)
 
 
@@ -224,5 +226,7 @@ test:: test_dlist
 test:: test_event
 test:: test_file_io
 test:: test_freelist_search
+test:: test_gtest
+test:: test_gbenchmark
 
 all:: build/ak_impl.o test doxygen
