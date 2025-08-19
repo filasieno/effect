@@ -154,13 +154,14 @@
               ragel
               python3
               bear
+              gnumake
+              clang 
+              clang-tools
             ] ++ [ak_gtest ak_gbenchmark];
             
             buildInputs = with pkgs; [
               liburing
               llvmPackages.libcxx 
-              clang 
-              clang-tools
             ];
 
             shellHook = ''
@@ -168,15 +169,15 @@
               export CC="clang++"
               export CXX="clang++"
               export PS1='$ '
-              echo "liburing inc : ${pkgs.liburing.dev}" 
-              echo "liburing lib : ${pkgs.liburing}" 
-              echo "C++ compiler : ${pkgs.clang}"
-              echo "libcxx path  : ${pkgs.llvmPackages.libcxx}"
-              echo "clangd path  : ${pkgs.clang-tools}/bin/clangd"
-              echo "gtest inc    : ${pkgs.gtest.dev}/include"
-              echo "gtest lib    : ${pkgs.gtest}/lib"
-              echo "gbenchmark inc    : ${pkgs.gbenchmark}/include"
-              echo "gbenchmark lib    : ${pkgs.gbenchmark}/lib"
+              echo "liburing inc   : ${pkgs.liburing.dev}" 
+              echo "liburing lib   : ${pkgs.liburing}" 
+              echo "C++ compiler   : ${pkgs.clang}"
+              echo "libcxx path    : ${pkgs.llvmPackages.libcxx}"
+              echo "clangd path    : ${pkgs.clang-tools}/bin/clangd"
+              echo "gtest inc      : ${pkgs.gtest.dev}/include"
+              echo "gtest lib      : ${pkgs.gtest}/lib"
+              echo "gbenchmark inc : ${pkgs.gbenchmark}/include"
+              echo "gbenchmark lib : ${pkgs.gbenchmark}/lib"
               export PKG_CONFIG_PATH="${pkgs.gtest.dev}/lib/pkgconfig:$PKG_CONFIG_PATH"
               export PKG_CONFIG_PATH="${pkgs.gbenchmark}/lib/pkgconfig:$PKG_CONFIG_PATH"
             '';
