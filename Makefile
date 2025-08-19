@@ -229,4 +229,6 @@ test:: test_freelist_search
 test:: test_gtest
 test:: test_gbenchmark
 
+test:: test_alloc_free_block_header
+
 all:: build/ak_impl.o test doxygen

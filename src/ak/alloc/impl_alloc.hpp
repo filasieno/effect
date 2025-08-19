@@ -165,7 +165,7 @@ namespace ak { namespace priv {
     inline int init_alloc_table(Void* mem, Size size) noexcept {
         AllocTable* at = &global_kernel_state.alloc_table;
         
-        constexpr U64 SENTINEL_SIZE = sizeof(FreeAllocBlockHeader);
+        constexpr U64 SENTINEL_SIZE = sizeof(AllocPooledFreeBlockHeader);
 
         assert(mem != nullptr);
         assert(size >= 4096);
@@ -188,10 +188,10 @@ namespace ak { namespace priv {
 
         // Addresses
         // Layout: [BeginSentinel] ... blocks ... [LargeBlockSentinel] ... largeBlocks ... [EndSentinel]
-        FreeAllocBlockHeader* begin_sentinel      = (FreeAllocBlockHeader*)aligned_begin;
-        FreeAllocBlockHeader* wild_block          = (FreeAllocBlockHeader*)((Char*)begin_sentinel + SENTINEL_SIZE);
-        FreeAllocBlockHeader* end_sentinel        = (FreeAllocBlockHeader*)((Char*)aligned_end    - SENTINEL_SIZE); 
-        FreeAllocBlockHeader* large_block_sentinel = (FreeAllocBlockHeader*)((Char*)end_sentinel   - SENTINEL_SIZE);
+        AllocPooledFreeBlockHeader* begin_sentinel      = (AllocPooledFreeBlockHeader*)aligned_begin;
+        AllocPooledFreeBlockHeader* wild_block          = (AllocPooledFreeBlockHeader*)((Char*)begin_sentinel + SENTINEL_SIZE);
+        AllocPooledFreeBlockHeader* end_sentinel        = (AllocPooledFreeBlockHeader*)((Char*)aligned_end    - SENTINEL_SIZE); 
+        AllocPooledFreeBlockHeader* large_block_sentinel = (AllocPooledFreeBlockHeader*)((Char*)end_sentinel   - SENTINEL_SIZE);
         utl::init_link(&wild_block->freelist_link);
         
         // Check alignments
@@ -373,7 +373,7 @@ namespace ak {
                 clear_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, bin_idx);
             } 
             
-            AllocBlockHeader* block = (AllocBlockHeader*)((Char*)link - offsetof(FreeAllocBlockHeader, freelist_link));
+            AllocBlockHeader* block = (AllocBlockHeader*)((Char*)link - offsetof(AllocPooledFreeBlockHeader, freelist_link));
             AllocBlockHeader* next_block = next(block);
             __builtin_prefetch(next_block, 1, 3);
             
@@ -411,7 +411,7 @@ namespace ak {
             
             // Prefetch the new free block
             // ----------------------------
-            FreeAllocBlockHeader* new_free = (FreeAllocBlockHeader*)((Char*)block + requested_block_size);
+            AllocPooledFreeBlockHeader* new_free = (AllocPooledFreeBlockHeader*)((Char*)block + requested_block_size);
             __builtin_prefetch(new_free, 1, 3);
 
             // Prefetch stats
@@ -478,7 +478,7 @@ namespace ak {
             __builtin_prefetch(next_block, 1, 3);
             
             // 2. Prefetch the new wild block
-            FreeAllocBlockHeader* new_wild = (FreeAllocBlockHeader*)((Char*)old_wild + requested_block_size);
+            AllocPooledFreeBlockHeader* new_wild = (AllocPooledFreeBlockHeader*)((Char*)old_wild + requested_block_size);
             __builtin_prefetch(new_wild, 1, 3);
 
             // 3. Prefetch stats
@@ -542,7 +542,7 @@ namespace ak {
 
         // Release Block
         // -------------
-        FreeAllocBlockHeader* block = (FreeAllocBlockHeader*)((Char*)ptr - HEADER_SIZE);
+        AllocPooledFreeBlockHeader* block = (AllocPooledFreeBlockHeader*)((Char*)ptr - HEADER_SIZE);
         AllocBlockDesc this_size = block->this_desc;
         Size block_size = this_size.size;
 

@@ -14,10 +14,15 @@ namespace ak { namespace priv {
 #endif
 
     // Allocator routines
-    int          init_alloc_table(Void* mem, Size size) noexcept;
-    U64          get_alloc_freelist_index(U64 allocation_size) noexcept;
-    AllocBlockHeader* next(AllocBlockHeader* h) noexcept;
-    AllocBlockHeader* prev(AllocBlockHeader* h) noexcept;
+    int                   init_alloc_table(Void* mem, Size size) noexcept;
+    U64                   get_alloc_freelist_index(U64 allocation_size) noexcept;
+    AllocBlockHeader*     next(AllocBlockHeader* h) noexcept;
+    AllocBlockHeader*     prev(AllocBlockHeader* h) noexcept;
+
+    Void                  init_free_block_tree_root(AllocFreeBlockHeader** root) noexcept;
+    AllocFreeBlockHeader* put_free_block(AllocFreeBlockHeader** root, AllocBlockHeader* block) noexcept;
+    AllocFreeBlockHeader* find_gte_free_block(AllocFreeBlockHeader** root, U64 block_size) noexcept;
+    AllocBlockHeader*     detach_free_block(AllocFreeBlockHeader** root, AllocFreeBlockHeader* link) noexcept;
     
 
     // Scheduling routines

@@ -105,14 +105,4 @@
         "--query-driver=/nix/store/*-clang-wrapper-*/bin/clang++;*/bin/clang++"
     ],
     "clangd.path": "/nix/store/adm1gf89bmd29d6nawzx6bb91zvwi316-clang-tools-20.1.6/bin/clangd"
-    ,
-    "files.exclude": {
-        "examples/**": true
-    },
-    "search.exclude": {
-        "examples/**": true
-    },
-    "files.watcherExclude": {
-        "examples/**": true
-    }
 }

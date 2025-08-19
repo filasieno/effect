@@ -122,6 +122,7 @@ namespace ak
         LARGE_BLOCK_SENTINEL = 0b0110,
         END_SENTINEL         = 0b1100,
     };
+
     const Char* to_string(AllocBlockState s) noexcept;
 
     enum class AllocKind {
@@ -143,12 +144,26 @@ namespace ak
         AllocBlockDesc prev_desc;
     };
 
-    struct FreeAllocBlockHeader {
+    struct AllocPooledFreeBlockHeader {
         AllocBlockDesc  this_desc;
         AllocBlockDesc  prev_desc;
         utl::DLink freelist_link;
     };
-    static_assert(sizeof(FreeAllocBlockHeader) == 32);
+    static_assert(sizeof(AllocPooledFreeBlockHeader) == 32);
+
+    /// \internal 
+    /// \details The key of the AVL tree is `this_desc.size`.
+    /// \ingroup Allocator
+    struct AllocFreeBlockHeader : public AllocBlockHeader {         
+        I32 height;         // if height is < 0 the is not a tree node but is a list node in the tree
+        I32 balance;        // AVL Balance factor
+        AllocFreeBlockHeader* parent;   // AVL Parent node for intrusive "detach"     
+        AllocFreeBlockHeader* left;     // AVL Left child
+        AllocFreeBlockHeader* right;    // AVL Right child
+        AllocFreeBlockHeader* next;     // Multimap next link
+        AllocFreeBlockHeader* prev;     // Multimap prev link
+    };
+    static_assert(sizeof(AllocFreeBlockHeader) == 64, "AllocFreeBlockHeader size is not 64 bytes");
 
     struct AllocStats {
         static constexpr int ALLOCATOR_BIN_COUNT = 256;
@@ -186,10 +201,10 @@ namespace ak
         AllocStats stats;
         
         // SENTINEL BLOCKS
-        alignas(8) FreeAllocBlockHeader* sentinel_begin;
-        alignas(8) FreeAllocBlockHeader* sentinel_large_block;
-        alignas(8) FreeAllocBlockHeader* sentinel_end;
-        alignas(8) FreeAllocBlockHeader* wild_block;
+        alignas(8) AllocPooledFreeBlockHeader* sentinel_begin;
+        alignas(8) AllocPooledFreeBlockHeader* sentinel_large_block;
+        alignas(8) AllocPooledFreeBlockHeader* sentinel_end;
+        alignas(8) AllocPooledFreeBlockHeader* wild_block;
     };
 
     namespace priv {

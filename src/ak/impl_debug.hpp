@@ -319,13 +319,13 @@ namespace ak { namespace priv {
         
         // Print FreeListPrev
         if (h->this_desc.state == (U32)AllocBlockState::FREE) {
-            utl::DLink* free_list_link = &((FreeAllocBlockHeader*)h)->freelist_link;
+            utl::DLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
             utl::DLink* prev = free_list_link->prev;
             utl::DLink* head = &global_kernel_state.alloc_table.freelist_head[bin_idx];
             if (prev == head) {
                 std::print("{} {:<18} ", state_color, "HEAD");
             } else {
-                AllocBlockHeader* prev_block = (AllocBlockHeader*)((Char*)prev - offsetof(FreeAllocBlockHeader, freelist_link));
+                AllocBlockHeader* prev_block = (AllocBlockHeader*)((Char*)prev - offsetof(AllocPooledFreeBlockHeader, freelist_link));
                 Size offset = (Size)((Char*)prev_block - (Char*)global_kernel_state.alloc_table.sentinel_begin);
                 std::print("{} {:<18} ", state_color, offset);
             }
@@ -337,13 +337,13 @@ namespace ak { namespace priv {
 
         // Print FreeList Next
         if (h->this_desc.state == (U32)AllocBlockState::FREE) {
-            utl::DLink* free_list_link = &((FreeAllocBlockHeader*)h)->freelist_link;
+            utl::DLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
             utl::DLink* next = free_list_link->next;
             utl::DLink* head = &global_kernel_state.alloc_table.freelist_head[bin_idx];
             if (next == head) {
                 std::print("{} {:<18} ", state_color, "HEAD");
             } else {
-                AllocBlockHeader* next_block = (AllocBlockHeader*)((Char*)next - offsetof(FreeAllocBlockHeader, freelist_link));
+                AllocBlockHeader* next_block = (AllocBlockHeader*)((Char*)next - offsetof(AllocPooledFreeBlockHeader, freelist_link));
                 Size offset = (Size)((Char*)next_block - (Char*)global_kernel_state.alloc_table.sentinel_begin);
                 std::print("{} {:<18} ", state_color, offset);
             }
