@@ -95,6 +95,7 @@
     },
     "editor.semanticHighlighting.enabled": true,
     "nixEnvSelector.nixFile": "${workspaceFolder}/shell.nix",
+    "C_Cpp.intelliSenseEngine": "disabled",
     "clangd.arguments": [
         "--background-index",
         "--pch-storage=memory",
