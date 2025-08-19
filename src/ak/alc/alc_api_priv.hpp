@@ -12,5 +12,4 @@ namespace ak { namespace priv {
     U32  find_alloc_freelist_index(const U64* bit_field, Size alloc_size) noexcept;
     U32  get_alloc_freelist_index(const AllocBlockHeader* header) noexcept;
     
-
 }}

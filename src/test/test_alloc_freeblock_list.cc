@@ -8,7 +8,7 @@ using namespace ak;
 CThread co_main() noexcept {
     priv::dump_alloc_table();
     priv::dump_alloc_block();
-	Size bins = 253;
+	Size bins = 64;
 	Size max_size = bins * 32  - 16;
 	for (U64 size = 16; size <= max_size; size += 32) {
 		Void* buff = try_alloc_mem(size);

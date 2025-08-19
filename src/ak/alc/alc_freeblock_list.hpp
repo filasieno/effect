@@ -1,8 +1,6 @@
 #pragma once
 
-#include "ak/api_priv.hpp" // IWYU pragma: keep
-#include "ak/alloc/api_priv_alloc.hpp" // IWYU pragma: keep
-
+#include "ak/alc/alc_api_priv.hpp" // IWYU pragma: keep
 
 // Private Allocator API implementation
 // ----------------------------------------------------------------------------------------------------------------
@@ -96,11 +94,3 @@ namespace ak { namespace priv {
         }
     }
 }}
-
-
-// Public Allocator API Implementation
-// ----------------------------------------------------------------------------------------------------------------
-namespace ak {
-
-    
-}
