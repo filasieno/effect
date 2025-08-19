@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <algorithm>  // std::max
 
-#include "ak/alloc/mem_tree_link.hpp"
+#include "ak/alloc/freeblock_tree.hpp"
 
 using namespace ak;
 using namespace ak::priv;

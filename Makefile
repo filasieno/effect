@@ -219,8 +219,7 @@ docs-xml: doxygen-xml
 #----------------------------------------
 
 test:: test_ak
-test:: test_alloc_small
-test:: test_alloc_split
+
 test:: test_alloc
 test:: test_dlist
 test:: test_event
@@ -229,6 +228,8 @@ test:: test_freelist_search
 test:: test_gtest
 test:: test_gbenchmark
 
-test:: test_alloc_free_block_header
+test:: test_alloc_freeblock_list
+test:: test_alloc_split
+test:: test_alloc_freeblock_tree
 
 all:: build/ak_impl.o test doxygen
