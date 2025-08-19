@@ -49,8 +49,7 @@ namespace ak { namespace priv {
             new_link->parent = nullptr;
             new_link->left = nullptr;
             new_link->right = nullptr;
-            new_link->next = new_link;
-            new_link->prev = new_link;
+            utl::init_link(&new_link->multimap_link);
             *root = new_link;
             return new_link;
         }
@@ -69,13 +68,8 @@ namespace ak { namespace priv {
                 new_link->parent = nullptr;
                 new_link->left = nullptr;
                 new_link->right = nullptr;
-                // append before head
-                AllocFreeBlockHeader* head = cur;
-                AllocFreeBlockHeader* tail = head->prev;
-                new_link->next = head;
-                new_link->prev = tail;
-                tail->next = new_link;
-                head->prev = new_link;
+                // append before head (FIFO): head->next remains first inserted
+                utl::insert_prev_link(&cur->multimap_link, &new_link->multimap_link);
                 return new_link;
             } else if (k < ck) {
                 cur = cur->left;
@@ -89,8 +83,7 @@ namespace ak { namespace priv {
         new_link->balance = 0;
         new_link->left = nullptr;
         new_link->right = nullptr;
-        new_link->next = new_link;
-        new_link->prev = new_link;
+        utl::init_link(&new_link->multimap_link);
         new_link->parent = parent;
         if (k < key_of(parent)) parent->left = new_link; else parent->right = new_link;
 
@@ -125,12 +118,8 @@ namespace ak { namespace priv {
         // It is guarateed that root is stable 
         // Nothing ever to rebalance
         if (link->height < 0) {
-            AllocFreeBlockHeader* prev = link->prev;
-            AllocFreeBlockHeader* next = link->next;
-            prev->next = next;
-            next->prev = prev;
+            utl::detach_link(&link->multimap_link);
             clear(link);
-           
             return link;
         }
         assert(link->height >= 0);
@@ -176,14 +165,12 @@ namespace ak { namespace priv {
         //
         // 1. Get the first element of the list N (FIFO) and detach H from the ring
         AllocFreeBlockHeader* H = link;
-        AllocFreeBlockHeader* N = H->next;
+        utl::DLink* n_link = H->multimap_link.next;
+        AllocFreeBlockHeader* N = (AllocFreeBlockHeader*)((Char*)n_link - AK_OFFSET(AllocFreeBlockHeader, multimap_link));
         assert(N != nullptr && N != H);
         // Remove H from circular list so that N becomes the new head
-        H->prev->next = H->next;
-        H->next->prev = H->prev;
-        // H becomes a detached single-node ring
-        H->next = H;
-        H->prev = H;
+        utl::detach_link(&H->multimap_link);
+        // H becomes a detached single-node ring (already true after detach)
 
         // 3. Replace in the tree the node H with the node N
         N->height = H->height;
@@ -218,7 +205,7 @@ namespace ak { namespace priv {
 
     inline static Bool is_detached(const AllocFreeBlockHeader* link) noexcept {
         assert(link != nullptr);
-        return link->next == link && link->prev == link;
+        return link->multimap_link.next == &link->multimap_link && link->multimap_link.prev == &link->multimap_link;
     }
 
     inline static I32 height_of(const AllocFreeBlockHeader* n) noexcept { return n ? n->height : 0; }

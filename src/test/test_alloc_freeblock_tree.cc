@@ -46,7 +46,7 @@ void verify_tree(const AllocFreeBlockHeader* node, U64 min_key = 0, U64 max_key 
     if (!node) return;
 
     if (!is_tree_node(node)) {
-        EXPECT_TRUE(is_detached(const_cast<AllocFreeBlockHeader*>(node)) || (node->next && node->prev));
+        EXPECT_TRUE(is_detached(const_cast<AllocFreeBlockHeader*>(node)) || (node->multimap_link.next && node->multimap_link.prev));
         EXPECT_EQ(node->height, -1);
         EXPECT_EQ(node->balance, 0);
         EXPECT_EQ(node->left, nullptr);
@@ -77,7 +77,8 @@ void verify_tree(const AllocFreeBlockHeader* node, U64 min_key = 0, U64 max_key 
             if (!is_tree_node(current)) {
                 verify_tree(current);
             }
-            current = current->next;
+            utl::DLink* nl = current->multimap_link.next;
+            current = (const AllocFreeBlockHeader*)((const Char*)nl - AK_OFFSET(AllocFreeBlockHeader, multimap_link));
             ++count;
             ASSERT_LT(count, 1000) << "Infinite list loop";
         } while (current != node);
@@ -106,8 +107,8 @@ TEST(AllocFreeBlockHeaderTest, InsertSingle) {
     EXPECT_EQ(b1->parent, nullptr);
     EXPECT_EQ(b1->left, nullptr);
     EXPECT_EQ(b1->right, nullptr);
-    EXPECT_EQ(b1->next, b1);
-    EXPECT_EQ(b1->prev, b1);
+    EXPECT_EQ(b1->multimap_link.next, &b1->multimap_link);
+    EXPECT_EQ(b1->multimap_link.prev, &b1->multimap_link);
 
     verify_tree(root);
 
@@ -134,10 +135,10 @@ TEST(AllocFreeBlockHeaderTest, InsertDuplicate) {
     EXPECT_EQ(b2->parent, nullptr);
     EXPECT_EQ(b2->left, nullptr);
     EXPECT_EQ(b2->right, nullptr);
-    EXPECT_EQ(b1->next, b2);
-    EXPECT_EQ(b2->next, b1);
-    EXPECT_EQ(b1->prev, b2);
-    EXPECT_EQ(b2->prev, b1);
+    EXPECT_EQ(b1->multimap_link.next, &b2->multimap_link);
+    EXPECT_EQ(b2->multimap_link.next, &b1->multimap_link);
+    EXPECT_EQ(b1->multimap_link.prev, &b2->multimap_link);
+    EXPECT_EQ(b2->multimap_link.prev, &b1->multimap_link);
 
     verify_tree(root);
     EXPECT_FALSE(is_detached(b1));
@@ -165,12 +166,12 @@ TEST(AllocFreeBlockHeaderTest, InsertMultipleDuplicates) {
     put_free_block(&root, reinterpret_cast<AllocBlockHeader*>(b3));
 
     EXPECT_EQ(root, b1);
-    EXPECT_EQ(b1->next, b2);
-    EXPECT_EQ(b2->next, b3);
-    EXPECT_EQ(b3->next, b1);
-    EXPECT_EQ(b1->prev, b3);
-    EXPECT_EQ(b3->prev, b2);
-    EXPECT_EQ(b2->prev, b1);
+    EXPECT_EQ(b1->multimap_link.next, &b2->multimap_link);
+    EXPECT_EQ(b2->multimap_link.next, &b3->multimap_link);
+    EXPECT_EQ(b3->multimap_link.next, &b1->multimap_link);
+    EXPECT_EQ(b1->multimap_link.prev, &b3->multimap_link);
+    EXPECT_EQ(b3->multimap_link.prev, &b2->multimap_link);
+    EXPECT_EQ(b2->multimap_link.prev, &b1->multimap_link);
 
     EXPECT_EQ(b1->height, 1);
     EXPECT_EQ(b2->height, -1);
@@ -373,15 +374,15 @@ TEST(AllocFreeBlockHeaderTest, DetachListNode) {
     AllocBlockHeader* detached = detach_free_block(&root, b2);
     EXPECT_EQ(detached, b2);
     // List-node detach clears the node
-    EXPECT_EQ(b2->next, nullptr);
-    EXPECT_EQ(b2->prev, nullptr);
+    EXPECT_EQ(b2->multimap_link.next, nullptr);
+    EXPECT_EQ(b2->multimap_link.prev, nullptr);
     EXPECT_EQ(b2->left, nullptr);
     EXPECT_EQ(b2->right, nullptr);
 
-    EXPECT_EQ(b1->next, b3);
-    EXPECT_EQ(b3->next, b1);
-    EXPECT_EQ(b1->prev, b3);
-    EXPECT_EQ(b3->prev, b1);
+    EXPECT_EQ(b1->multimap_link.next, &b3->multimap_link);
+    EXPECT_EQ(b3->multimap_link.next, &b1->multimap_link);
+    EXPECT_EQ(b1->multimap_link.prev, &b3->multimap_link);
+    EXPECT_EQ(b3->multimap_link.prev, &b1->multimap_link);
 
     verify_tree(root);
 
@@ -402,8 +403,8 @@ TEST(AllocFreeBlockHeaderTest, DetachTreeNodeLeaf) {
     EXPECT_EQ(detached, b100);
     EXPECT_EQ(root, nullptr);
     // Tree-node detach clears the node
-    EXPECT_EQ(b100->next, nullptr);
-    EXPECT_EQ(b100->prev, nullptr);
+    EXPECT_EQ(b100->multimap_link.next, nullptr);
+    EXPECT_EQ(b100->multimap_link.prev, nullptr);
     EXPECT_EQ(b100->left, nullptr);
     EXPECT_EQ(b100->right, nullptr);
 
@@ -431,8 +432,8 @@ TEST(AllocFreeBlockHeaderTest, DetachTreeNodeOneChild) {
     EXPECT_EQ(root, b50);
     EXPECT_EQ(b50->parent, nullptr);
     // Detached node cleared
-    EXPECT_EQ(b100->next, nullptr);
-    EXPECT_EQ(b100->prev, nullptr);
+    EXPECT_EQ(b100->multimap_link.next, nullptr);
+    EXPECT_EQ(b100->multimap_link.prev, nullptr);
 
     verify_tree(root);
 
@@ -497,13 +498,13 @@ TEST(AllocFreeBlockHeaderTest, DetachHeadWithList) {
     EXPECT_EQ(root, b2);
     EXPECT_TRUE(is_tree_node(b2));
     EXPECT_EQ(b2->height, 1);
-    EXPECT_EQ(b2->next, b3);
-    EXPECT_EQ(b3->next, b2);
-    EXPECT_EQ(b2->prev, b3);
-    EXPECT_EQ(b3->prev, b2);
+    EXPECT_EQ(b2->multimap_link.next, &b3->multimap_link);
+    EXPECT_EQ(b3->multimap_link.next, &b2->multimap_link);
+    EXPECT_EQ(b2->multimap_link.prev, &b3->multimap_link);
+    EXPECT_EQ(b3->multimap_link.prev, &b2->multimap_link);
     // Head-node detach clears the old head
-    EXPECT_EQ(b1->next, nullptr);
-    EXPECT_EQ(b1->prev, nullptr);
+    EXPECT_EQ(b1->multimap_link.next, nullptr);
+    EXPECT_EQ(b1->multimap_link.prev, nullptr);
 
     verify_tree(root);
 
@@ -558,7 +559,7 @@ TEST(AllocFreeBlockHeaderTest, FIFOOrder) {
     EXPECT_EQ(d1, b1);
 
     EXPECT_EQ(root, b2);
-    EXPECT_EQ(b2->next, b3);
+    EXPECT_EQ(b2->multimap_link.next, &b3->multimap_link);
 
     group = find_gte_free_block(&root, 8192);
     AllocBlockHeader* d2 = detach_free_block(&root, group);
@@ -585,8 +586,8 @@ TEST(AllocFreeBlockHeaderTest, Clear) {
     b->parent = reinterpret_cast<AllocFreeBlockHeader*>(0x1);
     b->left = reinterpret_cast<AllocFreeBlockHeader*>(0x2);
     b->right = reinterpret_cast<AllocFreeBlockHeader*>(0x3);
-    b->next = reinterpret_cast<AllocFreeBlockHeader*>(0x4);
-    b->prev = reinterpret_cast<AllocFreeBlockHeader*>(0x5);
+    b->multimap_link.next = &b->multimap_link;
+    b->multimap_link.prev = &b->multimap_link;
 
     clear(b);
 
@@ -595,8 +596,8 @@ TEST(AllocFreeBlockHeaderTest, Clear) {
     EXPECT_EQ(b->parent, nullptr);
     EXPECT_EQ(b->left, nullptr);
     EXPECT_EQ(b->right, nullptr);
-    EXPECT_EQ(b->next, nullptr);
-    EXPECT_EQ(b->prev, nullptr);
+    EXPECT_EQ(b->multimap_link.next, nullptr);
+    EXPECT_EQ(b->multimap_link.prev, nullptr);
 
     EXPECT_EQ(b->this_desc.size, 8192);
     EXPECT_EQ(b->this_desc.state, static_cast<U32>(AllocBlockState::FREE));
@@ -606,18 +607,18 @@ TEST(AllocFreeBlockHeaderTest, Clear) {
 
 TEST(AllocFreeBlockHeaderTest, IsDetached) {
     MockBlock* b = create_mock_block(8192);
-    b->next = b;
-    b->prev = b;
+    b->multimap_link.next = &b->multimap_link;
+    b->multimap_link.prev = &b->multimap_link;
     EXPECT_TRUE(is_detached(b));
 
-    b->next = reinterpret_cast<AllocFreeBlockHeader*>(0x1);
+    b->multimap_link.next = reinterpret_cast<utl::DLink*>(0x1);
     EXPECT_FALSE(is_detached(b));
 
-    b->prev = reinterpret_cast<AllocFreeBlockHeader*>(0x2);
+    b->multimap_link.prev = reinterpret_cast<utl::DLink*>(0x2);
     EXPECT_FALSE(is_detached(b));
 
-    b->next = b;
-    b->prev = b;
+    b->multimap_link.next = &b->multimap_link;
+    b->multimap_link.prev = &b->multimap_link;
     EXPECT_TRUE(is_detached(b));
 
     std::free(b);

@@ -5,12 +5,11 @@
 
 namespace ak { namespace priv {
     // alloc_freelist utilities
-    using Vec256i = __m256i;
-    
-    Void set_alloc_freelist_mask(Vec256i* bit_field, U64 bin_idx) noexcept;
-    Bool get_alloc_freelist_mask(Vec256i* bit_field, U64 bin_idx) noexcept;
-    Void clear_alloc_freelist_mask(Vec256i* bit_field, U64 bin_idx) noexcept;
-    U32  find_alloc_freelist_index(Vec256i* bit_field, Size alloc_size) noexcept;
+    // 64-bit freelist utilities
+    Void set_alloc_freelist_mask(U64* bit_field, U64 bin_idx) noexcept;
+    Bool get_alloc_freelist_mask(const U64* bit_field, U64 bin_idx) noexcept;
+    Void clear_alloc_freelist_mask(U64* bit_field, U64 bin_idx) noexcept;
+    U32  find_alloc_freelist_index(const U64* bit_field, Size alloc_size) noexcept;
     U32  get_alloc_freelist_index(const AllocBlockHeader* header) noexcept;
     
 

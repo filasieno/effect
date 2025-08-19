@@ -124,7 +124,7 @@ test::
 
 ifeq ($(CONFIG),coverage) # coverage support
 
-CXXFLAGS += -g -O0 -mavx2 -mbmi -msse4.2
+CXXFLAGS += -g -O1 -mavx2 -mbmi -msse4.2
 CXXFLAGS += -fprofile-instr-generate -fcoverage-mapping
 LDFLAGS += -fprofile-instr-generate
 
@@ -220,16 +220,17 @@ docs-xml: doxygen-xml
 
 test:: test_ak
 
-test:: test_alloc
 test:: test_dlist
 test:: test_event
 test:: test_file_io
-test:: test_freelist_search
+
 test:: test_gtest
 test:: test_gbenchmark
 
+test:: test_alloc
+test:: test_alloc_freeblock_list_search
 test:: test_alloc_freeblock_list
-test:: test_alloc_split
 test:: test_alloc_freeblock_tree
+test:: test_alloc_split
 
 all:: build/ak_impl.o test doxygen

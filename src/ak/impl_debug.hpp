@@ -136,32 +136,27 @@ namespace ak { namespace priv {
         std::print("  Key Offsets:\n");
         std::print("    Begin sentinel offset: {}\n", (intptr_t)at->sentinel_begin      - (intptr_t)at->mem_begin);
         std::print("    Wild  block    offset: {}\n", (intptr_t)at->wild_block          - (intptr_t)at->mem_begin);
-        std::print("    LB    sentinel offset: {}\n", (intptr_t)at->sentinel_large_block - (intptr_t)at->mem_begin);
+        // no large block sentinel in new model
         std::print("    End   sentinel offset: {}\n", (intptr_t)at->sentinel_end        - (intptr_t)at->mem_begin);
     
-        // Free list availability mask as a bit array (256 bits)
-        std::print("  FreeListbinMask:");
-        alignas(32) uint64_t lanes_print[4] = {0,0,0,0};
-        static_assert(sizeof(lanes_print) == 32, "lanes_print must be 256 bits");
-        std::memcpy(lanes_print, &at->freelist_mask, 32);
-        for (unsigned i = 0; i < 256; i++) {
-            if (i % 64 == 0) std::print("\n    ");
-            unsigned lane = i >> 6;
-            unsigned bit  = i & 63u;
-            std::print("{}", (lanes_print[lane] >> bit) & 1ull);
+        // Free list availability mask (64 bits)
+        std::print("  FreeListbinMask:\n    ");
+        U64 mask = at->freelist_mask;
+        for (unsigned i = 0; i < 64; ++i) {
+            std::print("{}", (mask >> i) & 1ull);
         }
-            std::print("\n");
+        std::print("\n");
     
         // Optional per-bin size accounting
         
         std::print("  FreeListBinsSizes begin\n");
-        for (unsigned i = 0; i < 254; ++i) {
+        for (unsigned i = 0; i < 63; ++i) {
             unsigned cc = at->freelist_count[i];
             if (cc == 0) continue;
             std::print("    {:>5} bytes class  : {}\n", (i + 1) * 32, cc);
         }
-        std::print("     medium     class  : {}\n", at->freelist_count[254]);
-        std::print("     wild       class  : {}\n", at->freelist_count[255]);
+        // boundary/wild accounted in bin 63
+        std::print("     boundary   class  : {}\n", at->freelist_count[63]);
         std::print("  FreeListBinsSizes end\n");
         
     
@@ -315,9 +310,9 @@ namespace ak { namespace priv {
         std::print("{} {:<10} ", state_color, previous_state_text);
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         
-        Size bin_idx = get_alloc_freelist_index(h->this_desc.size);  
-        
-        // Print FreeListPrev
+        Size bin_idx = get_alloc_freelist_index(h->this_desc.size);
+
+        // Print FreeListPrev (with DLink)
         if (h->this_desc.state == (U32)AllocBlockState::FREE) {
             utl::DLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
             utl::DLink* prev = free_list_link->prev;
@@ -325,7 +320,8 @@ namespace ak { namespace priv {
             if (prev == head) {
                 std::print("{} {:<18} ", state_color, "HEAD");
             } else {
-                AllocBlockHeader* prev_block = (AllocBlockHeader*)((Char*)prev - offsetof(AllocPooledFreeBlockHeader, freelist_link));
+                const Size link_off = AK_OFFSET(AllocPooledFreeBlockHeader, freelist_link);
+                AllocBlockHeader* prev_block = (AllocBlockHeader*)((Char*)prev - link_off);
                 Size offset = (Size)((Char*)prev_block - (Char*)global_kernel_state.alloc_table.sentinel_begin);
                 std::print("{} {:<18} ", state_color, offset);
             }
@@ -335,7 +331,7 @@ namespace ak { namespace priv {
 
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
 
-        // Print FreeList Next
+        // Print FreeList Next (with DLink)
         if (h->this_desc.state == (U32)AllocBlockState::FREE) {
             utl::DLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
             utl::DLink* next = free_list_link->next;
@@ -343,7 +339,8 @@ namespace ak { namespace priv {
             if (next == head) {
                 std::print("{} {:<18} ", state_color, "HEAD");
             } else {
-                AllocBlockHeader* next_block = (AllocBlockHeader*)((Char*)next - offsetof(AllocPooledFreeBlockHeader, freelist_link));
+                const Size link_off = AK_OFFSET(AllocPooledFreeBlockHeader, freelist_link);
+                AllocBlockHeader* next_block = (AllocBlockHeader*)((Char*)next - link_off);
                 Size offset = (Size)((Char*)next_block - (Char*)global_kernel_state.alloc_table.sentinel_begin);
                 std::print("{} {:<18} ", state_color, offset);
             }

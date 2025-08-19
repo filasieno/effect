@@ -144,9 +144,7 @@ namespace ak
         AllocBlockDesc prev_desc;
     };
 
-    struct AllocPooledFreeBlockHeader {
-        AllocBlockDesc  this_desc;
-        AllocBlockDesc  prev_desc;
+    struct AllocPooledFreeBlockHeader : public AllocBlockHeader {
         utl::DLink freelist_link;
     };
     static_assert(sizeof(AllocPooledFreeBlockHeader) == 32);
@@ -155,18 +153,18 @@ namespace ak
     /// \details The key of the AVL tree is `this_desc.size`.
     /// \ingroup Allocator
     struct AllocFreeBlockHeader : public AllocBlockHeader {         
-        I32 height;         // if height is < 0 the is not a tree node but is a list node in the tree
-        I32 balance;        // AVL Balance factor
+        utl::DLink           multimap_link; // Multimap ring link
         AllocFreeBlockHeader* parent;   // AVL Parent node for intrusive "detach"     
         AllocFreeBlockHeader* left;     // AVL Left child
         AllocFreeBlockHeader* right;    // AVL Right child
-        AllocFreeBlockHeader* next;     // Multimap next link
-        AllocFreeBlockHeader* prev;     // Multimap prev link
+        I32 height;                     // if height is < 0 the is not a tree node but is a list node in the tree
+        I32 balance;                    // AVL Balance factor
+        
     };
     static_assert(sizeof(AllocFreeBlockHeader) == 64, "AllocFreeBlockHeader size is not 64 bytes");
 
     struct AllocStats {
-        static constexpr int ALLOCATOR_BIN_COUNT = 256;
+        static constexpr int ALLOCATOR_BIN_COUNT = 64;
 
         Size alloc_counter[ALLOCATOR_BIN_COUNT];
         Size realloc_counter[ALLOCATOR_BIN_COUNT];
@@ -180,11 +178,10 @@ namespace ak
 
     struct AllocTable {
         static constexpr int ALLOCATOR_BIN_COUNT = AllocStats::ALLOCATOR_BIN_COUNT;
-        using DLink = utl::DLink;
         // FREE LIST MANAGEMENT
-        alignas(64) __m256i freelist_mask;                         
-        alignas(64) DLink   freelist_head[ALLOCATOR_BIN_COUNT];
-        alignas(64) U32     freelist_count[ALLOCATOR_BIN_COUNT];
+        alignas(8)  U64        freelist_mask;   // 64-bit mask
+        alignas(64) utl::DLink freelist_head[ALLOCATOR_BIN_COUNT];
+        alignas(64) U32        freelist_count[ALLOCATOR_BIN_COUNT];
 
         // HEAP BOUNDARY MANAGEMENT
         alignas(8) Char* heap_begin;
@@ -202,7 +199,6 @@ namespace ak
         
         // SENTINEL BLOCKS
         alignas(8) AllocPooledFreeBlockHeader* sentinel_begin;
-        alignas(8) AllocPooledFreeBlockHeader* sentinel_large_block;
         alignas(8) AllocPooledFreeBlockHeader* sentinel_end;
         alignas(8) AllocPooledFreeBlockHeader* wild_block;
     };
