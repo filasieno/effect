@@ -177,6 +177,8 @@
               echo "gtest lib    : ${pkgs.gtest}/lib"
               echo "gbenchmark inc    : ${pkgs.gbenchmark}/include"
               echo "gbenchmark lib    : ${pkgs.gbenchmark}/lib"
+              export PKG_CONFIG_PATH="${pkgs.gtest.dev}/lib/pkgconfig:$PKG_CONFIG_PATH"
+              export PKG_CONFIG_PATH="${pkgs.gbenchmark}/lib/pkgconfig:$PKG_CONFIG_PATH"
             '';
           };
         };
