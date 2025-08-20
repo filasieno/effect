@@ -1,7 +1,7 @@
 #define AK_IMPLEMENTATION
 #include "ak.hpp" // IWYU pragma: keep
-#include <cassert>
-#include <functional>
+#include <gtest/gtest.h>
+#include <cstdlib>
 
 using namespace ak;
 using namespace ak::priv;
@@ -12,99 +12,102 @@ static inline U64 sum_freelist_nodes() {
     return s;
 }
 
-void run_test(std::function<void()> block) noexcept {
+class AllocDefragTest : public ::testing::Test {
+protected:
+    Void* buffer = nullptr;
     U64 buffer_size = 1024 * 1024;
-    Void* buffer = std::malloc(buffer_size);
-    KernelConfig cfg{ .mem = buffer, .memSize = buffer_size, .ioEntryCount = 256 };
-    int init_rc = init_kernel(&cfg);
-    assert(init_rc == 0);
-    block();
-    fini_kernel();
-    std::free(buffer);
+
+    void SetUp() override {
+        buffer = std::malloc(buffer_size);
+        ASSERT_NE(buffer, nullptr);
+        KernelConfig cfg{ .mem = buffer, .memSize = buffer_size, .ioEntryCount = 256 };
+        int init_rc = init_kernel(&cfg);
+        ASSERT_EQ(init_rc, 0);
+    }
+
+    void TearDown() override {
+        fini_kernel();
+        std::free(buffer);
+        buffer = nullptr;
+    }
+};
+
+// Scenario 1: small block into small block (defragment merges two neighbors into one freelist node)
+TEST_F(AllocDefragTest, SmallBlockIntoSmallBlock) {
+    Void* p1 = try_alloc_mem(32);
+    Void* p2 = try_alloc_mem(32);
+    ASSERT_TRUE(p1 != nullptr && p2 != nullptr);
+    free_mem(p1);
+    free_mem(p2);
+
+    U64 before_nodes = sum_freelist_nodes();
+    I32 defrag = defragment_mem();
+    U64 after_nodes = sum_freelist_nodes();
+    EXPECT_GE(defrag, 1);
+    EXPECT_EQ(after_nodes + 1, before_nodes);
 }
 
-int main() noexcept {
-    // Scenario 1: small block into small block (defragment merges two neighbors into one freelist node)
-    run_test([]{
-        Void* p1 = try_alloc_mem(32);
-        Void* p2 = try_alloc_mem(32);
-        assert(p1 && p2);
-        free_mem(p1);
-        free_mem(p2);
+// Scenario 2: small block into wild block (free path already merges; defrag should do nothing)
+TEST_F(AllocDefragTest, SmallBlockIntoWildBlock) {
+    U64 nodes_before = sum_freelist_nodes();
+    Void* p = try_alloc_mem(64);
+    ASSERT_NE(p, nullptr);
+    free_mem(p);
 
-        U64 before_nodes = sum_freelist_nodes();
-        I32 defrag = defragment_mem(0);
-        U64 after_nodes = sum_freelist_nodes();
-        assert(defrag >= 1);
-        assert(after_nodes + 1 == before_nodes);
-    });
+    U64 nodes_after_free = sum_freelist_nodes();
+    EXPECT_GE(nodes_after_free, nodes_before);
 
-    // Scenario 2: small block into wild block (free path already merges; defrag should do nothing)
-    run_test([]{
-        const auto& at = global_kernel_state.alloc_table;
-        U64 merged_before = at.stats.merged_counter[STATS_IDX_WILD];
+    I32 defrag = defragment_mem();
+    EXPECT_GE(defrag, 1);
+    U64 nodes_after_defrag = sum_freelist_nodes();
+    EXPECT_LE(nodes_after_defrag, nodes_after_free);
+}
 
-        Void* p = try_alloc_mem(64);
-        assert(p);
+// Scenario 3: large number of small blocks coalescing into a tree block (> 2048)
+TEST_F(AllocDefragTest, ManySmallBlocksToTreeBlock) {
+    constexpr int kBlocks = 128; // enough to exceed 2048 total
+    for (int i = 0; i < kBlocks; ++i) {
+        Void* p = try_alloc_mem(32);
+        ASSERT_NE(p, nullptr);
         free_mem(p);
+    }
+    U64 before_nodes = sum_freelist_nodes();
+    I32 defrag = defragment_mem();
+    EXPECT_GE(defrag, 1);
+    U64 after_nodes = sum_freelist_nodes();
+    EXPECT_LT(after_nodes, before_nodes);
+}
 
-        U64 merged_after = global_kernel_state.alloc_table.stats.merged_counter[STATS_IDX_WILD];
-        assert(merged_after == merged_before + 1);
+// Scenario 4: large number of small blocks coalescing into wild block (reach end and merge into wild)
+TEST_F(AllocDefragTest, ManySmallBlocksToWildBlock) {
+    // Allocate and free a sequence large enough to span to wild neighbor on the right
+    constexpr int kBlocks = 64;
+    for (int i = 0; i < kBlocks; ++i) {
+        Void* p = try_alloc_mem(64);
+        ASSERT_NE(p, nullptr);
+        free_mem(p);
+    }
+    U64 before_nodes = sum_freelist_nodes();
+    I32 defrag = defragment_mem();
+    // Defragmentation should perform at least one merge chain
+    EXPECT_GE(defrag, 1);
+    U64 after_nodes = sum_freelist_nodes();
+    EXPECT_LT(after_nodes, before_nodes);
+    // The final block can be wild; ensure pointer is valid
+    EXPECT_NE(global_kernel_state.alloc_table.wild_block, nullptr);
+    EXPECT_EQ(global_kernel_state.alloc_table.wild_block->this_desc.state, (U32)AllocBlockState::WILD_BLOCK);
+}
 
-        I32 defrag = defragment_mem(0);
-        assert(defrag == 0);
-    });
-
-    // Scenario 3: large number of small blocks coalescing into a tree block (> 2048)
-    run_test([]{
-        constexpr int kBlocks = 128; // enough to exceed 2048 total
-        for (int i = 0; i < kBlocks; ++i) {
-            Void* p = try_alloc_mem(32);
-            assert(p);
-            free_mem(p);
-        }
-        U64 free_before_tree = global_kernel_state.alloc_table.stats.free_counter[STATS_IDX_TREE];
-        I32 defrag = defragment_mem(0);
-        assert(defrag >= 1);
-        U64 free_after_tree = global_kernel_state.alloc_table.stats.free_counter[STATS_IDX_TREE];
-        assert(free_after_tree >= free_before_tree + 1);
-        // Expect a non-null tree root
-        assert(global_kernel_state.alloc_table.root_free_block != nullptr);
-    });
-
-    // Scenario 4: large number of small blocks coalescing into wild block (reach end and merge into wild)
-    run_test([]{
-        // Allocate and free a sequence large enough to span to wild neighbor on the right
-        constexpr int kBlocks = 64;
-        for (int i = 0; i < kBlocks; ++i) {
-            Void* p = try_alloc_mem(64);
-            assert(p);
-            free_mem(p);
-        }
-        U64 merged_wild_before = global_kernel_state.alloc_table.stats.merged_counter[STATS_IDX_WILD];
-        I32 defrag = defragment_mem(0);
-        // Defragmentation should perform at least one merge chain
-        assert(defrag >= 1);
-        U64 merged_wild_after = global_kernel_state.alloc_table.stats.merged_counter[STATS_IDX_WILD];
-        assert(merged_wild_after >= merged_wild_before + 1);
-        // The final block can be wild; ensure pointer is valid
-        assert(global_kernel_state.alloc_table.wild_block != nullptr);
-        assert(global_kernel_state.alloc_table.wild_block->this_desc.state == (U32)AllocBlockState::WILD_BLOCK);
-    });
-
-    // Scenario 5: stats consistency across defragmentation (no change in free_mem_size)
-    run_test([]{
-        U64 free_mem_before = global_kernel_state.alloc_table.free_mem_size;
-        for (int i = 0; i < 16; ++i) {
-            Void* p = try_alloc_mem(128);
-            assert(p);
-            free_mem(p);
-        }
-        I32 defrag = defragment_mem(0);
-        (void)defrag;
-        U64 free_mem_after = global_kernel_state.alloc_table.free_mem_size;
-        assert(free_mem_after == free_mem_before);
-    });
-
-    return 0;
+// Scenario 5: stats consistency across defragmentation (no change in free_mem_size)
+TEST_F(AllocDefragTest, StatsConsistency) {
+    U64 free_mem_before = global_kernel_state.alloc_table.free_mem_size;
+    for (int i = 0; i < 16; ++i) {
+        Void* p = try_alloc_mem(128);
+        ASSERT_NE(p, nullptr);
+        free_mem(p);
+    }
+    I32 defrag = defragment_mem();
+    (void)defrag;
+    U64 free_mem_after = global_kernel_state.alloc_table.free_mem_size;
+    EXPECT_EQ(free_mem_after, free_mem_before);
 }

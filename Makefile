@@ -180,9 +180,6 @@ config:: .config.mk
 	$(CONFIG_TEMPLATE)
 	EOF
 
-
-
-
 .PHONY: watch
 watch: 
 	printf -- '%b---------- Watching for changes...%b\n' '$(ANSI_YELLOW)' '$(ANSI_RESET)'
@@ -232,6 +229,6 @@ test:: test_alloc_freeblock_list_search
 test:: test_alloc_freeblock_list
 test:: test_alloc_freeblock_tree
 test:: test_alloc_split
-# test:: test_alloc_defragment
+test:: test_alloc_defragment
 
 all:: build/ak_impl.o test doxygen

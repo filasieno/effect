@@ -416,6 +416,7 @@ namespace ak {
         AK_ASSERT(out_block != nullptr);
         AllocBlockHeader* block = *out_block;
         AK_ASSERT(block != nullptr);
+        check_alloc_table_invariants();
         AllocBlockState st = (AllocBlockState)block->this_desc.state;
         if (!(st == AllocBlockState::FREE || st == AllocBlockState::WILD_BLOCK)) return -1;
 
@@ -498,6 +499,7 @@ namespace ak {
         }
 
         *out_block = block;
+        check_alloc_table_invariants();
         return merged;
     }
 
@@ -505,6 +507,7 @@ namespace ak {
         AK_ASSERT(out_block != nullptr);
         AllocBlockHeader* block = *out_block;
         AK_ASSERT(block != nullptr);
+        check_alloc_table_invariants();
         AllocBlockState st = (AllocBlockState)block->this_desc.state;
         if (!(st == AllocBlockState::FREE || st == AllocBlockState::WILD_BLOCK)) return -1;
 
@@ -585,12 +588,13 @@ namespace ak {
         }
 
         *out_block = block;
+        check_alloc_table_invariants();
         return merged;
     }
 
     inline I32 defragment_mem(U64 millis_budget) noexcept {
         (void)millis_budget;
-
+        priv::check_alloc_table_invariants();
         using namespace priv;
         int defragged = 0;
         AllocBlockHeader* begin = (AllocBlockHeader*)global_kernel_state.alloc_table.sentinel_begin;
@@ -603,6 +607,7 @@ namespace ak {
             if (merged > 0) ++defragged;
             h = cur; // continue from the merged block
         }
+        priv::check_alloc_table_invariants();
         return defragged;
     }
 }

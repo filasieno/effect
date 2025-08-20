@@ -1,61 +1,37 @@
 #define AK_IMPLEMENTATION
 #include "ak.hpp" // IWYU pragma: keep
-#include <cassert>
-#include <print> 
+#include <gtest/gtest.h>
 
 using namespace ak;
 
-CThread co_main() noexcept {
-    priv::dump_alloc_table();
-    priv::dump_alloc_block();
-	Void* buff1 = try_alloc_mem(32);
-	assert(buff1 != nullptr);
-	priv::dump_alloc_block();
-
-	Void* buff2 = try_alloc_mem(33);
-	assert(buff2 != nullptr);
-	priv::dump_alloc_block();
-
-	Void* buff3 = try_alloc_mem(63);
-	assert(buff3 != nullptr);
-	priv::dump_alloc_block();
-
-	Void* buff4 = try_alloc_mem(64 - 16);
-	assert(buff4 != nullptr);
-	priv::dump_alloc_block();
-
-	free_mem(buff4);
-	priv::dump_alloc_block();
-
-	free_mem(buff3);
-	priv::dump_alloc_block();
-
-	free_mem(buff2);
-	priv::dump_alloc_block();
-
-	free_mem(buff1);
-	priv::dump_alloc_block();
-	priv::dump_alloc_table();
-  	co_return 0;
-}
-
-Char buffer[8192];
-
-int main() {
-	KernelConfig config = {
-		.mem          = buffer,
-		.memSize      = sizeof(buffer),
-		.ioEntryCount = 256
-	};
-	int init_rc = init_kernel(&config);
-	assert(init_rc == 0);
-	if (run_main(co_main) != 0) {
-		std::print("main failed\n");
-		std::abort();
-		// Unreachable
+class KernelAllocTest : public ::testing::Test {
+protected:
+	Void* buffer = nullptr;
+	U64   buffer_size = 8192;
+	void SetUp() override {
+		buffer = std::malloc(buffer_size);
+		ASSERT_NE(buffer, nullptr);
+		KernelConfig config{ .mem = buffer, .memSize = buffer_size, .ioEntryCount = 256 };
+		ASSERT_EQ(init_kernel(&config), 0);
 	}
-	priv::dump_alloc_block();
-	priv::dump_alloc_table();
-	fini_kernel();
-	return 0;
+	void TearDown() override {
+		fini_kernel();
+		std::free(buffer);
+		buffer = nullptr;
+	}
+};
+
+TEST_F(KernelAllocTest, BasicAllocFree) {
+	Void* buff1 = try_alloc_mem(32);
+	ASSERT_NE(buff1, nullptr);
+	Void* buff2 = try_alloc_mem(33);
+	ASSERT_NE(buff2, nullptr);
+	Void* buff3 = try_alloc_mem(63);
+	ASSERT_NE(buff3, nullptr);
+	Void* buff4 = try_alloc_mem(64 - 16);
+	ASSERT_NE(buff4, nullptr);
+	free_mem(buff4);
+	free_mem(buff3);
+	free_mem(buff2);
+	free_mem(buff1);
 }
