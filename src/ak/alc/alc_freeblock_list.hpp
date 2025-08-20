@@ -15,17 +15,21 @@ namespace ak { namespace priv {
     /// \pre AVX2 is available
     /// \pre bitField is 64 byte aligned
     /// \internal
-    inline U32 find_alloc_freelist_index(const U64* bit_field, Size alloc_size) noexcept {
+    inline I32 find_alloc_freelist_index(const U64* bit_field, Size alloc_size) noexcept {
         assert(bit_field != nullptr);
-        // Map size to bin: bin = ceil(size/32) - 1, clamped to [0,63]; bin 63 means > 2016 and <= 2048
+        // If no bins are populated, signal not found
+        const U64 word = *bit_field;
+        if (word == 0ull) return -1;
+        // Requests larger than the max small bin size are not eligible for small freelists
+        if (alloc_size > 2048ull) return -1;
+        // Map size to bin: bin = ceil(size/32) - 1, clamped to [0,63]
         U64 required_bin = 0ull;
         if (alloc_size != 0) required_bin = (U64)((alloc_size - 1u) >> 5);
         if (required_bin > 63ull) required_bin = 63ull;
-        U64 word = *bit_field;
-        U64 mask = (~0ull) << required_bin;
-        U64 value = word & mask;
-        if (value == 0ull) return 63; // no exact/greater small bin; 63 used as boundary (medium/wild)
-        return (U32)__builtin_ctzll(value);
+        const U64 mask = (~0ull) << required_bin;
+        const U64 value = word & mask;
+        if (value == 0ull) return -1; // no suitable bin found
+        return (I32)__builtin_ctzll(value);
     }
 
     
@@ -59,6 +63,7 @@ namespace ak { namespace priv {
         if (sz == 0) return header;
         return (AllocBlockHeader*)((Char*)header - sz);
     }
+
 
     inline U64 get_alloc_freelist_index(U64 sz) noexcept {
         // New mapping: 0..32 -> 0, 33..64 -> 1, ..., up to 2048 -> 63

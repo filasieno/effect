@@ -17,10 +17,10 @@ CThread co_main() noexcept {
     // Mapping boundaries
     assert(bin_of(1)==0 && bin_of(32)==0 && bin_of(33)==1 && bin_of(2048)==63);
 
-    // Empty mask -> boundary 63
+    // Empty mask -> not found (-1)
     reset_mask(m);
-    assert(find_alloc_freelist_index(m,1)==63);
-    assert(find_alloc_freelist_index(m,2048)==63);
+    assert(find_alloc_freelist_index(m,1)==-1);
+    assert(find_alloc_freelist_index(m,2048)==-1);
 
     // Single bit exact matches
     reset_mask(m); set_alloc_freelist_mask(m,0);  assert(find_alloc_freelist_index(m,32)==0);
@@ -42,7 +42,7 @@ CThread co_main() noexcept {
 
     // Cross extremes
     reset_mask(m); set_alloc_freelist_mask(m,63);
-    assert(find_alloc_freelist_index(m,1u<<30)==63);
+    assert(find_alloc_freelist_index(m,1u<<30)==-1); // > 2048 handled by large-tree path
     assert(find_alloc_freelist_index(m,0)==63);
 
     // Dense then gaps
@@ -53,9 +53,9 @@ CThread co_main() noexcept {
     assert(find_alloc_freelist_index(m,1)==0);
     assert(find_alloc_freelist_index(m,65)==3);
 
-    // All bits set -> any required yields >= required
+    // All bits set -> any eligible required yields >= required; > 2048 is not eligible
     reset_mask(m); for (int i=0;i<64;++i) set_alloc_freelist_mask(m,i);
-    assert(find_alloc_freelist_index(m,(64*32)+1) >= 0);
+    assert(find_alloc_freelist_index(m,(64*32)+1) == -1);
 
     co_return 0;
 }

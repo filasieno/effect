@@ -40,13 +40,11 @@ namespace ak { namespace priv {
         // Optional per-bin size accounting
         
         std::print("  FreeListBinsSizes begin\n");
-        for (unsigned i = 0; i < 63; ++i) {
+        for (unsigned i = 0; i < 64; ++i) {
             unsigned cc = at->freelist_count[i];
             if (cc == 0) continue;
             std::print("    {:>5} bytes class  : {}\n", (i + 1) * 32, cc);
         }
-        // boundary/wild accounted in bin 63
-        std::print("     boundary   class  : {}\n", at->freelist_count[63]);
         std::print("  FreeListBinsSizes end\n");
         
     
@@ -203,7 +201,7 @@ namespace ak { namespace priv {
         Size bin_idx = get_alloc_freelist_index(h->this_desc.size);
 
         // Print FreeListPrev (with DLink)
-        if (h->this_desc.state == (U32)AllocBlockState::FREE) {
+        if (h->this_desc.state == (U32)AllocBlockState::FREE && h->this_desc.size <= 2048) {
             utl::DLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
             utl::DLink* prev = free_list_link->prev;
             utl::DLink* head = &global_kernel_state.alloc_table.freelist_head[bin_idx];
@@ -222,7 +220,7 @@ namespace ak { namespace priv {
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
 
         // Print FreeList Next (with DLink)
-        if (h->this_desc.state == (U32)AllocBlockState::FREE) {
+        if (h->this_desc.state == (U32)AllocBlockState::FREE && h->this_desc.size <= 2048) {
             utl::DLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
             utl::DLink* next = free_list_link->next;
             utl::DLink* head = &global_kernel_state.alloc_table.freelist_head[bin_idx];

@@ -9,7 +9,13 @@ namespace ak { namespace priv {
     Void set_alloc_freelist_mask(U64* bit_field, U64 bin_idx) noexcept;
     Bool get_alloc_freelist_mask(const U64* bit_field, U64 bin_idx) noexcept;
     Void clear_alloc_freelist_mask(U64* bit_field, U64 bin_idx) noexcept;
-    U32  find_alloc_freelist_index(const U64* bit_field, Size alloc_size) noexcept;
+    I32  find_alloc_freelist_index(const U64* bit_field, Size alloc_size) noexcept;
     U32  get_alloc_freelist_index(const AllocBlockHeader* header) noexcept;
-    
+
+    // Block Headers
+    AllocBlockHeader* next(AllocBlockHeader* header) noexcept;
+    AllocBlockHeader* prev(AllocBlockHeader* header) noexcept;
+
+    I64 coalesce_right(AllocBlockHeader* block, U32 max_merges) noexcept;
+    I64 coalesce_left(AllocBlockHeader** out_block, AllocBlockHeader* block, U32 max_merges) noexcept;
 }}

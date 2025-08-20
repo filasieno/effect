@@ -31,7 +31,7 @@ namespace ak { namespace priv {
         assert(root != nullptr);
         assert(block != nullptr);
         assert(block->this_desc.state == (U32)AllocBlockState::FREE);
-        assert(block->this_desc.size >= 2048);
+        assert(block->this_desc.size > 2048);
 
         auto key_of = [](const AllocFreeBlockHeader* n) noexcept -> U64 { return n->this_desc.size; };
         // (helpers moved to static inline utilities above)
@@ -90,7 +90,7 @@ namespace ak { namespace priv {
 
     inline AllocFreeBlockHeader* find_gte_free_block(AllocFreeBlockHeader* root, U64 block_size) noexcept {
         if (root == nullptr) return nullptr;
-        if (block_size < 2048) return nullptr;
+        if (block_size <= 2048) return nullptr;
         
         AllocFreeBlockHeader* node = root;
         AllocFreeBlockHeader* best = nullptr;
@@ -108,7 +108,7 @@ namespace ak { namespace priv {
         assert(*root != nullptr);
         assert(node != nullptr);
         assert(node->this_desc.state == (U32)AllocBlockState::FREE);
-        assert(node->this_desc.size >= 2048);
+        assert(node->this_desc.size > 2048);
         
         // Case 1: List node case; the node is part of a list; just unlink it
         // It is guarateed that root is stable 

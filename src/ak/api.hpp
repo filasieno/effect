@@ -164,16 +164,22 @@ namespace ak
     static_assert(sizeof(AllocFreeBlockHeader) == 64, "AllocFreeBlockHeader size is not 64 bytes");
 
     struct AllocStats {
+        // Freelist bins count (0..63). Keep this constant for freelist arrays
         static constexpr int ALLOCATOR_BIN_COUNT = 64;
+        // Stats bins count: add index 64 for tree allocations and 65 for wild block
+        static constexpr int STATS_BIN_COUNT = 66;
+        // Special stats indices for clarity
+        static constexpr int STATS_IDX_TREE = 64;
+        static constexpr int STATS_IDX_WILD = 65;
 
-        Size alloc_counter[ALLOCATOR_BIN_COUNT];
-        Size realloc_counter[ALLOCATOR_BIN_COUNT];
-        Size free_counter[ALLOCATOR_BIN_COUNT];
-        Size failed_counter[ALLOCATOR_BIN_COUNT];
-        Size split_counter[ALLOCATOR_BIN_COUNT];
-        Size merged_counter[ALLOCATOR_BIN_COUNT];
-        Size reused_counter[ALLOCATOR_BIN_COUNT];
-        Size pooled_counter[ALLOCATOR_BIN_COUNT];
+        Size alloc_counter[STATS_BIN_COUNT];
+        Size realloc_counter[STATS_BIN_COUNT];
+        Size free_counter[STATS_BIN_COUNT];
+        Size failed_counter[STATS_BIN_COUNT];
+        Size split_counter[STATS_BIN_COUNT];
+        Size merged_counter[STATS_BIN_COUNT];
+        Size reused_counter[STATS_BIN_COUNT];
+        Size pooled_counter[STATS_BIN_COUNT];
     };
 
     struct AllocTable {
