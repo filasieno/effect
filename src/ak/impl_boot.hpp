@@ -15,8 +15,7 @@ namespace ak {
         template <typename... Args>
         CThread scheduler_main_proc(CThread(*main_proc)(Args ...) noexcept, Args... args) noexcept;
         
-        int  init_kernel(KernelConfig* config) noexcept;
-        Void fini_kernel() noexcept;
+
         
         // Scheduler task routines
         constexpr RunSchedulerOp       run_scheduler() noexcept;
@@ -53,6 +52,42 @@ namespace ak { namespace priv {
 
 namespace ak { 
 
+    inline int init_kernel(KernelConfig* config) noexcept {
+        using namespace priv;
+        
+        if (init_alloc_table(config->mem, config->memSize) != 0) {
+            return -1;
+        }
+
+        int res = io_uring_queue_init(config->ioEntryCount, &global_kernel_state.io_uring_state, 0);
+        if (res < 0) {
+            std::print("io_uring_queue_init failed\n");
+            return -1;
+        }
+
+        global_kernel_state.mem = config->mem;
+        global_kernel_state.mem_size = config->memSize;
+        global_kernel_state.cthread_count = 0;
+        global_kernel_state.ready_cthread_count = 0;
+        global_kernel_state.waiting_cthread_count = 0;
+        global_kernel_state.iowaiting_cthread_count = 0;
+        global_kernel_state.zombie_cthread_count = 0;
+        global_kernel_state.interrupted = 0;
+
+        global_kernel_state.current_cthread.reset();
+        global_kernel_state.scheduler_cthread.reset();
+
+        utl::init_dlink(&global_kernel_state.zombie_list);
+        utl::init_dlink(&global_kernel_state.ready_list);
+        utl::init_dlink(&global_kernel_state.cthread_list);
+        
+        return 0;
+    }
+
+    inline Void fini_kernel() noexcept {
+        io_uring_queue_exit(&global_kernel_state.io_uring_state);
+    }
+    
     // Boot routines:
     // ----------------------------------------------------------------------------------------------------------------
     // The entry point creates the boot KernelTask
@@ -60,19 +95,12 @@ namespace ak {
     // The SChedulerTask executues the users mainProc
 
     template <typename... Args>
-    inline int run_main_cthread(KernelConfig* config, CThread(*main_proc)(Args ...) noexcept , Args... args) noexcept {
+    inline int run_main(CThread(*main_proc)(Args ...) noexcept , Args... args) noexcept {
         using namespace priv;
-
-        std::memset((Void*)&global_kernel_state, 0, sizeof(global_kernel_state));
-
-        if (init_kernel(config) < 0) {
-            return -1;
-        }
 
         auto boot_cthread = boot_main_proc(main_proc, std::forward<Args>(args) ...);
         global_kernel_state.boot_cthread = boot_cthread;
         boot_cthread.hdl.resume();
-        fini_kernel();
 
         return global_kernel_state.main_cthread_exit_code;
     }
@@ -184,41 +212,6 @@ namespace ak {
         }
 
 
-        inline int init_kernel(KernelConfig* config) noexcept {
-            using namespace priv;
-            
-            if (init_alloc_table(config->mem, config->memSize) != 0) {
-                return -1;
-            }
-
-            int res = io_uring_queue_init(config->ioEntryCount, &global_kernel_state.io_uring_state, 0);
-            if (res < 0) {
-                std::print("io_uring_queue_init failed\n");
-                return -1;
-            }
-
-            global_kernel_state.mem = config->mem;
-            global_kernel_state.mem_size = config->memSize;
-            global_kernel_state.cthread_count = 0;
-            global_kernel_state.ready_cthread_count = 0;
-            global_kernel_state.waiting_cthread_count = 0;
-            global_kernel_state.iowaiting_cthread_count = 0;
-            global_kernel_state.zombie_cthread_count = 0;
-            global_kernel_state.interrupted = 0;
-
-            global_kernel_state.current_cthread.reset();
-            global_kernel_state.scheduler_cthread.reset();
-
-            utl::init_dlink(&global_kernel_state.zombie_list);
-            utl::init_dlink(&global_kernel_state.ready_list);
-            utl::init_dlink(&global_kernel_state.cthread_list);
-            
-            return 0;
-        }
-
-        inline Void fini_kernel() noexcept {
-            io_uring_queue_exit(&global_kernel_state.io_uring_state);
-        }
     }
 }
 

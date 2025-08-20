@@ -32,8 +32,11 @@ namespace ak {
         #endif
         constexpr Bool ENABLE_AVX2      = false;
         constexpr Bool TRACE_DEBUG_CODE = false;
+        
+        constexpr Bool ENABLE_FULL_INVARIANT_CHECKS = true;
 
         constexpr U64 CACHE_LINE = 64;
+
     } // namespace ak::priv
 
 } // namespace ak

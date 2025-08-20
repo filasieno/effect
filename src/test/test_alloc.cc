@@ -47,12 +47,15 @@ int main() {
 		.memSize      = sizeof(buffer),
 		.ioEntryCount = 256
 	};
-	if (run_main_cthread(&config, co_main) != 0) {
+	int init_rc = init_kernel(&config);
+	assert(init_rc == 0);
+	if (run_main(co_main) != 0) {
 		std::print("main failed\n");
 		std::abort();
 		// Unreachable
 	}
 	priv::dump_alloc_block();
 	priv::dump_alloc_table();
+	fini_kernel();
 	return 0;
 }

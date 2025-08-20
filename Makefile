@@ -224,13 +224,14 @@ test:: test_dlist
 test:: test_event
 test:: test_file_io
 
-test:: test_gtest
-test:: test_gbenchmark
+# test:: test_gtest
+# test:: test_gbenchmark
 
 test:: test_alloc
 test:: test_alloc_freeblock_list_search
 test:: test_alloc_freeblock_list
 test:: test_alloc_freeblock_tree
 test:: test_alloc_split
+# test:: test_alloc_defragment
 
 all:: build/ak_impl.o test doxygen

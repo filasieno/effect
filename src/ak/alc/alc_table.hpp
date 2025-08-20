@@ -371,34 +371,25 @@ namespace ak {
         AllocBlockState block_state = (AllocBlockState)this_size.state;
         assert(block_state == AllocBlockState::USED);        
         block->this_desc.state = (U32)AllocBlockState::FREE;
+        global_kernel_state.alloc_table.free_mem_size += block_size;
 
         // Update next block prevSize
         // --------------------------
         AllocBlockHeader* next_block = next((AllocBlockHeader*)block);
         next_block->prev_desc = block->this_desc;
-        
+
         // Update stats
         // ------------
-
-        // Always attempt right-side merge with wild block first (handled inside coalesce_right)
-        if ((AllocBlockState)next_block->this_desc.state == AllocBlockState::WILD_BLOCK) {
-            I64 merged = coalesce_right((AllocBlockHeader*)block, /*max_merges*/1);
-            (void)merged;
-            next_block = next((AllocBlockHeader*)block);
-            next_block->prev_desc = block->this_desc;
-            global_kernel_state.alloc_table.free_mem_size += block_size;
-            return;
-        }
 
         // Place freed block back into appropriate structure
         if (block_size > MAX_SMALL_BIN_SIZE) {
             ak::priv::put_free_block(&global_kernel_state.alloc_table.root_free_block, (AllocBlockHeader*)block);
             ++global_kernel_state.alloc_table.stats.free_counter[STATS_IDX_TREE];
-            global_kernel_state.alloc_table.free_mem_size += block_size;
             return;
         }
-        
 
+        // Small bin free case (bins 0..63)
+        // --------------------------------
         unsigned orig_bin_idx = get_alloc_freelist_index(block_size);
         assert(orig_bin_idx < AllocTable::ALLOCATOR_BIN_COUNT);
         // push to head of freelist (DLink)
@@ -407,18 +398,37 @@ namespace ak {
         ++global_kernel_state.alloc_table.stats.pooled_counter[orig_bin_idx];
         ++global_kernel_state.alloc_table.freelist_count[orig_bin_idx];
         set_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, orig_bin_idx);
-        global_kernel_state.alloc_table.free_mem_size += block_size;
         
     }
 
 
     // Coalesce helpers: merge adjacent free or wild blocks into the provided block
-    // Returns: total merged size added into 'block' (not including original block size), or -1 on error
-    inline I64 priv::coalesce_left(AllocBlockHeader** out_block, AllocBlockHeader* block, U32 max_merges) noexcept {
+    // Returns: total merged size added into '*out_block' (not including original block size), or -1 on error
+    inline I64 ak::priv::coalesce_left(AllocBlockHeader** out_block, U32 max_merges) noexcept {
         assert(out_block != nullptr);
+        AllocBlockHeader* block = *out_block;
         assert(block != nullptr);
         AllocBlockState st = (AllocBlockState)block->this_desc.state;
         if (!(st == AllocBlockState::FREE || st == AllocBlockState::WILD_BLOCK)) return -1;
+
+        // Detach starting block if FREE
+        if (st == AllocBlockState::FREE) {
+            U64 sz = block->this_desc.size;
+            if (sz <= MAX_SMALL_BIN_SIZE) {
+                U32 bin = get_alloc_freelist_index(sz);
+                utl::DLink* link = &((AllocPooledFreeBlockHeader*)block)->freelist_link;
+                if (!utl::is_dlink_detached(link)) {
+                    utl::detach_dlink(link);
+                    assert(global_kernel_state.alloc_table.freelist_count[bin] > 0);
+                    --global_kernel_state.alloc_table.freelist_count[bin];
+                    if (global_kernel_state.alloc_table.freelist_count[bin] == 0) {
+                        clear_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, bin);
+                    }
+                }
+            } else {
+                detach_free_block(&global_kernel_state.alloc_table.root_free_block, (AllocFreeBlockHeader*)block);
+            }
+        }
 
         I64 merged = 0;
         while (max_merges--) {
@@ -426,24 +436,88 @@ namespace ak {
             AllocBlockState lst = (AllocBlockState)left->this_desc.state;
             if (!(lst == AllocBlockState::FREE || lst == AllocBlockState::WILD_BLOCK)) break;
 
+            // Detach the left neighbor from free structures immediately
             U64 left_size = left->this_desc.size;
+            if (lst == AllocBlockState::FREE) {
+                if (left_size <= MAX_SMALL_BIN_SIZE) {
+                    U32 lbin = get_alloc_freelist_index(left_size);
+                    utl::DLink* link = &((AllocPooledFreeBlockHeader*)left)->freelist_link;
+                    if (!utl::is_dlink_detached(link)) {
+                        utl::detach_dlink(link);
+                        assert(global_kernel_state.alloc_table.freelist_count[lbin] > 0);
+                        --global_kernel_state.alloc_table.freelist_count[lbin];
+                        if (global_kernel_state.alloc_table.freelist_count[lbin] == 0) {
+                            clear_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, lbin);
+                        }
+                    }
+                    ++global_kernel_state.alloc_table.stats.merged_counter[lbin];
+                } else {
+                    detach_free_block(&global_kernel_state.alloc_table.root_free_block, (AllocFreeBlockHeader*)left);
+                    ++global_kernel_state.alloc_table.stats.merged_counter[STATS_IDX_TREE];
+                }
+            } else { // WILD_BLOCK
+                block->this_desc.state = (U32)AllocBlockState::WILD_BLOCK;
+                global_kernel_state.alloc_table.wild_block = (AllocPooledFreeBlockHeader*)block;
+                ++global_kernel_state.alloc_table.stats.merged_counter[STATS_IDX_WILD];
+            }
+
             U64 cur_size  = block->this_desc.size;
             U64 new_size  = left_size + cur_size;
-
             block = left; // shift to left block
             block->this_desc.size = new_size;
             AllocBlockHeader* right = next((AllocBlockHeader*)block);
             right->prev_desc = block->this_desc;
             merged += (I64)left_size;
         }
+
+        // Reinsert resulting block if it is FREE (not WILD)
+        if ((AllocBlockState)block->this_desc.state == AllocBlockState::FREE) {
+            U64 sz = block->this_desc.size;
+            if (sz <= MAX_SMALL_BIN_SIZE) {
+                U32 bin = get_alloc_freelist_index(sz);
+                utl::push_dlink(&global_kernel_state.alloc_table.freelist_head[bin], &((AllocPooledFreeBlockHeader*)block)->freelist_link);
+                set_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, bin);
+                ++global_kernel_state.alloc_table.freelist_count[bin];
+                ++global_kernel_state.alloc_table.stats.pooled_counter[bin];
+                ++global_kernel_state.alloc_table.stats.free_counter[bin];
+            } else {
+                put_free_block(&global_kernel_state.alloc_table.root_free_block, (AllocBlockHeader*)block);
+                ++global_kernel_state.alloc_table.stats.free_counter[STATS_IDX_TREE];
+            }
+        } else {
+            // Ensure wild pointer is set
+            global_kernel_state.alloc_table.wild_block = (AllocPooledFreeBlockHeader*)block;
+        }
+
         *out_block = block;
         return merged;
     }
 
-    inline I64 priv::coalesce_right(AllocBlockHeader* block, U32 max_merges) noexcept {
+    inline I64 ak::priv::coalesce_right(AllocBlockHeader** out_block, U32 max_merges) noexcept {
+        assert(out_block != nullptr);
+        AllocBlockHeader* block = *out_block;
         assert(block != nullptr);
         AllocBlockState st = (AllocBlockState)block->this_desc.state;
         if (!(st == AllocBlockState::FREE || st == AllocBlockState::WILD_BLOCK)) return -1;
+
+        // Detach starting block if FREE
+        if (st == AllocBlockState::FREE) {
+            U64 sz = block->this_desc.size;
+            if (sz <= MAX_SMALL_BIN_SIZE) {
+                U32 bin = get_alloc_freelist_index(sz);
+                utl::DLink* link = &((AllocPooledFreeBlockHeader*)block)->freelist_link;
+                if (!utl::is_dlink_detached(link)) {
+                    utl::detach_dlink(link);
+                    assert(global_kernel_state.alloc_table.freelist_count[bin] > 0);
+                    --global_kernel_state.alloc_table.freelist_count[bin];
+                    if (global_kernel_state.alloc_table.freelist_count[bin] == 0) {
+                        clear_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, bin);
+                    }
+                }
+            } else {
+                detach_free_block(&global_kernel_state.alloc_table.root_free_block, (AllocFreeBlockHeader*)block);
+            }
+        }
 
         I64 merged = 0;
         while (max_merges--) {
@@ -452,18 +526,75 @@ namespace ak {
             if (!(rst == AllocBlockState::FREE || rst == AllocBlockState::WILD_BLOCK)) break;
 
             U64 right_size = right->this_desc.size;
-            U64 cur_size   = block->this_desc.size;
-            U64 new_size   = cur_size + right_size;
-            // If merging into the wild block, promote current block to wild and update global pointer
-            if (rst == AllocBlockState::WILD_BLOCK) {
+            if (rst == AllocBlockState::FREE) {
+                if (right_size <= MAX_SMALL_BIN_SIZE) {
+                    U32 rbin = get_alloc_freelist_index(right_size);
+                    utl::DLink* link = &((AllocPooledFreeBlockHeader*)right)->freelist_link;
+                    if (!utl::is_dlink_detached(link)) {
+                        utl::detach_dlink(link);
+                        assert(global_kernel_state.alloc_table.freelist_count[rbin] > 0);
+                        --global_kernel_state.alloc_table.freelist_count[rbin];
+                        if (global_kernel_state.alloc_table.freelist_count[rbin] == 0) {
+                            clear_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, rbin);
+                        }
+                    }
+                    ++global_kernel_state.alloc_table.stats.merged_counter[rbin];
+                } else {
+                    detach_free_block(&global_kernel_state.alloc_table.root_free_block, (AllocFreeBlockHeader*)right);
+                    ++global_kernel_state.alloc_table.stats.merged_counter[STATS_IDX_TREE];
+                }
+            } else { // WILD_BLOCK
                 block->this_desc.state = (U32)AllocBlockState::WILD_BLOCK;
                 global_kernel_state.alloc_table.wild_block = (AllocPooledFreeBlockHeader*)block;
+                ++global_kernel_state.alloc_table.stats.merged_counter[STATS_IDX_WILD];
             }
+
+            U64 cur_size   = block->this_desc.size;
+            U64 new_size   = cur_size + right_size;
             block->this_desc.size = new_size;
             AllocBlockHeader* right_right = next(block);
             right_right->prev_desc = block->this_desc;
             merged += (I64)right_size;
         }
+
+        // Reinsert resulting block if it is FREE (not WILD)
+        if ((AllocBlockState)block->this_desc.state == AllocBlockState::FREE) {
+            U64 sz = block->this_desc.size;
+            if (sz <= MAX_SMALL_BIN_SIZE) {
+                U32 bin = get_alloc_freelist_index(sz);
+                utl::push_dlink(&global_kernel_state.alloc_table.freelist_head[bin], &((AllocPooledFreeBlockHeader*)block)->freelist_link);
+                set_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, bin);
+                ++global_kernel_state.alloc_table.freelist_count[bin];
+                ++global_kernel_state.alloc_table.stats.pooled_counter[bin];
+                ++global_kernel_state.alloc_table.stats.free_counter[bin];
+            } else {
+                put_free_block(&global_kernel_state.alloc_table.root_free_block, (AllocBlockHeader*)block);
+                ++global_kernel_state.alloc_table.stats.free_counter[STATS_IDX_TREE];
+            }
+        } else {
+            // Ensure wild pointer is set
+            global_kernel_state.alloc_table.wild_block = (AllocPooledFreeBlockHeader*)block;
+        }
+
+        *out_block = block;
         return merged;
+    }
+
+    inline I32 defragment_mem(U64 millis_budget) noexcept {
+        (void)millis_budget;
+
+        using namespace priv;
+        int defragged = 0;
+        AllocBlockHeader* begin = (AllocBlockHeader*)global_kernel_state.alloc_table.sentinel_begin;
+        AllocBlockHeader* end   = (AllocBlockHeader*)next((AllocBlockHeader*)global_kernel_state.alloc_table.sentinel_end);
+        for (AllocBlockHeader* h = begin; h != end; h = next(h)) {
+            AllocBlockState st = (AllocBlockState)h->this_desc.state;
+            if (st != AllocBlockState::FREE) continue;
+            AllocBlockHeader* cur = h;
+            I64 merged = ak::priv::coalesce_right(&cur, 1);
+            if (merged > 0) ++defragged;
+            h = cur; // continue from the merged block
+        }
+        return defragged;
     }
 }

@@ -46,11 +46,14 @@ int main() {
 		.memSize      = bufferSize,
 		.ioEntryCount = 256
 	};
-	if (run_main_cthread(&config, co_main) != 0) {
+	int init_rc = init_kernel(&config);
+	assert(init_rc == 0);
+	if (run_main(co_main) != 0) {
 		std::print("main failed\n");
 		std::abort();
 		// Unreachable
 	}
+	fini_kernel();
 	free(buffer);
 	return 0;
 }

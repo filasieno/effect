@@ -301,9 +301,12 @@ namespace ak
         unsigned ioEntryCount;
     };
 
-    template <typename... Args>
-    int run_main_cthread(KernelConfig* cfg, CThread (*co_main)(Args ...) noexcept, Args... args) noexcept;
 
+    int  init_kernel(KernelConfig* config) noexcept;
+    Void fini_kernel() noexcept;
+    template <typename... Args>
+    int run_main(CThread (*co_main)(Args ...) noexcept, Args... args) noexcept;
+    
     //
     // Declarations for ops 
     namespace op {
@@ -429,6 +432,7 @@ namespace ak
     // Allocator
     Void* try_alloc_mem(Size sz) noexcept;
     Void  free_mem(Void* ptr, U32 side_coalesching = UINT_MAX) noexcept;
+    I32   defragment_mem(U64 millis_time_budget) noexcept;
 
     // Concurrency Tools
     struct Event {  

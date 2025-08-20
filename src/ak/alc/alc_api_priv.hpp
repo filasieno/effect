@@ -4,6 +4,8 @@
 
 
 namespace ak { namespace priv {
+    Void check_alloc_table_invariants() noexcept;
+    
     // alloc_freelist utilities
     // 64-bit freelist utilities
     Void set_alloc_freelist_mask(U64* bit_field, U64 bin_idx) noexcept;
@@ -16,6 +18,7 @@ namespace ak { namespace priv {
     AllocBlockHeader* next(AllocBlockHeader* header) noexcept;
     AllocBlockHeader* prev(AllocBlockHeader* header) noexcept;
 
-    I64 coalesce_right(AllocBlockHeader* block, U32 max_merges) noexcept;
-    I64 coalesce_left(AllocBlockHeader** out_block, AllocBlockHeader* block, U32 max_merges) noexcept;
+    I64 coalesce_right(AllocBlockHeader** out_block, U32 max_merges) noexcept;
+    I64 coalesce_left(AllocBlockHeader** out_block, U32 max_merges) noexcept;
+    
 }}

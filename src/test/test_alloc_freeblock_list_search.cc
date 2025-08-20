@@ -63,6 +63,9 @@ CThread co_main() noexcept {
 static Char buffer[8192];
 int main(){
     KernelConfig cfg{ .mem=buffer, .memSize=sizeof(buffer), .ioEntryCount=256 };
-    if (run_main_cthread(&cfg, co_main) != 0) { std::print("main failed\n"); std::abort(); }
+    int init_rc = init_kernel(&cfg);
+    assert(init_rc == 0);
+    if (run_main(co_main) != 0) { std::print("main failed\n"); std::abort(); }
+    fini_kernel();
     return 0;
 }
