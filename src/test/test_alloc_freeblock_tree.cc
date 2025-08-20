@@ -99,8 +99,7 @@ TEST(AllocFreeBlockHeaderTest, InsertSingle) {
 
     MockBlock* b1 = create_mock_block(8192);
     blocks.push_back(b1);
-    AllocFreeBlockHeader* inserted = put_free_block(&root, reinterpret_cast<AllocBlockHeader*>(b1));
-    EXPECT_EQ(inserted, b1);
+    put_free_block(&root, reinterpret_cast<AllocBlockHeader*>(b1));
     EXPECT_EQ(root, b1);
     EXPECT_EQ(b1->height, 1);
     EXPECT_EQ(b1->balance, 0);
@@ -127,8 +126,7 @@ TEST(AllocFreeBlockHeaderTest, InsertDuplicate) {
 
     MockBlock* b2 = create_mock_block(8192);
     blocks.push_back(b2);
-    AllocFreeBlockHeader* inserted2 = put_free_block(&root, reinterpret_cast<AllocBlockHeader*>(b2));
-    EXPECT_EQ(inserted2, b2);
+    put_free_block(&root, reinterpret_cast<AllocBlockHeader*>(b2));
     EXPECT_EQ(root, b1);
     EXPECT_EQ(b2->height, -1);
     EXPECT_EQ(b2->balance, 0);
@@ -314,7 +312,7 @@ TEST(AllocFreeBlockHeaderTest, FindGTE_Exact) {
     blocks.push_back(b128);
     put_free_block(&root, reinterpret_cast<AllocBlockHeader*>(b128));
 
-    AllocFreeBlockHeader* found = find_gte_free_block(&root, 16384);
+    AllocFreeBlockHeader* found = find_gte_free_block(root, 16384);
     EXPECT_EQ(found, b128);
 
     for (auto* b : blocks) {
@@ -334,7 +332,7 @@ TEST(AllocFreeBlockHeaderTest, FindGTE_Greater) {
     blocks.push_back(b256);
     put_free_block(&root, reinterpret_cast<AllocBlockHeader*>(b256));
 
-    AllocFreeBlockHeader* found = find_gte_free_block(&root, 16384);
+    AllocFreeBlockHeader* found = find_gte_free_block(root, 16384);
     EXPECT_EQ(found, b256);
 
     for (auto* b : blocks) {
@@ -344,13 +342,13 @@ TEST(AllocFreeBlockHeaderTest, FindGTE_Greater) {
 
 TEST(AllocFreeBlockHeaderTest, FindGTE_None) {
     AllocFreeBlockHeader* root = nullptr;
-    AllocFreeBlockHeader* found = find_gte_free_block(&root, 8192);
+    AllocFreeBlockHeader* found = find_gte_free_block(root, 8192);
     EXPECT_EQ(found, nullptr);
 
     MockBlock* b32 = create_mock_block(16384);
     put_free_block(&root, reinterpret_cast<AllocBlockHeader*>(b32));
     // Search strictly larger than any present so that none is found
-    found = find_gte_free_block(&root, 65536);
+    found = find_gte_free_block(root, 65536);
     EXPECT_EQ(found, nullptr);
     std::free(b32);
 }
@@ -371,8 +369,7 @@ TEST(AllocFreeBlockHeaderTest, DetachListNode) {
     blocks.push_back(b3);
     put_free_block(&root, reinterpret_cast<AllocBlockHeader*>(b3));
 
-    AllocBlockHeader* detached = detach_free_block(&root, b2);
-    EXPECT_EQ(detached, b2);
+    detach_free_block(&root, b2);
     // List-node detach clears the node
     EXPECT_EQ(b2->multimap_link.next, nullptr);
     EXPECT_EQ(b2->multimap_link.prev, nullptr);
@@ -399,8 +396,7 @@ TEST(AllocFreeBlockHeaderTest, DetachTreeNodeLeaf) {
     blocks.push_back(b100);
     put_free_block(&root, reinterpret_cast<AllocBlockHeader*>(b100));
 
-    AllocBlockHeader* detached = detach_free_block(&root, b100);
-    EXPECT_EQ(detached, b100);
+    detach_free_block(&root, b100);
     EXPECT_EQ(root, nullptr);
     // Tree-node detach clears the node
     EXPECT_EQ(b100->multimap_link.next, nullptr);
@@ -427,8 +423,7 @@ TEST(AllocFreeBlockHeaderTest, DetachTreeNodeOneChild) {
     blocks.push_back(b50);
     put_free_block(&root, reinterpret_cast<AllocBlockHeader*>(b50));
 
-    AllocBlockHeader* detached = detach_free_block(&root, b100);
-    EXPECT_EQ(detached, b100);
+    detach_free_block(&root, b100);
     EXPECT_EQ(root, b50);
     EXPECT_EQ(b50->parent, nullptr);
     // Detached node cleared
@@ -462,8 +457,7 @@ TEST(AllocFreeBlockHeaderTest, DetachTreeNodeTwoChildren) {
     blocks.push_back(b125);
     put_free_block(&root, reinterpret_cast<AllocBlockHeader*>(b125));
 
-    AllocBlockHeader* detached = detach_free_block(&root, b100);
-    EXPECT_EQ(detached, b100);
+    detach_free_block(&root, b100);
     EXPECT_EQ(root, b125);
     EXPECT_EQ(b125->left, b50);
     EXPECT_EQ(b125->right, b150);
@@ -493,8 +487,7 @@ TEST(AllocFreeBlockHeaderTest, DetachHeadWithList) {
     blocks.push_back(b3);
     put_free_block(&root, reinterpret_cast<AllocBlockHeader*>(b3));
 
-    AllocBlockHeader* detached = detach_free_block(&root, b1);
-    EXPECT_EQ(detached, b1);
+    detach_free_block(&root, b1);
     EXPECT_EQ(root, b2);
     EXPECT_TRUE(is_tree_node(b2));
     EXPECT_EQ(b2->height, 1);
@@ -527,8 +520,7 @@ TEST(AllocFreeBlockHeaderTest, DetachLastInListPromotes) {
 
     detach_free_block(&root, b2);
 
-    AllocBlockHeader* detached = detach_free_block(&root, b1);
-    EXPECT_EQ(detached, b1);
+    detach_free_block(&root, b1);
     EXPECT_EQ(root, nullptr);
 
     for (auto* b : blocks) {
@@ -552,26 +544,23 @@ TEST(AllocFreeBlockHeaderTest, FIFOOrder) {
     blocks.push_back(b3);
     put_free_block(&root, reinterpret_cast<AllocBlockHeader*>(b3));
 
-    AllocFreeBlockHeader* group = find_gte_free_block(&root, 8192);
+    AllocFreeBlockHeader* group = find_gte_free_block(root, 8192);
     EXPECT_EQ(group, b1);
 
-    AllocBlockHeader* d1 = detach_free_block(&root, group);
-    EXPECT_EQ(d1, b1);
-
+    detach_free_block(&root, group);
+    
     EXPECT_EQ(root, b2);
     EXPECT_EQ(b2->multimap_link.next, &b3->multimap_link);
 
-    group = find_gte_free_block(&root, 8192);
-    AllocBlockHeader* d2 = detach_free_block(&root, group);
-    EXPECT_EQ(d2, b2);
-
+    group = find_gte_free_block(root, 8192);
+    detach_free_block(&root, group);
+    
     EXPECT_EQ(root, b3);
     EXPECT_TRUE(is_detached(b3));
 
-    group = find_gte_free_block(&root, 8192);
-    AllocBlockHeader* d3 = detach_free_block(&root, group);
-    EXPECT_EQ(d3, b3);
-
+    group = find_gte_free_block(root, 8192);
+    detach_free_block(&root, group);
+    
     EXPECT_EQ(root, nullptr);
 
     for (auto* b : blocks) {
@@ -654,9 +643,8 @@ TEST(AllocFreeBlockHeaderTest, DetachTriggersRightRotation) {
     EXPECT_EQ(b2->left, b1);
     EXPECT_EQ(b2->right, b3);
 
-    AllocBlockHeader* detached = detach_free_block(&root, b5);
-    EXPECT_EQ(detached, b5);
-
+    detach_free_block(&root, b5);
+    
     EXPECT_EQ(root, b2);
     EXPECT_EQ(b2->left, b1);
     EXPECT_EQ(b2->right, b4);
@@ -703,9 +691,8 @@ TEST(AllocFreeBlockHeaderTest, DetachTriggersLeftRotation) {
     EXPECT_EQ(b3->left, b2);
     EXPECT_EQ(b3->right, b4);
 
-    AllocBlockHeader* detached = detach_free_block(&root, b0);
-    EXPECT_EQ(detached, b0);
-
+    detach_free_block(&root, b0);
+    
     EXPECT_EQ(root, b3);
     EXPECT_EQ(b3->left, b1);
     EXPECT_EQ(b3->right, b4);
@@ -735,7 +722,7 @@ TEST(AllocFreeBlockHeaderTest, LargeTreeMultipleOperations) {
     }
 
     for (size_t i = 0; i < blocks.size() / 2; ++i) {
-        AllocFreeBlockHeader* to_detach = find_gte_free_block(&root, 16384);
+        AllocFreeBlockHeader* to_detach = find_gte_free_block(root, 16384);
         if (to_detach) {
             detach_free_block(&root, to_detach);
             verify_tree(root);

@@ -35,7 +35,7 @@ namespace ak {
         auto* sched_ctx = get_context(global_kernel_state.scheduler_cthread);
         assert(sched_ctx->state == CThread::State::READY);
         sched_ctx->state = CThread::State::RUNNING;
-        utl::detach_link(&sched_ctx->wait_link);
+        utl::detach_dlink(&sched_ctx->wait_link);
         --global_kernel_state.ready_cthread_count;
         global_kernel_state.current_cthread = global_kernel_state.scheduler_cthread;
         check_invariants();

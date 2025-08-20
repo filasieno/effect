@@ -201,6 +201,7 @@ namespace ak
         alignas(8) AllocPooledFreeBlockHeader* sentinel_begin;
         alignas(8) AllocPooledFreeBlockHeader* sentinel_end;
         alignas(8) AllocPooledFreeBlockHeader* wild_block;
+        alignas(8) AllocFreeBlockHeader*       root_free_block;
     };
 
     namespace priv {

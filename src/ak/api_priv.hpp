@@ -20,9 +20,9 @@ namespace ak { namespace priv {
     AllocBlockHeader*     prev(AllocBlockHeader* h) noexcept;
 
     Void                  init_free_block_tree_root(AllocFreeBlockHeader** root) noexcept;
-    AllocFreeBlockHeader* put_free_block(AllocFreeBlockHeader** root, AllocBlockHeader* block) noexcept;
-    AllocFreeBlockHeader* find_gte_free_block(AllocFreeBlockHeader** root, U64 block_size) noexcept;
-    AllocBlockHeader*     detach_free_block(AllocFreeBlockHeader** root, AllocFreeBlockHeader* link) noexcept;
+    Void                  put_free_block(AllocFreeBlockHeader** root, AllocBlockHeader* block) noexcept;
+    AllocFreeBlockHeader* find_gte_free_block(AllocFreeBlockHeader* root, U64 block_size) noexcept;
+    Void                  detach_free_block(AllocFreeBlockHeader** root, AllocFreeBlockHeader* node) noexcept;
     
 
     // Scheduling routines

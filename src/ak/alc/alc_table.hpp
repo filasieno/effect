@@ -1,6 +1,5 @@
 #pragma once
 
-
 #include "ak/alc/alc_api_priv.hpp" // IWYU pragma: keep
 
 namespace ak { 
@@ -65,6 +64,7 @@ namespace ak {
         at->sentinel_begin       = begin_sentinel;
         at->wild_block           = wild_block;
         at->sentinel_end         = end_sentinel;
+        init_free_block_tree_root(&at->root_free_block);
         
         begin_sentinel->this_desc.size       = (U64)SENTINEL_SIZE;
         begin_sentinel->this_desc.state      = (U32)AllocBlockState::BEGIN_SENTINEL;
@@ -80,7 +80,7 @@ namespace ak {
         at->free_mem_size                     = wild_block->this_desc.size;
 
         for (int i = 0; i < AllocTable::ALLOCATOR_BIN_COUNT; ++i) {
-            utl::init_link(&at->freelist_head[i]);
+            utl::init_dlink(&at->freelist_head[i]);
         }
         at->freelist_count[63] = 1; // boundary/wild accounting (no free list node)
         at->freelist_mask = 0ull;
@@ -95,7 +95,8 @@ namespace ak {
 
 namespace ak { 
 
-
+    constexpr Size MAX_SMALL_BIN_SIZE = 2048;
+    
     // In TryMalloc (replace existing function starting at 2933):
     /// \brief Attempts to synchronously allocate memory from the heap.
     /// 
@@ -117,6 +118,7 @@ namespace ak {
         Size requested_block_size = (unaligned != 0) ? maybe_block + (ALIGNMENT - unaligned) : maybe_block;
         assert((requested_block_size & (ALIGNMENT - 1)) == 0);
         assert(requested_block_size >= MIN_BLOCK_SIZE);
+
         
         // Find bin
         int bin_idx = find_alloc_freelist_index(&global_kernel_state.alloc_table.freelist_mask, requested_block_size);
@@ -128,7 +130,7 @@ namespace ak {
             assert(get_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, bin_idx));
             
             utl::DLink* free_stack = &global_kernel_state.alloc_table.freelist_head[bin_idx];
-            utl::DLink* link = utl::pop_link(free_stack);
+            utl::DLink* link = utl::pop_dlink(free_stack);
             --global_kernel_state.alloc_table.freelist_count[bin_idx];
             if (global_kernel_state.alloc_table.freelist_count[bin_idx] == 0) {
                 clear_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, bin_idx);
@@ -137,7 +139,7 @@ namespace ak {
             AllocBlockHeader* next_block = next(block);
             __builtin_prefetch(next_block, 1, 3);
             
-            if constexpr (IS_DEBUG_MODE) { utl::clear_link(link); }
+            if constexpr (IS_DEBUG_MODE) { utl::clear_dlink(link); }
 
             Size block_size = block->this_desc.size;
             
@@ -201,7 +203,7 @@ namespace ak {
             ++global_kernel_state.alloc_table.stats.split_counter[bin_idx];
             ++global_kernel_state.alloc_table.stats.alloc_counter[bin_idx];
             // push to head (LIFO)
-            utl::push_link(&global_kernel_state.alloc_table.freelist_head[new_bin_idx], &new_free->freelist_link);
+            utl::push_dlink(&global_kernel_state.alloc_table.freelist_head[new_bin_idx], &new_free->freelist_link);
             set_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, new_bin_idx);
             ++global_kernel_state.alloc_table.stats.pooled_counter[new_bin_idx];            
             ++global_kernel_state.alloc_table.freelist_count[new_bin_idx];
@@ -209,11 +211,19 @@ namespace ak {
             
             return (Void*)((Char*)block + HEADER_SIZE);            
         }
-        
-        // No small bin available; fall back to wild block
-        if (bin_idx == 63) {
-            // proceed to wild allocation path below
+
+        AllocFreeBlockHeader* free_block = find_gte_free_block(global_kernel_state.alloc_table.root_free_block, requested_block_size);
+        if (free_block != nullptr) {
+            U32 size = free_block->this_desc.size;
+            std::print("Found free block in tree: {}\n", size);
+            std::print("Unimplemented!\n");
+            std::fflush(stdout);
+            std::abort();
+            return nullptr;
         }
+
+        // Update the free block
+        // ---------------------
         
         // Case we are allocating from the Wild Block (255)
         // ================================================
@@ -318,7 +328,7 @@ namespace ak {
         unsigned orig_bin_idx = get_alloc_freelist_index(block_size);
         assert(orig_bin_idx < AllocTable::ALLOCATOR_BIN_COUNT);
         // push to head of freelist (DLink)
-        utl::push_link(&global_kernel_state.alloc_table.freelist_head[orig_bin_idx], &block->freelist_link);
+        utl::push_dlink(&global_kernel_state.alloc_table.freelist_head[orig_bin_idx], &block->freelist_link);
         ++global_kernel_state.alloc_table.stats.free_counter[orig_bin_idx];
         ++global_kernel_state.alloc_table.stats.pooled_counter[orig_bin_idx];
         ++global_kernel_state.alloc_table.freelist_count[orig_bin_idx];

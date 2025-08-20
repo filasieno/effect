@@ -1,5 +1,4 @@
 #pragma once
-#include <cstdint>
 
 namespace ak { 
     using Void  = void;
@@ -40,5 +39,4 @@ namespace ak {
 } // namespace ak
 
 #define AK_PACKED_ATTR __attribute__((packed))
-// Safe offset-of macro using uintptr_t; avoids builtin offsetof on non-standard-layout types
-#define AK_OFFSET(TYPE, MEMBER) ((::ak::Size)((std::uintptr_t)&(((TYPE*)0)->MEMBER)))
+#define AK_OFFSET(TYPE, MEMBER) ((::ak::Size)((U64)&(((TYPE*)0)->MEMBER)))

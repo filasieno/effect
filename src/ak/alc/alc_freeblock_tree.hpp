@@ -3,11 +3,7 @@
 #include "ak/alc/alc_api_priv.hpp" // IWYU pragma: keep
 
 namespace ak { 
-
-
     namespace priv { 
-
-
         // AVL utility forward declarations 
         inline static Void                  clear(AllocFreeBlockHeader* link) noexcept;
         inline static Bool                  is_detached(const AllocFreeBlockHeader* link) noexcept;
@@ -31,11 +27,11 @@ namespace ak { namespace priv {
         *root = nullptr;
     }
 
-    inline AllocFreeBlockHeader* put_free_block(AllocFreeBlockHeader** root, AllocBlockHeader* block) noexcept {
+    inline Void put_free_block(AllocFreeBlockHeader** root, AllocBlockHeader* block) noexcept {
         assert(root != nullptr);
         assert(block != nullptr);
         assert(block->this_desc.state == (U32)AllocBlockState::FREE);
-        assert(block->this_desc.size >= 64);
+        assert(block->this_desc.size >= 2048);
 
         auto key_of = [](const AllocFreeBlockHeader* n) noexcept -> U64 { return n->this_desc.size; };
         // (helpers moved to static inline utilities above)
@@ -49,9 +45,9 @@ namespace ak { namespace priv {
             new_link->parent = nullptr;
             new_link->left = nullptr;
             new_link->right = nullptr;
-            utl::init_link(&new_link->multimap_link);
+            utl::init_dlink(&new_link->multimap_link);
             *root = new_link;
-            return new_link;
+            return;
         }
 
         // Traverse to find insertion point or existing key
@@ -69,8 +65,8 @@ namespace ak { namespace priv {
                 new_link->left = nullptr;
                 new_link->right = nullptr;
                 // append before head (FIFO): head->next remains first inserted
-                utl::insert_prev_link(&cur->multimap_link, &new_link->multimap_link);
-                return new_link;
+                utl::insert_prev_dlink(&cur->multimap_link, &new_link->multimap_link);
+                return;
             } else if (k < ck) {
                 cur = cur->left;
             } else {
@@ -83,21 +79,20 @@ namespace ak { namespace priv {
         new_link->balance = 0;
         new_link->left = nullptr;
         new_link->right = nullptr;
-        utl::init_link(&new_link->multimap_link);
+        utl::init_dlink(&new_link->multimap_link);
         new_link->parent = parent;
         if (k < key_of(parent)) parent->left = new_link; else parent->right = new_link;
 
         // Rebalance up to root
         rebalance_upwards(root, parent);
-        return new_link;
+        return;
     }
 
-    inline AllocFreeBlockHeader* find_gte_free_block(AllocFreeBlockHeader** root, U64 block_size) noexcept {
-        assert(root != nullptr);
-        assert(block_size >= 64);
-        if (*root == nullptr) return nullptr;
-
-        AllocFreeBlockHeader* node = *root;
+    inline AllocFreeBlockHeader* find_gte_free_block(AllocFreeBlockHeader* root, U64 block_size) noexcept {
+        if (root == nullptr) return nullptr;
+        if (block_size < 2048) return nullptr;
+        
+        AllocFreeBlockHeader* node = root;
         AllocFreeBlockHeader* best = nullptr;
         while (node) {
             U64 k = node->this_desc.size;
@@ -108,55 +103,52 @@ namespace ak { namespace priv {
         return best;
     }
     
-    inline AllocBlockHeader* detach_free_block(AllocFreeBlockHeader** root, AllocFreeBlockHeader* link) noexcept {
+    inline Void detach_free_block(AllocFreeBlockHeader** root, AllocFreeBlockHeader* node) noexcept {
         assert(root != nullptr);
         assert(*root != nullptr);
-        assert(link != nullptr);
-        assert(link->this_desc.state == (U32)AllocBlockState::FREE);
+        assert(node != nullptr);
+        assert(node->this_desc.state == (U32)AllocBlockState::FREE);
+        assert(node->this_desc.size >= 2048);
         
         // Case 1: List node case; the node is part of a list; just unlink it
         // It is guarateed that root is stable 
         // Nothing ever to rebalance
-        if (link->height < 0) {
-            utl::detach_link(&link->multimap_link);
-            clear(link);
-            return link;
+        if (node->height < 0) {
+            utl::detach_dlink(&node->multimap_link);
+            clear(node);
+            return;
         }
-        assert(link->height >= 0);
-        
-        // Helpers for AVL maintenance
-        // (helpers moved to static inline utilities above)
 
         // Case 2: Simple AVL tree node case; there is no list node linked in the tree
-        if (is_detached(link)) {
-            AllocFreeBlockHeader* start_rebalance = link->parent;
-            if (link->left == nullptr) {
-                transplant(root, link, link->right);
-            } else if (link->right == nullptr) {
-                transplant(root, link, link->left);
+        if (is_detached(node)) {
+            AllocFreeBlockHeader* start_rebalance = node->parent;
+            if (node->left == nullptr) {
+                transplant(root, node, node->right);
+            } else if (node->right == nullptr) {
+                transplant(root, node, node->left);
             } else {
-                AllocFreeBlockHeader* s = min_node(link->right);
-                if (s->parent != link) {
+                AllocFreeBlockHeader* s = min_node(node->right);
+                if (s->parent != node) {
                     // Replace s with its right subtree
                     AllocFreeBlockHeader* sp = s->parent;
                     transplant(root, s, s->right);
                     // Attach original right to s
-                    s->right = link->right;
+                    s->right = node->right;
                     if (s->right) s->right->parent = s;
                     start_rebalance = sp;
                 } else {
                     start_rebalance = s;
                 }
                 // Replace link with s
-                transplant(root, link, s);
-                s->left = link->left;
+                transplant(root, node, s);
+                s->left = node->left;
                 if (s->left) s->left->parent = s;
                 update(s);
             }
             // Clear the detached node and rebalance
-            clear(link);
+            clear(node);
             if (*root) rebalance_upwards(root, start_rebalance);
-            return link;
+            return;
         }
 
         // Case 3: Tree node case; the node is part of a tree and it is also the head of a list.
@@ -164,33 +156,33 @@ namespace ak { namespace priv {
         // We have to execute swap the tree node with the first node in the link (FIFO)
         //
         // 1. Get the first element of the list N (FIFO) and detach H from the ring
-        AllocFreeBlockHeader* H = link;
-        utl::DLink* n_link = H->multimap_link.next;
-        AllocFreeBlockHeader* N = (AllocFreeBlockHeader*)((Char*)n_link - AK_OFFSET(AllocFreeBlockHeader, multimap_link));
-        assert(N != nullptr && N != H);
+        
+        utl::DLink* next_node_link = node->multimap_link.next;
+        AllocFreeBlockHeader* next_node = (AllocFreeBlockHeader*)((Char*)next_node_link - AK_OFFSET(AllocFreeBlockHeader, multimap_link));
+        assert(next_node != nullptr && next_node != node);
         // Remove H from circular list so that N becomes the new head
-        utl::detach_link(&H->multimap_link);
+        utl::detach_dlink(&node->multimap_link);
         // H becomes a detached single-node ring (already true after detach)
 
-        // 3. Replace in the tree the node H with the node N
-        N->height = H->height;
-        N->balance = H->balance;
-        N->left = H->left;
-        N->right = H->right;
-        N->parent = H->parent;
-        if (N->left) N->left->parent = N;
-        if (N->right) N->right->parent = N;
-        if (H->parent == nullptr) {
-            *root = N;
-        } else if (H->parent->left == H) {
-            H->parent->left = N;
+        // 2. Replace in the tree the node H with the node N
+        next_node->height = node->height;
+        next_node->balance = node->balance;
+        next_node->left = node->left;
+        next_node->right = node->right;
+        next_node->parent = node->parent;
+        if (next_node->left) next_node->left->parent = next_node;
+        if (next_node->right) next_node->right->parent = next_node;
+        if (node->parent == nullptr) {
+            *root = next_node;
+        } else if (node->parent->left == node) {
+            node->parent->left = next_node;
         } else {
-            H->parent->right = N;
+            node->parent->right = next_node;
         }
 
         // 4. Clear H and return it
-        clear(H);
-        return H;
+        clear(node);
+        return;
 
     }
 

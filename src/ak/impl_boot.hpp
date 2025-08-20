@@ -128,16 +128,16 @@ namespace ak {
                 while (global_kernel_state.zombie_cthread_count > 0) {
                     dump_task_count();
 
-                    utl::DLink* zombie_link = dequeue_link(&global_kernel_state.zombie_list);
+                    utl::DLink* zombie_link = dequeue_dlink(&global_kernel_state.zombie_list);
                     CThread::Context* ctx = get_linked_cthread_context(zombie_link);
                     assert(ctx->state == CThread::State::ZOMBIE);
 
                     // Remove from zombie list
                     --global_kernel_state.zombie_cthread_count;
-                    detach_link(&ctx->wait_link);
+                    detach_dlink(&ctx->wait_link);
 
                     // Remove from task list
-                    detach_link(&ctx->tasklist_link);
+                    detach_dlink(&ctx->tasklist_link);
                     --global_kernel_state.cthread_count;
 
                     // Delete
@@ -163,7 +163,7 @@ namespace ak {
                         --global_kernel_state.iowaiting_cthread_count;
                         ctx->state = CThread::State::READY;
                         ++global_kernel_state.ready_cthread_count;
-                        enqueue_link(&global_kernel_state.ready_list, &ctx->wait_link);
+                        enqueue_dlink(&global_kernel_state.ready_list, &ctx->wait_link);
                         
                         // Complete operation
                         ctx->res = cqe->res;
@@ -209,9 +209,9 @@ namespace ak {
             global_kernel_state.current_cthread.reset();
             global_kernel_state.scheduler_cthread.reset();
 
-            utl::init_link(&global_kernel_state.zombie_list);
-            utl::init_link(&global_kernel_state.ready_list);
-            utl::init_link(&global_kernel_state.cthread_list);
+            utl::init_dlink(&global_kernel_state.zombie_list);
+            utl::init_dlink(&global_kernel_state.ready_list);
+            utl::init_dlink(&global_kernel_state.cthread_list);
             
             return 0;
         }
@@ -259,13 +259,13 @@ inline CThread::Hdl RunSchedulerOp::await_suspend(BootCThread::Hdl current_task_
     assert(global_kernel_state.cthread_count == 1);
     assert(global_kernel_state.ready_cthread_count == 1);
     assert(scheduler_ctx->state == CThread::State::READY);
-    assert(!is_link_detached(&scheduler_ctx->wait_link));
+    assert(!is_dlink_detached(&scheduler_ctx->wait_link));
     assert(global_kernel_state.current_cthread == CThread::Hdl());
 
     // Setup SchedulerTask for execution (from READY -> RUNNING)
     global_kernel_state.current_cthread = global_kernel_state.scheduler_cthread;
     scheduler_ctx->state = CThread::State::RUNNING;
-    detach_link(&scheduler_ctx->wait_link);
+    detach_dlink(&scheduler_ctx->wait_link);
     --global_kernel_state.ready_cthread_count;
 
     // Check expected state post task system bootstrap
@@ -284,11 +284,11 @@ inline BootCThread::Hdl TerminateSchedulerOp::await_suspend(CThread::Hdl hdl) co
 
     auto* scheduler_context = get_context(global_kernel_state.scheduler_cthread);
     assert(scheduler_context->state == CThread::State::RUNNING);
-    assert(utl::is_link_detached(&scheduler_context->wait_link));
+    assert(utl::is_dlink_detached(&scheduler_context->wait_link));
 
     scheduler_context->state = CThread::State::ZOMBIE;
     global_kernel_state.current_cthread.reset();
-    enqueue_link(&global_kernel_state.zombie_list, &scheduler_context->wait_link);
+    enqueue_dlink(&global_kernel_state.zombie_list, &scheduler_context->wait_link);
     ++global_kernel_state.zombie_cthread_count;
 
     return global_kernel_state.boot_cthread;
@@ -305,11 +305,11 @@ inline constexpr Void destroy_scheduler(CThread ct) noexcept {
     auto* context = get_context(ct);
 
     // Remove from Task list
-    detach_link(&context->tasklist_link);
+    detach_dlink(&context->tasklist_link);
     --global_kernel_state.cthread_count;
 
     // Remove from Zombie List
-    detach_link(&context->wait_link);
+    detach_dlink(&context->wait_link);
     --global_kernel_state.zombie_cthread_count;
 
     context->state = CThread::State::DELETING;
@@ -332,7 +332,7 @@ inline CThread::Hdl schedule_cthread() noexcept {
     // If we have a ready task, resume it
     while (true) {
         if (global_kernel_state.ready_cthread_count > 0) {
-            utl::DLink* link = dequeue_link(&global_kernel_state.ready_list);
+            utl::DLink* link = dequeue_dlink(&global_kernel_state.ready_list);
             CThread::Context* ctx = get_linked_cthread_context(link);
             CThread::Hdl task = CThread::Hdl::from_promise(*ctx);
             assert(ctx->state == CThread::State::READY);
@@ -368,7 +368,7 @@ inline CThread::Hdl schedule_cthread() noexcept {
                 --global_kernel_state.iowaiting_cthread_count;
                 ctx->state = CThread::State::READY;
                 ++global_kernel_state.ready_cthread_count;
-                enqueue_link(&global_kernel_state.ready_list, &ctx->wait_link);
+                enqueue_dlink(&global_kernel_state.ready_list, &ctx->wait_link);
                 
                 // Complete operation
                 ctx->res = cqe->res;
@@ -385,16 +385,16 @@ inline CThread::Hdl schedule_cthread() noexcept {
         while (global_kernel_state.zombie_cthread_count > 0) {
             dump_task_count();
 
-            utl::DLink* zombie_node = dequeue_link(&global_kernel_state.zombie_list);
+            utl::DLink* zombie_node = dequeue_dlink(&global_kernel_state.zombie_list);
             CThread::Context& zombie_promise = *get_linked_cthread_context(zombie_node);
             assert(zombie_promise.state == CThread::State::ZOMBIE);
 
             // Remove from zombie list
             --global_kernel_state.zombie_cthread_count;
-            detach_link(&zombie_promise.wait_link);
+            detach_dlink(&zombie_promise.wait_link);
 
             // Remove from task list
-            detach_link(&zombie_promise.tasklist_link);
+            detach_dlink(&zombie_promise.tasklist_link);
             --global_kernel_state.cthread_count;
 
             // Delete
