@@ -1,9 +1,44 @@
 #pragma once
 
 #include <print>
+#include <format>
+#include <source_location>
+#include <string_view>
+#include <cstdio>
+#include <tuple>
 #include "ak/api_priv.hpp"
 
 namespace ak { namespace priv {
+    // Assertions and ensure helpers
+    // ----------------------------------------------------------------------------------------------------------------
+    template <typename... Args>
+    inline Void ensure(Bool condition,
+                       const Char* expression_text,
+                       const std::source_location loc,
+                       const std::string_view fmt,
+                       Args&&... args) noexcept {
+        constexpr const Char* RESET  = "\033[0m";
+        constexpr const Char* RED    = "\033[1;31m"; 
+        if (AK_UNLIKELY(!condition)) {
+            std::print("{}{}:{}: Assertion '{}' failed{}",RED, loc.file_name(), (int)loc.line(), expression_text, RESET);
+            if (fmt.size() > 0 && !std::is_constant_evaluated()) {
+                std::fputs("; ", stdout);
+                if constexpr (sizeof...(Args) > 0) {
+                    auto arg_tuple = std::forward_as_tuple(std::forward<Args>(args)...);
+                    std::apply([&](auto&... refs){
+                        auto fmt_args = std::make_format_args(refs...);
+                        std::vprint_nonunicode(stdout, fmt, fmt_args);
+                    }, arg_tuple);
+                } else {
+                    std::fwrite(fmt.data(), 1, fmt.size(), stdout);
+                }
+            }
+            std::fputc('\n', stdout);
+            std::fflush(stdout);
+            std::abort();
+        }
+    }
+
         
     // Task runtime debug utilities
     // ----------------------------------------------------------------------------------------------------------------

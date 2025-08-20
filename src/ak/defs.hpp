@@ -1,5 +1,8 @@
 #pragma once
 
+#include <source_location>
+#include <string_view>
+
 namespace ak { 
     using Void  = void;
     using Bool  = bool;
@@ -43,3 +46,9 @@ namespace ak {
 
 #define AK_PACKED_ATTR __attribute__((packed))
 #define AK_OFFSET(TYPE, MEMBER) ((::ak::Size)((U64)&(((TYPE*)0)->MEMBER)))
+#define AK_UNLIKELY(x) __builtin_expect(!!(x), 0)
+
+// Formatted assertion helper with source location. Pass the expression text for better UX.
+namespace ak { namespace priv { template <typename... Args> Void ensure(Bool, const Char*, const std::source_location loc, const std::string_view fmt = {}, Args&&... args) noexcept; } }
+#define AK_ASSERT(cond, ...)         ::ak::priv::ensure((cond), #cond, std::source_location::current(), ##__VA_ARGS__)
+#define AK_ASSERT_AT(loc, cond, ...) ::ak::priv::ensure((cond), #cond, loc                            , ##__VA_ARGS__)

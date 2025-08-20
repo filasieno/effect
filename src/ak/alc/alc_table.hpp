@@ -37,8 +37,8 @@ namespace ak {
         
         constexpr U64 SENTINEL_SIZE = sizeof(AllocPooledFreeBlockHeader);
 
-        assert(mem != nullptr);
-        assert(size >= 4096);
+        AK_ASSERT(mem != nullptr);
+        AK_ASSERT(size >= 4096);
 
         memset((Void*)at, 0, sizeof(AllocTable));
         
@@ -64,9 +64,9 @@ namespace ak {
         // freelist links unused for wild block
         
         // Check alignments
-        assert(((U64)begin_sentinel       & 31ull) == 0ull);
-        assert(((U64)wild_block           & 31ull) == 0ull);
-        assert(((U64)end_sentinel         & 31ull) == 0ull);
+        AK_ASSERT(((U64)begin_sentinel       & 31ull) == 0ull);
+        AK_ASSERT(((U64)wild_block           & 31ull) == 0ull);
+        AK_ASSERT(((U64)end_sentinel         & 31ull) == 0ull);
         
         
         at->sentinel_begin       = begin_sentinel;
@@ -92,7 +92,7 @@ namespace ak {
         }
         at->freelist_count[63] = 0; // bin 63 is a regular freelist bin (up to 2048)
         at->freelist_mask = 0ull;
-
+        check_alloc_table_invariants();
         return 0;
     }
 
@@ -119,13 +119,13 @@ namespace ak {
     /// For async version that suspends on failure, use co_await AllocMem(size).
     inline Void* try_alloc_mem(Size size) noexcept {
         using namespace priv;
-        
+        check_alloc_table_invariants();
         // Compute aligned block size
         Size maybe_block = HEADER_SIZE + size;
         Size unaligned = maybe_block & (ALIGNMENT - 1);
         Size requested_block_size = (unaligned != 0) ? maybe_block + (ALIGNMENT - unaligned) : maybe_block;
-        assert((requested_block_size & (ALIGNMENT - 1)) == 0);
-        assert(requested_block_size >= MIN_BLOCK_SIZE);
+        AK_ASSERT((requested_block_size & (ALIGNMENT - 1)) == 0);
+        AK_ASSERT(requested_block_size >= MIN_BLOCK_SIZE);
 
         
         // Try small bin freelists first when eligible (<= 2048)
@@ -137,8 +137,8 @@ namespace ak {
         // Small bin allocation case (bins 0..63)
         // ======================================
         if (bin_idx >= 0) {
-            assert(global_kernel_state.alloc_table.freelist_count[bin_idx] > 0);
-            assert(get_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, bin_idx));
+            AK_ASSERT(global_kernel_state.alloc_table.freelist_count[bin_idx] > 0);
+            AK_ASSERT(get_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, bin_idx));
             
             utl::DLink* free_stack = &global_kernel_state.alloc_table.freelist_head[bin_idx];
             utl::DLink* link = utl::pop_dlink(free_stack);
@@ -158,19 +158,20 @@ namespace ak {
             // ----------------
             if (block_size == requested_block_size) {  
                 // Update This State
-                assert(block->this_desc.state == (U32)AllocBlockState::FREE);
+                AK_ASSERT(block->this_desc.state == (U32)AllocBlockState::FREE);
                 block->this_desc.state = (U32)AllocBlockState::USED;
-                assert(block->this_desc.state == (U32)AllocBlockState::USED);
+                AK_ASSERT(block->this_desc.state == (U32)AllocBlockState::USED);
                 
                 // Update Prev State
-                assert(next_block->prev_desc.state == (U32)AllocBlockState::FREE);
+                AK_ASSERT(next_block->prev_desc.state == (U32)AllocBlockState::FREE);
                 next_block->prev_desc.state = (U32)AllocBlockState::USED;
-                assert(next_block->prev_desc.state == (U32)AllocBlockState::USED);
+                AK_ASSERT(next_block->prev_desc.state == (U32)AllocBlockState::USED);
 
                 global_kernel_state.alloc_table.free_mem_size -= requested_block_size;
                 ++global_kernel_state.alloc_table.stats.alloc_counter[bin_idx];
                 ++global_kernel_state.alloc_table.stats.reused_counter[bin_idx];
                 
+                check_alloc_table_invariants();
                 return (Void*)((Char*)block + HEADER_SIZE);
             } 
             
@@ -178,7 +179,7 @@ namespace ak {
             // -------------------
             
             Size new_free_size = block_size - requested_block_size;
-            assert(new_free_size >= MIN_BLOCK_SIZE && new_free_size % ALIGNMENT == 0);
+            AK_ASSERT(new_free_size >= MIN_BLOCK_SIZE && new_free_size % ALIGNMENT == 0);
             
             // Prefetch the new free block
             // ----------------------------
@@ -194,7 +195,7 @@ namespace ak {
 
             // Update the new free block
             // -------------------------
-            assert(block->this_desc.state == (U32)AllocBlockState::FREE);
+            AK_ASSERT(block->this_desc.state == (U32)AllocBlockState::FREE);
 
             AllocBlockDesc new_alloc_record_size = { requested_block_size, (U32)AllocBlockState::USED, 0 };
             block->this_desc   = new_alloc_record_size;
@@ -204,9 +205,9 @@ namespace ak {
             new_free->this_desc   = new_free_size_record;
             next_block->prev_desc = new_free_size_record;
             
-            assert(block->this_desc.state == (U32)AllocBlockState::USED);
-            assert(next_block->prev_desc.state == (U32)AllocBlockState::FREE);
-            assert(new_free->this_desc.state == (U32)AllocBlockState::FREE);
+            AK_ASSERT(block->this_desc.state == (U32)AllocBlockState::USED);
+            AK_ASSERT(next_block->prev_desc.state == (U32)AllocBlockState::FREE);
+            AK_ASSERT(new_free->this_desc.state == (U32)AllocBlockState::FREE);
 
             // Update stats
             // ------------
@@ -237,20 +238,22 @@ namespace ak {
                 Size block_size = block->this_desc.size;
                 if (block_size == requested_block_size) {
                     // Exact match
-                    assert(block->this_desc.state == (U32)AllocBlockState::FREE);
+                    AK_ASSERT(block->this_desc.state == (U32)AllocBlockState::FREE);
                     block->this_desc.state = (U32)AllocBlockState::USED;
-                    assert(next_block->prev_desc.state == (U32)AllocBlockState::FREE);
+                    AK_ASSERT(next_block->prev_desc.state == (U32)AllocBlockState::FREE);
                     next_block->prev_desc.state = (U32)AllocBlockState::USED;
                     global_kernel_state.alloc_table.free_mem_size -= requested_block_size;
                     // Count as large allocation under stats index TREE
                     ++global_kernel_state.alloc_table.stats.alloc_counter[STATS_IDX_TREE];
                     ++global_kernel_state.alloc_table.stats.reused_counter[STATS_IDX_TREE];
+                    
+                    check_alloc_table_invariants();
                     return (Void*)((Char*)block + HEADER_SIZE);
                 }
 
                 // Split large free block
                 Size new_free_size = block_size - requested_block_size;
-                assert(new_free_size >= MIN_BLOCK_SIZE && new_free_size % ALIGNMENT == 0);
+                AK_ASSERT(new_free_size >= MIN_BLOCK_SIZE && new_free_size % ALIGNMENT == 0);
                 AllocBlockHeader* new_free_hdr = (AllocBlockHeader*)((Char*)block + requested_block_size);
                 __builtin_prefetch(new_free_hdr, 1, 3);
 
@@ -276,6 +279,8 @@ namespace ak {
                 ++global_kernel_state.alloc_table.stats.alloc_counter[STATS_IDX_TREE];
                 ++global_kernel_state.alloc_table.stats.split_counter[STATS_IDX_TREE];
                 global_kernel_state.alloc_table.free_mem_size -= requested_block_size;
+
+                check_alloc_table_invariants();
                 return (Void*)((Char*)block + HEADER_SIZE);
             }
         }
@@ -286,7 +291,7 @@ namespace ak {
         // Fallback: allocate from the Wild Block
         // ======================================
         {
-            assert(global_kernel_state.alloc_table.wild_block != nullptr);                      // Wild block pointer always valid
+            AK_ASSERT(global_kernel_state.alloc_table.wild_block != nullptr);                      // Wild block pointer always valid
             // No freelist bit for wild; use boundary bin 63 for accounting
 
             // Note: The wild block is a degenerate case; it does not use free bins
@@ -321,7 +326,7 @@ namespace ak {
             // Case there is enough space -> Split the wild block
             // --------------------------------------------------
             Size new_wild_size = old_size - requested_block_size;
-            assert(new_wild_size >= MIN_BLOCK_SIZE && new_wild_size % ALIGNMENT == 0);
+            AK_ASSERT(new_wild_size >= MIN_BLOCK_SIZE && new_wild_size % ALIGNMENT == 0);
             
             AllocBlockDesc allocated_size = { requested_block_size, (U32)AllocBlockState::USED, 0 };
             AllocBlockHeader* allocated = old_wild;
@@ -338,6 +343,7 @@ namespace ak {
             ++global_kernel_state.alloc_table.stats.split_counter[STATS_IDX_WILD];
             global_kernel_state.alloc_table.free_mem_size -= requested_block_size;
             
+            check_alloc_table_invariants();
             return (Void*)((Char*)allocated + HEADER_SIZE);
         }
     }
@@ -357,9 +363,10 @@ namespace ak {
     /// \param side_coalescing Maximum number of merges per side (0 = no coalescing, defaults to UINT_MAX for unlimited).
     inline Void free_mem(Void* ptr, U32 side_coalescing) noexcept {
         using namespace priv;
-        assert(ptr != nullptr);
+        AK_ASSERT(ptr != nullptr);
         (Void)side_coalescing;
 
+        check_alloc_table_invariants();
         // Release Block
         // -------------
         AllocPooledFreeBlockHeader* block = (AllocPooledFreeBlockHeader*)((Char*)ptr - HEADER_SIZE);
@@ -369,7 +376,7 @@ namespace ak {
         // Update block state
         // -------------------
         AllocBlockState block_state = (AllocBlockState)this_size.state;
-        assert(block_state == AllocBlockState::USED);        
+        AK_ASSERT(block_state == AllocBlockState::USED);        
         block->this_desc.state = (U32)AllocBlockState::FREE;
         global_kernel_state.alloc_table.free_mem_size += block_size;
 
@@ -385,29 +392,30 @@ namespace ak {
         if (block_size > MAX_SMALL_BIN_SIZE) {
             ak::priv::put_free_block(&global_kernel_state.alloc_table.root_free_block, (AllocBlockHeader*)block);
             ++global_kernel_state.alloc_table.stats.free_counter[STATS_IDX_TREE];
+            check_alloc_table_invariants();
             return;
         }
 
         // Small bin free case (bins 0..63)
         // --------------------------------
         unsigned orig_bin_idx = get_alloc_freelist_index(block_size);
-        assert(orig_bin_idx < AllocTable::ALLOCATOR_BIN_COUNT);
+        AK_ASSERT(orig_bin_idx < AllocTable::ALLOCATOR_BIN_COUNT);
         // push to head of freelist (DLink)
         utl::push_dlink(&global_kernel_state.alloc_table.freelist_head[orig_bin_idx], &block->freelist_link);
         ++global_kernel_state.alloc_table.stats.free_counter[orig_bin_idx];
         ++global_kernel_state.alloc_table.stats.pooled_counter[orig_bin_idx];
         ++global_kernel_state.alloc_table.freelist_count[orig_bin_idx];
         set_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, orig_bin_idx);
-        
+        check_alloc_table_invariants();
     }
 
 
     // Coalesce helpers: merge adjacent free or wild blocks into the provided block
     // Returns: total merged size added into '*out_block' (not including original block size), or -1 on error
     inline I64 ak::priv::coalesce_left(AllocBlockHeader** out_block, U32 max_merges) noexcept {
-        assert(out_block != nullptr);
+        AK_ASSERT(out_block != nullptr);
         AllocBlockHeader* block = *out_block;
-        assert(block != nullptr);
+        AK_ASSERT(block != nullptr);
         AllocBlockState st = (AllocBlockState)block->this_desc.state;
         if (!(st == AllocBlockState::FREE || st == AllocBlockState::WILD_BLOCK)) return -1;
 
@@ -419,7 +427,7 @@ namespace ak {
                 utl::DLink* link = &((AllocPooledFreeBlockHeader*)block)->freelist_link;
                 if (!utl::is_dlink_detached(link)) {
                     utl::detach_dlink(link);
-                    assert(global_kernel_state.alloc_table.freelist_count[bin] > 0);
+                    AK_ASSERT(global_kernel_state.alloc_table.freelist_count[bin] > 0);
                     --global_kernel_state.alloc_table.freelist_count[bin];
                     if (global_kernel_state.alloc_table.freelist_count[bin] == 0) {
                         clear_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, bin);
@@ -444,7 +452,7 @@ namespace ak {
                     utl::DLink* link = &((AllocPooledFreeBlockHeader*)left)->freelist_link;
                     if (!utl::is_dlink_detached(link)) {
                         utl::detach_dlink(link);
-                        assert(global_kernel_state.alloc_table.freelist_count[lbin] > 0);
+                        AK_ASSERT(global_kernel_state.alloc_table.freelist_count[lbin] > 0);
                         --global_kernel_state.alloc_table.freelist_count[lbin];
                         if (global_kernel_state.alloc_table.freelist_count[lbin] == 0) {
                             clear_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, lbin);
@@ -494,9 +502,9 @@ namespace ak {
     }
 
     inline I64 ak::priv::coalesce_right(AllocBlockHeader** out_block, U32 max_merges) noexcept {
-        assert(out_block != nullptr);
+        AK_ASSERT(out_block != nullptr);
         AllocBlockHeader* block = *out_block;
-        assert(block != nullptr);
+        AK_ASSERT(block != nullptr);
         AllocBlockState st = (AllocBlockState)block->this_desc.state;
         if (!(st == AllocBlockState::FREE || st == AllocBlockState::WILD_BLOCK)) return -1;
 
@@ -508,7 +516,7 @@ namespace ak {
                 utl::DLink* link = &((AllocPooledFreeBlockHeader*)block)->freelist_link;
                 if (!utl::is_dlink_detached(link)) {
                     utl::detach_dlink(link);
-                    assert(global_kernel_state.alloc_table.freelist_count[bin] > 0);
+                    AK_ASSERT(global_kernel_state.alloc_table.freelist_count[bin] > 0);
                     --global_kernel_state.alloc_table.freelist_count[bin];
                     if (global_kernel_state.alloc_table.freelist_count[bin] == 0) {
                         clear_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, bin);
@@ -532,7 +540,7 @@ namespace ak {
                     utl::DLink* link = &((AllocPooledFreeBlockHeader*)right)->freelist_link;
                     if (!utl::is_dlink_detached(link)) {
                         utl::detach_dlink(link);
-                        assert(global_kernel_state.alloc_table.freelist_count[rbin] > 0);
+                        AK_ASSERT(global_kernel_state.alloc_table.freelist_count[rbin] > 0);
                         --global_kernel_state.alloc_table.freelist_count[rbin];
                         if (global_kernel_state.alloc_table.freelist_count[rbin] == 0) {
                             clear_alloc_freelist_mask(&global_kernel_state.alloc_table.freelist_mask, rbin);

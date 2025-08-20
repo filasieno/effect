@@ -8,7 +8,7 @@ using namespace ak;
 CThread co_main(const Char* name) noexcept {
 	int res;
 
-	const Char* path = "test.txt";
+	const Char* path = "test_file_io.txt";
     int fd = co_await io_open(path, O_RDWR | O_CREAT | O_TRUNC | O_NONBLOCK, 0666);
 	std::print("Open res: {}\n", fd);
     res = co_await io_write(fd, "hello world!\n", 13, 0);

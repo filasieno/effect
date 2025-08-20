@@ -4,7 +4,7 @@
 
 
 namespace ak { namespace priv {
-    Void check_alloc_table_invariants() noexcept;
+    Void check_alloc_table_invariants(const std::source_location loc = std::source_location::current()) noexcept;
     
     // alloc_freelist utilities
     // 64-bit freelist utilities

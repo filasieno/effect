@@ -1,7 +1,6 @@
 #define AK_IMPLEMENTATION
 #include "ak.hpp" // IWYU pragma: keep
 #include <cassert>
-#include <print>
 #include <functional>
 
 using namespace ak;

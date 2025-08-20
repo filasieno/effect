@@ -1,15 +1,9 @@
 #pragma once
 
 #include "ak/alc/alc_api_priv.hpp" // IWYU pragma: keep
+#include "ak/alc/alc_check_invariants.hpp" // IWYU pragma: keep
 
 namespace ak { namespace priv {
-
-    // Allocator Check invariants
-    // ----------------------------------------------------------------------------------------------------------------
-
-    inline Void check_alloc_table_invariants() noexcept {
-        
-    }
 
     // Allocator Debug utils
     // ----------------------------------------------------------------------------------------------------------------
@@ -31,7 +25,6 @@ namespace ak { namespace priv {
         std::print("  Key Offsets:\n");
         std::print("    Begin sentinel offset: {}\n", (intptr_t)at->sentinel_begin      - (intptr_t)at->mem_begin);
         std::print("    Wild  block    offset: {}\n", (intptr_t)at->wild_block          - (intptr_t)at->mem_begin);
-        // no large block sentinel in new model
         std::print("    End   sentinel offset: {}\n", (intptr_t)at->sentinel_end        - (intptr_t)at->mem_begin);
     
         // Free list availability mask (64 bits)
@@ -51,17 +44,6 @@ namespace ak { namespace priv {
             std::print("    {:>5} bytes class  : {}\n", (i + 1) * 32, cc);
         }
         std::print("  FreeListBinsSizes end\n");
-        
-    
-        // Aggregate statistics
-        // std::print("maxFreeBlockSize: {}\n", at->maxFreeBlockSize);
-        // std::print("totalAllocCount: {}\n", at->totalAllocCount);
-        // std::print("totalFreeCount: {}\n", at->totalFreeCount);
-        // std::print("totalReallocCount: {}\n", at->totalReallocCount);
-        // std::print("totalSplitCount: {}\n", at->totalSplitCount);
-        // std::print("totalMergeCount: {}\n", at->totalMergeCount);
-        // std::print("totalReuseCount: {}\n", at->totalReuseCount);
-                
         std::print("\n");
     }
 
@@ -265,3 +247,5 @@ namespace ak { namespace priv {
 
 
 }} // namespace ak::priv
+
+
