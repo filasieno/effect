@@ -1,5 +1,5 @@
 CompileFlags:
-  Add: 
+  Add:
     - "-std=c++2c"
     - "-fcoroutines"
     - "-fno-exceptions"
@@ -18,9 +18,16 @@ Diagnostics:
   ClangTidy:
     Remove: ['*']
   UnusedIncludes: Strict
-  
+
+Index:
+  Background: Skip
+
 If:
-  PathMatch: ["examples/.*"]
+  PathMatch:
+    - "src/ak/base/.*"
+    - "src/ak/alloc/.*"
+    - "src/test/base/.*"
+    - "src/test/alloc/.*"
 
 
 
