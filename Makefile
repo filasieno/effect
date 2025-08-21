@@ -10,8 +10,6 @@ MAKEFLAGS += --output-sync=target
 .DELETE_ON_ERROR:
 .SUFFIXES:
 
-
-
 include .config.mk
 
 TARGET_ARCH = -march=x86-64-v3
@@ -310,22 +308,17 @@ doxygen-xml: | build/doc/.
 .PHONY: docs-xml
 docs-xml: doxygen-xml
 
-
 # =====================================================================================================================================
 # Phony targets: clean run test all
 # =====================================================================================================================================
-
 
 .PHONY: clean
 clean::
 	$(call trace,rm -rf build)
 	rm -rf build
 
-
 .PHONY: run
 run:: 
-
-
 
 .PHONY: test
 .NOTPARALLEL: test
