@@ -1,13 +1,13 @@
 #pragma once
 
-#include "ak/cctl/cctl_api.hpp" // IWYU pragma: keep
+#include "ak/sync/sync.hpp" // IWYU pragma: keep
 
 namespace ak {
     
     // WaitOp
     // ----------------------------------------------------------------------------------------------------------------
 
-    constexpr CThread::Hdl op::WaitEvent::await_suspend(CThread::Hdl hdl) const noexcept {
+    CThread::Hdl op::WaitEvent::await_suspend(CThread::Hdl hdl) const noexcept {
         using namespace priv;
 
         CThread::Context* ctx = &hdl.promise();
@@ -27,7 +27,7 @@ namespace ak {
     // Event routines implementation
     // ----------------------------------------------------------------------------------------------------------------
 
-    int signal(Event* event) {
+    I32 signal(Event* event) {
         using namespace priv;
         AK_ASSERT(event != nullptr);
         
@@ -46,7 +46,7 @@ namespace ak {
         return 1;
     }
 
-    int signal_n(Event* event, int n) {
+    I32 signal_n(Event* event, int n) {
         
         using namespace priv;
         AK_ASSERT(event != nullptr);
@@ -68,7 +68,7 @@ namespace ak {
         return count;
     }
 
-    int signal_all(Event* event) {
+    I32 signal_all(Event* event) {
         using namespace priv;
         AK_ASSERT(event != nullptr);
         int signalled = 0;

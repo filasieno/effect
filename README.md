@@ -1,6 +1,6 @@
-# Application Kernel
+# libak
 
-IO/Task lirabry for **C+** designed for dababases and servers
+Stackless coros to experiment with frambuffers
 
 ## Code Layout
 

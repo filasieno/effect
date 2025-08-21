@@ -15,16 +15,7 @@
 //     Void  free_mem(Void* ptr, U32 side_coalesching = UINT_MAX) noexcept;
 //     I32   defragment_mem(U64 millis_time_budget = ~0ull) noexcept;
 
-//     // Concurrency Tools
-//     struct Event {  
-//         priv::DLink wait_list;
-//     };
 
-//     Void          init(Event* event);
-//     int           signal(Event* event);
-//     int           signal_n(Event* event, int n);
-//     int           signal_all(Event* event);
-//     op::WaitEvent wait(Event* event);
 
 // }
 

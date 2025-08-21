@@ -186,7 +186,7 @@ namespace ak {
     template <typename... Args>
     int run_main(CThread (*co_main)(Args ...) noexcept, Args... args) noexcept;
     
-    struct Event { priv::DLink wait_list; };
+    //struct Event { priv::DLink wait_list; };
     //
     // Declarations for ops 
     namespace op {
@@ -231,15 +231,6 @@ namespace ak {
 
 
 
-        struct WaitEvent {
-            explicit WaitEvent(Event* event) : evt(event) {}
-
-            constexpr Bool         await_ready() const noexcept { return false; }
-            constexpr CThread::Hdl await_suspend(CThread::Hdl hdl) const noexcept;
-            constexpr Void         await_resume() const noexcept {}
-
-            Event* evt;
-        };
     }
     // Declarations for ops 
 

@@ -195,13 +195,41 @@ build/test_runtime: $(RUNTIME_TEST_OBJECTS) build/libak_base.a build/libak_alloc
 	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -Wl,--start-group build/libak_base.a build/libak_alloc.a build/libak_runtime.a $(RUNTIME_TEST_OBJECTS) -Wl,--end-group $(LDLIBS) -o $@
 
 # =====================================================================================================================================
+# Sync
+# =====================================================================================================================================
+
+# --------------
+# Sync module
+# --------------
+
+SYNC_LIB_SOURCES := $(shell find src/ak/sync -maxdepth 1 -name '*.cpp')
+SYNC_LIB_OBJECTS := $(patsubst src/%.cpp,build/%.o,$(SYNC_LIB_SOURCES))
+
+.PRECIOUS: build/libak_sync.a
+build/libak_sync.a: $(SYNC_LIB_OBJECTS) | build/.
+	$(call trace,AR -rcs $@ $^)
+	$(AR) rcs $@ $^
+
+# -----------------
+# Sync Module Test
+# -----------------
+
+SYNC_TEST_SOURCES := $(wildcard src/test/sync/*.cpp)
+SYNC_TEST_OBJECTS := $(patsubst src/%.cpp,build/%.o,$(SYNC_TEST_SOURCES))
+
+.PRECIOUS: build/test_sync
+build/test_sync: $(SYNC_TEST_OBJECTS) build/libak_base.a build/libak_alloc.a build/libak_runtime.a build/libak_sync.a | build/.
+	$(call trace,LINK -o $@ $^ $(LDLIBS))
+	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -Wl,--start-group build/libak_base.a build/libak_alloc.a build/libak_runtime.a build/libak_sync.a $(SYNC_TEST_OBJECTS) -Wl,--end-group $(LDLIBS) -o $@
+
+# =====================================================================================================================================
 # Static AK Library (combine modules)
 # =====================================================================================================================================
 
 .PHONY: lib
 lib:: build/libak.a
 
-COMBINED_LIBS = build/libak_base.a build/libak_alloc.a build/libak_runtime.a
+COMBINED_LIBS = build/libak_base.a build/libak_alloc.a build/libak_runtime.a build/libak_sync.a
 
 .PRECIOUS: build/libak.a
 build/libak.a: $(COMBINED_LIBS) | build/.
@@ -322,11 +350,12 @@ run::
 
 .PHONY: test
 .NOTPARALLEL: test
-test:: build/test_base build/test_alloc build/test_runtime
+test:: build/test_base build/test_alloc build/test_runtime build/test_sync
 	reset
 	$(MAKE) -s test_base
 	$(MAKE) -s test_alloc
 	$(MAKE) -s test_runtime
+	$(MAKE) -s test_sync
 
 
 # Limit default 'all' to base/alloc only; docs optional

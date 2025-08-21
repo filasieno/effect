@@ -1,12 +1,11 @@
-#include "ak/base/base_api.hpp" // IWYU pragma: keep
-#include "ak/runtime/runtime_api.hpp" // IWYU pragma: keep (Event/op declarations)
+#include "ak/sync/sync_api.hpp"
 
 // Public inline API implementation
 // --------------------------------
 
 namespace ak {
     
-    inline Void init(Event* event) {  
+    inline Void init_event(Event* event) {  
         init_dlink(&event->wait_list);
     }
     

@@ -4,6 +4,24 @@
 
 using namespace ak;
 
+class KernelEventTest : public ::testing::Test {
+protected:
+	Void* buffer = nullptr;
+	U64   buffer_size = 8192;
+	void SetUp() override {
+		buffer = std::malloc(buffer_size);
+		ASSERT_NE(buffer, nullptr);
+		KernelConfig config{ .mem = buffer, .memSize = buffer_size, .ioEntryCount = 256 };
+		ASSERT_EQ(init_kernel(&config), 0);
+	}
+	void TearDown() override {
+		fini_kernel();
+		std::free(buffer);
+		buffer = nullptr;
+	}
+};
+
+
 static CThread reader_thread(Event* r_ready, Event* w_ready, int *r_signal, int* w_signal, int* value) noexcept {
 	int check = 0;
 	while (true) {
@@ -17,6 +35,7 @@ static CThread reader_thread(Event* r_ready, Event* w_ready, int *r_signal, int*
 			*r_signal = 0;
 		}
 		int outValue = *value;
+		std::print("read  : {}\n", outValue);
 		if (outValue == 0) {
 			co_return 0;
 		}
@@ -35,6 +54,7 @@ static CThread writer_thread(Event* r_ready, Event* w_ready, int *r_signal, int*
 	while (true) {
 		EXPECT_LT(check, 12);
 		*value = i;
+		std::print("write : {}\n", *value);
 		EXPECT_EQ(*r_signal, 0);
 		*r_signal = 1;
 		int cc = ak::signal(r_ready);
@@ -63,8 +83,8 @@ static CThread co_main() noexcept {
 	Event r_ready;
 	Event w_ready;
 
-	ak::init(&r_ready);
-	ak::init(&w_ready);
+	ak::init_event(&r_ready);
+	ak::init_event(&w_ready);
 
 	CThread writer = writer_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
 	CThread reader = reader_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
@@ -73,23 +93,6 @@ static CThread co_main() noexcept {
 	std::fflush(stdout);
 	co_return 0;
 }
-
-class KernelEventTest : public ::testing::Test {
-protected:
-	Void* buffer = nullptr;
-	U64   buffer_size = 8192;
-	void SetUp() override {
-		buffer = std::malloc(buffer_size);
-		ASSERT_NE(buffer, nullptr);
-		KernelConfig config{ .mem = buffer, .memSize = buffer_size, .ioEntryCount = 256 };
-		ASSERT_EQ(init_kernel(&config), 0);
-	}
-	void TearDown() override {
-		fini_kernel();
-		std::free(buffer);
-		buffer = nullptr;
-	}
-};
 
 TEST_F(KernelEventTest, ReaderWriterHandshake) {
 	int rc = run_main(co_main);
