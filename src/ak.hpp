@@ -6,8 +6,6 @@
 #include "ak/alloc/alloc_api_inl.hpp"      // IWYU pragma: keep
 #include "ak/runtime/runtime_api.hpp"      // IWYU pragma: keep
 #include "ak/runtime/runtime_api_inl.hpp"  // IWYU pragma: keep
-#include "ak/io/io_api.hpp"                // IWYU pragma: keep
-#include "ak/io/io_api_inl.hpp"            // IWYU pragma: keep
 
 // TODO:
 // #include "ak/sync/sync_api.hpp"      // IWYU pragma: keep

@@ -1,5 +1,5 @@
 
-#include "ak/runtime/runtime_api.hpp" // IWYU pragma: keep
+#include "ak/runtime/runtime.hpp" // IWYU pragma: keep
 
 #include <cstdlib>
 

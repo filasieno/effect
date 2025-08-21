@@ -1,6 +1,6 @@
-#define AK_IMPLEMENTATION
-#include "ak.hpp" // IWYU pragma: keep
 #include <gtest/gtest.h>
+
+#include "ak.hpp" // IWYU pragma: keep
 
 using namespace ak;
 

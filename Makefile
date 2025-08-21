@@ -106,15 +106,10 @@ build/%.o: src/test/%.cpp build/precompiled.pch | build/.
 -include $(patsubst src/%.cpp,build/%.d,$(wildcard src/*.cpp))
 -include $(patsubst src/test/%.cpp,build/%.d,$(wildcard src/test/*.cpp))
 
-# (Only .cpp sources are supported)
-
-# (Only .cpp sources are supported)
-
 .PRECIOUS: build/%
 build/%: build/%.o  | build/.
 	$(call trace,LINK -o $@ $^ $(LDLIBS))
 	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LDLIBS)
-
 
 # =====================================================================================================================================
 # Base
@@ -169,7 +164,7 @@ ALLOC_TEST_SOURCES := $(wildcard src/test/alloc/*.cpp)
 ALLOC_TEST_OBJECTS := $(patsubst src/%.cpp,build/%.o,$(ALLOC_TEST_SOURCES))
 
 .PRECIOUS: build/test_alloc
-build/test_alloc: $(ALLOC_TEST_OBJECTS) build/libak_alloc.a | build/.
+build/test_alloc: $(ALLOC_TEST_OBJECTS) build/libak_base.a build/libak_alloc.a | build/.
 	$(call trace,LINK -o $@ $^ $(LDLIBS))
 	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LDLIBS)
 
@@ -189,22 +184,17 @@ build/libak_runtime.a: $(RUNTIME_LIB_OBJECTS) | build/.
 	$(call trace,AR -rcs $@ $^)
 	$(AR) rcs $@ $^
 
-# =====================================================================================================================================
-# IO
-# =====================================================================================================================================
+# -----------------
+# Runtime Module Test
+# -----------------
 
+RUNTIME_TEST_SOURCES := $(wildcard src/test/runtime/*.cpp)
+RUNTIME_TEST_OBJECTS := $(patsubst src/%.cpp,build/%.o,$(patsubst src/%.cc,build/%.o,$(RUNTIME_TEST_SOURCES)))
 
-# ---------
-# IO module
-# ---------
-
-IO_LIB_SOURCES := $(shell find src/ak/io -maxdepth 1 -name '*.cpp')
-IO_LIB_OBJECTS := $(patsubst src/%.cpp,build/%.o,$(IO_LIB_SOURCES))
-
-.PRECIOUS: build/libak_io.a
-build/libak_io.a: $(IO_LIB_OBJECTS) | build/.
-	$(call trace,AR -rcs $@ $^)
-	$(AR) rcs $@ $^
+.PRECIOUS: build/test_runtime
+build/test_runtime: $(RUNTIME_TEST_OBJECTS) build/libak_base.a build/libak_alloc.a build/libak_runtime.a | build/.
+	$(call trace,LINK -o $@ $^ $(LDLIBS))
+	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -Wl,--start-group build/libak_base.a build/libak_alloc.a build/libak_runtime.a $(RUNTIME_TEST_OBJECTS) -Wl,--end-group $(LDLIBS) -o $@
 
 # =====================================================================================================================================
 # Static AK Library (combine modules)
@@ -213,7 +203,7 @@ build/libak_io.a: $(IO_LIB_OBJECTS) | build/.
 .PHONY: lib
 lib:: build/libak.a
 
-COMBINED_LIBS = build/libak_base.a build/libak_alloc.a build/libak_runtime.a build/libak_io.a
+COMBINED_LIBS = build/libak_base.a build/libak_alloc.a build/libak_runtime.a
 
 .PRECIOUS: build/libak.a
 build/libak.a: $(COMBINED_LIBS) | build/.
@@ -336,12 +326,14 @@ clean::
 run:: 
 
 
+
 .PHONY: test
 .NOTPARALLEL: test
-test:: build/test_base build/test_alloc 
+test:: build/test_base build/test_alloc build/test_runtime
 	reset
 	$(MAKE) -s test_base
 	$(MAKE) -s test_alloc
+	$(MAKE) -s test_runtime
 
 
 # Limit default 'all' to base/alloc only; docs optional
