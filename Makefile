@@ -11,7 +11,7 @@ MAKEFLAGS += --output-sync=target
 .SUFFIXES:
 
 .PHONY: all
-all::
+all:: build/libak_alloc.a build/test_alloc build/test_base
 
 include .config.mk
 
@@ -29,7 +29,7 @@ CXXFLAGS += -g
 endif
 
 LDFLAGS =
-LDLIBS = -luring -lgtest -lgtest_main -lbenchmark -lbenchmark_main
+LDLIBS = -luring -lgtest -lgtest_main
 CPPFLAGS = -I./src
 
 
@@ -98,6 +98,11 @@ build/%.o: src/%.cc build/precompiled.pch | build/.
 	mkdir -p "$(@D)"
 	$(COMPILE.cc) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $<
 
+build/%.o: src/%.cpp build/precompiled.pch | build/.
+	$(call trace,CXX -o $@ -c $<)
+	mkdir -p "$(@D)"
+	$(COMPILE.cc) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $<
+
 build/%.o: src/test/%.cc build/precompiled.pch | build/.
 	$(call trace,CXX -o $@ -c $<)
 	mkdir -p "$(@D)"
@@ -111,18 +116,42 @@ build/%: build/%.o  | build/.
 	$(call trace,LINK -o $@ $^ $(LDLIBS))
 	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LDLIBS)
 
-# Static library with all non-test sources
-LIB_SOURCES := $(shell find src -name '*.cc' -not -path 'src/test/*')
-LIB_OBJECTS := $(patsubst src/%.cc,build/%.o,$(LIB_SOURCES))
+# ------------
+# Alloc module
+# ------------
 
-.PRECIOUS: build/libak.a
-build/libak.a: $(LIB_OBJECTS) | build/.
+# Alloc static library (module-only sources)
+ALLOC_LIB_SOURCES := $(shell find src/ak/alloc -maxdepth 1 -name '*.cpp' -o -name '*.cc' -o -name '*.cxx')
+ALLOC_LIB_OBJECTS := $(patsubst src/%.cc,build/%.o,$(patsubst src/%.cpp,build/%.o,$(patsubst src/%.cxx,build/%.o,$(ALLOC_LIB_SOURCES))))
+
+.PRECIOUS: build/libak_alloc.a
+build/libak_alloc.a: $(ALLOC_LIB_OBJECTS) | build/.
 	$(call trace,AR -rcs $@ $^)
 	$(AR) rcs $@ $^
 
-# Link tests against the static library
-.PRECIOUS: build/test_%
-build/test_%: build/test_%.o build/libak.a | build/.
+# Alloc tests (single executable composed by selected alloc tests without kernel deps)
+ALLOC_TEST_SOURCES := \
+	src/test/alloc/test_freeblock_tree.cc \
+	src/test/alloc/test_freeblock_list_search.cc
+
+ALLOC_TEST_OBJECTS := $(patsubst src/%.cc,build/%.o,$(ALLOC_TEST_SOURCES))
+
+.PRECIOUS: build/test_alloc
+build/test_alloc: $(ALLOC_TEST_OBJECTS) build/libak_alloc.a | build/.
+	$(call trace,LINK -o $@ $^ $(LDLIBS))
+	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LDLIBS)
+
+
+# ----------------
+# Base Module Test
+# ----------------
+
+# Base tests (standalone)
+BASE_TEST_SOURCES := $(wildcard src/test/base/*.cc)
+BASE_TEST_OBJECTS := $(patsubst src/%.cc,build/%.o,$(BASE_TEST_SOURCES))
+
+.PRECIOUS: build/test_base
+build/test_base: $(BASE_TEST_OBJECTS) | build/.
 	$(call trace,LINK -o $@ $^ $(LDLIBS))
 	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LDLIBS)
 
@@ -138,8 +167,10 @@ run::
 
 .PHONY: test
 .NOTPARALLEL: test
-test::
+test:: build/test_alloc build/test_base
 	reset
+	$(MAKE) -s test_test_alloc
+	$(MAKE) -s test_test_base
 
 ifeq ($(CONFIG),coverage) # coverage support
 
@@ -234,20 +265,5 @@ docs-xml: doxygen-xml
 
 #----------------------------------------
 
-test:: test_ak
-
-test:: test_dlist
-test:: test_event
-test:: test_file_io
-
-# test:: test_gtest
-# test:: test_gbenchmark
-
-test:: test_alloc
-test:: test_alloc_freeblock_list_search
-test:: test_alloc_freeblock_list
-test:: test_alloc_freeblock_tree
-test:: test_alloc_split
-test:: test_alloc_defragment
-
-all:: build/libak.a test doxygen
+# Limit default 'all' to base/alloc only; docs optional
+all:: doxygen

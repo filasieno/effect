@@ -1,11 +1,9 @@
-#define AK_IMPLEMENTATION
-#include "ak.hpp" // IWYU pragma: keep
 #include <gtest/gtest.h>
+#include "ak/alloc/alloc.hpp" // IWYU pragma: keep
 
 using namespace ak;
-using namespace ak::priv;
 
-class KernelFreeListTest : public ::testing::Test {
+class KernelAllocSplitTest : public ::testing::Test {
 protected:
 	Void* buffer = nullptr;
 	U64   buffer_size = 1024 * 1024;
@@ -22,12 +20,14 @@ protected:
 	}
 };
 
-TEST_F(KernelFreeListTest, WalkBinsAllocateAndFree) {
-	Size bins = 64;
-	Size max_size = bins * 32 - 16;
-	for (U64 size = 16; size <= max_size; size += 32) {
-		Void* buff = try_alloc_mem(size);
-		ASSERT_NE(buff, nullptr) << "size=" << size;
-		free_mem(buff);
-	}
+TEST_F(KernelAllocSplitTest, SplitAndReuse) {
+	U64 memSize01 = 8096;
+	Void* buff01 = try_alloc_mem(memSize01);
+	ASSERT_NE(buff01, nullptr);
+	free_mem(buff01);
+
+	U64 memSize02 = 16;
+	Void* buff02 = try_alloc_mem(memSize02);
+	ASSERT_NE(buff02, nullptr);
+	free_mem(buff02);
 }

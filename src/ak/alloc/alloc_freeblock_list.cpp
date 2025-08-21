@@ -1,6 +1,4 @@
-#pragma once
-
-#include "ak/alloc/alloc.hpp"
+#include "ak/alloc/alloc.hpp" // IWYU pragma: keep
 #include <cstdlib>
 
 // Private Allocator API implementation

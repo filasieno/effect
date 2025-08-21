@@ -105,7 +105,10 @@ namespace ak { namespace priv {
         queue->next = link;
     }
 
-    inline Void push_dlink(DLink* stack, DLink* link) noexcept { insert_next_dlink(stack, link); }
+    inline Void push_dlink(DLink* stack, DLink* link) noexcept { 
+        insert_next_dlink(stack, link); 
+    }
+
     inline DLink* pop_dlink(DLink* stack) noexcept {
         AK_ASSERT(stack != nullptr);
         AK_ASSERT(stack->next != nullptr);

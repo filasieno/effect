@@ -8,8 +8,18 @@
 #include "ak/base/base_api.hpp"        // IWYU pragma: keep
 #include "ak/alloc/alloc_api.hpp"      // IWYU pragma: keep
 
+#include <source_location>
+
 namespace ak { namespace priv {
-    Void check_alloc_table_invariants(const std::source_location loc = std::source_location::current()) noexcept;
+
+    // Allocator Table
+    I32   init_alloc_table(AllocTable* at, Void* mem, Size size) noexcept;
+    Void* try_alloc_table_malloc(AllocTable* at, Size size) noexcept;
+    Void  alloc_table_free(Void* ptr, U32 side_coalescing) noexcept;
+    Void  check_alloc_table_invariants(AllocTable* at, std::source_location loc = std::source_location::current()) noexcept;
+    I32   defrag_alloc_table_mem(AllocTable* at, U64 millis_budget) noexcept;
+    I64   coalesce_alloc_table_right(AllocTable* at, AllocBlockHeader** out_block, U32 max_merges) noexcept;
+    I64   coalesce_alloc_table_left(AllocTable* at, AllocBlockHeader** out_block, U32 max_merges) noexcept;
 
     // Free block header Tree
     Void                  init_free_block_tree_root(AllocFreeBlockHeader** root) noexcept;
@@ -25,10 +35,10 @@ namespace ak { namespace priv {
     Void clear_alloc_freelist_mask(U64* bit_field, U64 bin_idx) noexcept;
     I32  find_alloc_freelist_index(const U64* bit_field, Size alloc_size) noexcept;
     U32  get_alloc_freelist_index(const AllocBlockHeader* header) noexcept;
+    U64 get_alloc_freelist_index(U64 sz) noexcept;
 
     // Coaleshing
-    I64 coalesce_right(AllocBlockHeader** out_block, U32 max_merges) noexcept;
-    I64 coalesce_left(AllocBlockHeader** out_block, U32 max_merges) noexcept;
+    
 
     // Iteration
     AllocBlockHeader* next(AllocBlockHeader* header) noexcept;

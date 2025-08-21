@@ -1,7 +1,7 @@
-#define AK_IMPLEMENTATION
-#include "ak.hpp" // IWYU pragma: keep
 #include <gtest/gtest.h>
 #include <cstdlib>
+
+#include "ak/alloc/alloc.hpp" // IWYU pragma: keep
 
 using namespace ak;
 using namespace ak::priv;

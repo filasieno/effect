@@ -1,10 +1,9 @@
-#include "ak/alloc/alloc.hpp"
+#include "ak/alloc/alloc.hpp" // IWYU pragma: keep
 
 namespace ak { namespace priv {
 
-    Void check_alloc_table_invariants(std::source_location loc) noexcept {
+    Void check_alloc_table_invariants(AllocTable* at, std::source_location loc) noexcept {
         if constexpr (IS_DEBUG_MODE && ENABLE_FULL_INVARIANT_CHECKS) {
-            AllocTable* at = &global_kernel_state.alloc_table;
 
             // Basic table invariants
             AK_ASSERT_AT(loc, at->heap_begin < at->mem_begin, "basic alloc table invariant failed");

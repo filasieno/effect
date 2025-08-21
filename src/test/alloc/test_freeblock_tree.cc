@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <algorithm>  // std::max
 
-#include "ak/alloc/alloc_api_priv.hpp"
+#include "ak/alloc/alloc.hpp" // IWYU pragma: keep
 
 using namespace ak;
 using namespace ak::priv;
