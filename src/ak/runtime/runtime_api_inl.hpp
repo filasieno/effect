@@ -3,7 +3,7 @@
 // Public inline API implementation
 // --------------------------------
 
-#include "ak/base/base_api.hpp"
+#include "ak/runtime/runtime_api.hpp"
 
 namespace ak { 
 
@@ -61,3 +61,5 @@ namespace ak {
     inline op::ResumeCThread resume(CThread ct) noexcept { return op::ResumeCThread(ct); }
 
 }
+
+

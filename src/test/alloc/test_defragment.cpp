@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 #include <cstdlib>
-#include <vector>
 
 #include "ak/alloc/alloc.hpp" // IWYU pragma: keep
 

@@ -10,8 +10,7 @@ MAKEFLAGS += --output-sync=target
 .DELETE_ON_ERROR:
 .SUFFIXES:
 
-.PHONY: all
-all:: build/libak_alloc.a build/test_alloc build/test_base
+
 
 include .config.mk
 
@@ -87,89 +86,144 @@ endif
 
 build/precompiled.pch: src/ak/precompiled.hpp | build/.
 	$(call trace,CXX -o $@ -c $<)
-	$(COMPILE.cc) -x c++-header -MMD -MP -MF build/precompiled.d -o $@ -c $<
+	$(COMPILE.cpp) -x c++-header -MMD -MP -MF build/precompiled.d -o $@ -c $<
 
 -include build/precompiled.d
 
 
 .PRECIOUS: build/%.o
-build/%.o: src/%.cc build/precompiled.pch | build/.
-	$(call trace,CXX -o $@ -c $<)
-	mkdir -p "$(@D)"
-	$(COMPILE.cc) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $<
 
 build/%.o: src/%.cpp build/precompiled.pch | build/.
 	$(call trace,CXX -o $@ -c $<)
 	mkdir -p "$(@D)"
-	$(COMPILE.cc) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $<
+	$(COMPILE.cpp) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $<
 
-build/%.o: src/test/%.cc build/precompiled.pch | build/.
+build/%.o: src/test/%.cpp build/precompiled.pch | build/.
 	$(call trace,CXX -o $@ -c $<)
 	mkdir -p "$(@D)"
-	$(COMPILE.cc) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $<
+	$(COMPILE.cpp) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $<
 
--include $(patsubst src/%.cc,build/%.d,$(wildcard src/*.cc))
--include $(patsubst src/test/%.cc,build/%.d,$(wildcard src/test/*.cc))
+-include $(patsubst src/%.cpp,build/%.d,$(wildcard src/*.cpp))
+-include $(patsubst src/test/%.cpp,build/%.d,$(wildcard src/test/*.cpp))
+
+# (Only .cpp sources are supported)
+
+# (Only .cpp sources are supported)
 
 .PRECIOUS: build/%
 build/%: build/%.o  | build/.
 	$(call trace,LINK -o $@ $^ $(LDLIBS))
 	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LDLIBS)
 
+
+# =====================================================================================================================================
+# Base
+# =====================================================================================================================================
+
+# -------------
+# Base module
+# -------------
+
+BASE_LIB_SOURCES := $(shell find src/ak/base -maxdepth 1 -name '*.cpp')
+BASE_LIB_OBJECTS := $(patsubst src/%.cpp,build/%.o,$(BASE_LIB_SOURCES))
+
+.PRECIOUS: build/libak_base.a
+build/libak_base.a: $(BASE_LIB_OBJECTS) | build/.
+	$(call trace,AR -rcs $@ $^)
+	$(AR) rcs $@ $^
+
+# ----------------
+# Base Module Test
+# ----------------
+
+BASE_TEST_SOURCES := $(wildcard src/test/base/*.cpp)
+BASE_TEST_OBJECTS := $(patsubst src/%.cpp,build/%.o,$(BASE_TEST_SOURCES))
+
+.PRECIOUS: build/test_base
+build/test_base: $(BASE_TEST_OBJECTS) build/libak_base.a | build/.
+	$(call trace,LINK -o $@ $^ $(LDLIBS))
+	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LDLIBS)
+
+# =====================================================================================================================================
+# Alloc
+# =====================================================================================================================================
+
 # ------------
 # Alloc module
 # ------------
 
 # Alloc static library (module-only sources)
-ALLOC_LIB_SOURCES := $(shell find src/ak/alloc -maxdepth 1 -name '*.cpp' -o -name '*.cc' -o -name '*.cxx')
-ALLOC_LIB_OBJECTS := $(patsubst src/%.cc,build/%.o,$(patsubst src/%.cpp,build/%.o,$(patsubst src/%.cxx,build/%.o,$(ALLOC_LIB_SOURCES))))
+ALLOC_LIB_SOURCES := $(shell find src/ak/alloc -maxdepth 1 -name '*.cpp')
+ALLOC_LIB_OBJECTS := $(patsubst src/%.cpp,build/%.o,$(ALLOC_LIB_SOURCES))
 
 .PRECIOUS: build/libak_alloc.a
 build/libak_alloc.a: $(ALLOC_LIB_OBJECTS) | build/.
 	$(call trace,AR -rcs $@ $^)
 	$(AR) rcs $@ $^
 
-# Alloc tests (single executable composed of alloc tests without kernel deps)
-# Include all current tests under src/test/alloc
-ALLOC_TEST_SOURCES := $(wildcard src/test/alloc/*.cc)
+# -----------------
+# Alloc Module Test
+# -----------------
 
-ALLOC_TEST_OBJECTS := $(patsubst src/%.cc,build/%.o,$(ALLOC_TEST_SOURCES))
+ALLOC_TEST_SOURCES := $(wildcard src/test/alloc/*.cpp)
+ALLOC_TEST_OBJECTS := $(patsubst src/%.cpp,build/%.o,$(ALLOC_TEST_SOURCES))
 
 .PRECIOUS: build/test_alloc
 build/test_alloc: $(ALLOC_TEST_OBJECTS) build/libak_alloc.a | build/.
 	$(call trace,LINK -o $@ $^ $(LDLIBS))
 	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LDLIBS)
 
+# =====================================================================================================================================
+# Runtime
+# =====================================================================================================================================
 
-# ----------------
-# Base Module Test
-# ----------------
+# --------------
+# Runtime module
+# --------------
 
-# Base tests (standalone)
-BASE_TEST_SOURCES := $(wildcard src/test/base/*.cc)
-BASE_TEST_OBJECTS := $(patsubst src/%.cc,build/%.o,$(BASE_TEST_SOURCES))
+RUNTIME_LIB_SOURCES := $(shell find src/ak/runtime -maxdepth 1 -name '*.cpp')
+RUNTIME_LIB_OBJECTS := $(patsubst src/%.cpp,build/%.o,$(RUNTIME_LIB_SOURCES))
 
-.PRECIOUS: build/test_base
-build/test_base: $(BASE_TEST_OBJECTS) | build/.
-	$(call trace,LINK -o $@ $^ $(LDLIBS))
-	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LDLIBS)
+.PRECIOUS: build/libak_runtime.a
+build/libak_runtime.a: $(RUNTIME_LIB_OBJECTS) | build/.
+	$(call trace,AR -rcs $@ $^)
+	$(AR) rcs $@ $^
 
-
-.PHONY: clean
-clean::
-	$(call trace,rm -rf build)
-	rm -rf build
+# =====================================================================================================================================
+# IO
+# =====================================================================================================================================
 
 
-.PHONY: run
-run:: 
+# ---------
+# IO module
+# ---------
 
-.PHONY: test
-.NOTPARALLEL: test
-test:: build/test_alloc build/test_base
-	reset
-	$(MAKE) -s test_alloc
-	$(MAKE) -s test_base
+IO_LIB_SOURCES := $(shell find src/ak/io -maxdepth 1 -name '*.cpp')
+IO_LIB_OBJECTS := $(patsubst src/%.cpp,build/%.o,$(IO_LIB_SOURCES))
+
+.PRECIOUS: build/libak_io.a
+build/libak_io.a: $(IO_LIB_OBJECTS) | build/.
+	$(call trace,AR -rcs $@ $^)
+	$(AR) rcs $@ $^
+
+# =====================================================================================================================================
+# Static AK Library (combine modules)
+# =====================================================================================================================================
+
+.PHONY: lib
+lib:: build/libak.a
+
+COMBINED_LIBS = build/libak_base.a build/libak_alloc.a build/libak_runtime.a build/libak_io.a
+
+.PRECIOUS: build/libak.a
+build/libak.a: $(COMBINED_LIBS) | build/.
+	$(call trace,AR -rcs $@ $^)
+	$(AR) rcs $@ $^
+
+
+# =====================================================================================================================================
+# Code coverage
+# =====================================================================================================================================
 
 ifeq ($(CONFIG),coverage) # coverage support
 
@@ -192,17 +246,17 @@ coverage-html: build/coverage.profdata
 		-show-instantiations \
 		-show-regions -show-line-counts -show-branches=count -show-mcdc -show-expansions \
 		-check-binary-ids\
-		$$(cat $<.binaries) -sources src/*.hpp src/*.cc src/test/*.cc
+		$$(cat $<.binaries) -sources src/*.hpp src/*.cpp src/test/*.cpp
 
 
 .PHONY: coverage-term
 coverage-term: build/coverage.profdata
 	$(call trace,Generating coverage report for terminal)
-	llvm-cov report -instr-profile=$< -use-color $$(cat $<.binaries) -sources src/*.hpp src/*.cc src/test/*.cc
+	llvm-cov report -instr-profile=$< -use-color $$(cat $<.binaries) -sources src/*.hpp src/*.cpp src/test/*.cpp
 	
 build/lcov.info: build/coverage.profdata
 	$(call trace,Generating lcov info file)
-	llvm-cov export -instr-profile=$< -format=lcov $$(cat $<.binaries) -sources src/*.hpp src/*.cc src/test/*.cc > $@
+	llvm-cov export -instr-profile=$< -format=lcov $$(cat $<.binaries) -sources src/*.hpp src/*.cpp src/test/*.cpp > $@
 
 
 .PHONY: coverage
@@ -244,6 +298,10 @@ watch:
 		fi
 	done
 
+# =====================================================================================================================================
+# Doc
+# =====================================================================================================================================
+
 .PHONY: doc
 doc:: doxygen
 
@@ -262,7 +320,32 @@ doxygen-xml: | build/doc/.
 .PHONY: docs-xml
 docs-xml: doxygen-xml
 
-#----------------------------------------
+
+# =====================================================================================================================================
+# Phony targets: clean run test all
+# =====================================================================================================================================
+
+
+.PHONY: clean
+clean::
+	$(call trace,rm -rf build)
+	rm -rf build
+
+
+.PHONY: run
+run:: 
+
+
+.PHONY: test
+.NOTPARALLEL: test
+test:: build/test_base build/test_alloc 
+	reset
+	$(MAKE) -s test_base
+	$(MAKE) -s test_alloc
+
 
 # Limit default 'all' to base/alloc only; docs optional
-all:: doxygen
+.PHONY: all
+all:: test 
+all:: lib
+all:: doc

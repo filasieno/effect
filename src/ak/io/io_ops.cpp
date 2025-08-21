@@ -1,4 +1,4 @@
-#include "ak/io/io_api.hpp" // IWYU pragma: keep
+#include "ak/io/io.hpp" // IWYU pragma: keep
 
 namespace ak {
 

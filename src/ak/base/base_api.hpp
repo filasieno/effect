@@ -1,12 +1,8 @@
 #pragma once
 
 #include <liburing.h>
+#include <string_view>  
 #include <source_location>
-#include <string_view>
-#include <coroutine>
-#include <cstdio>
-#include <format>
-#include <print>
 
 // Macros
 #define AK_PACKED_ATTR __attribute__((packed))
@@ -39,6 +35,8 @@ namespace ak {
 
     using F32    = float;
     using F64    = double;
+    
+    extern I32 MAYOR, MINOR, PATCH, BUILD;
 
     namespace priv {
         // Build/config flags
@@ -59,7 +57,7 @@ namespace ak {
         template <typename... Args>
         inline Void ensure(Bool condition,
                            const Char* expression_text,
-                           const std::source_location loc,
+                           const std::source_location loc = std::source_location::current(),
                            const std::string_view fmt = {},
                            Args&&... args) noexcept;
     } // namespace priv

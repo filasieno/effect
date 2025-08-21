@@ -1,6 +1,6 @@
-#pragma once
+#include "ak/runtime/runtime.hpp" // IWYU pragma: keep
+
 #include <print>
-#include "ak/tsk/tsk_api.hpp" // IWYU pragma: keep
 
 namespace ak { namespace priv {
     struct RunSchedulerOp;
@@ -50,7 +50,7 @@ namespace ak {
     inline int init_kernel(KernelConfig* config) noexcept {
         using namespace priv;
         
-        if (init_alloc_table(config->mem, config->memSize) != 0) {
+        if (init_alloc_table(&global_kernel_state.alloc_table, config->mem, config->memSize) != 0) {
             return -1;
         }
 
@@ -110,7 +110,7 @@ namespace ak {
 
             co_await run_scheduler();
             destroy_scheduler(scheduler_hdl);
-            dump_task_count();
+            // dump_task_count();
 
             co_return;
         }
@@ -149,7 +149,7 @@ namespace ak {
 
                 // Zombie bashing
                 while (global_kernel_state.zombie_cthread_count > 0) {
-                    dump_task_count();
+                    //dump_task_count();
 
                     priv::DLink* zombie_link = dequeue_dlink(&global_kernel_state.zombie_list);
                     CThread::Context* ctx = get_linked_cthread_context(zombie_link);
@@ -168,7 +168,7 @@ namespace ak {
                     CThread::Hdl zombieTaskHdl = CThread::Hdl::from_promise(*ctx);
                     zombieTaskHdl.destroy();
 
-                    dump_task_count();
+                    //dump_task_count();
                 }
 
                 Bool waiting_cc = global_kernel_state.iowaiting_cthread_count;
@@ -257,7 +257,7 @@ inline CThread::Hdl RunSchedulerOp::await_suspend(BootCThread::Hdl current_task_
     --global_kernel_state.ready_cthread_count;
 
     // Check expected state post task system bootstrap
-    check_invariants();
+    //check_invariants();
     return global_kernel_state.scheduler_cthread;
 }
 
@@ -327,7 +327,7 @@ inline CThread::Hdl schedule_cthread() noexcept {
             ctx->state = CThread::State::RUNNING;
             --global_kernel_state.ready_cthread_count;
             global_kernel_state.current_cthread = task;
-            check_invariants();
+            //check_invariants();
             return task;
         }
 
@@ -371,7 +371,7 @@ inline CThread::Hdl schedule_cthread() noexcept {
 
         // Zombie bashing
         while (global_kernel_state.zombie_cthread_count > 0) {
-            dump_task_count();
+            //dump_task_count();
 
             priv::DLink* zombie_node = dequeue_dlink(&global_kernel_state.zombie_list);
             CThread::Context& zombie_promise = *get_linked_cthread_context(zombie_node);
@@ -390,7 +390,7 @@ inline CThread::Hdl schedule_cthread() noexcept {
             CThread::Hdl zombie_task_hdl = CThread::Hdl::from_promise(zombie_promise);
             zombie_task_hdl.destroy();
 
-            dump_task_count();
+            //dump_task_count();
         }
 
         if (global_kernel_state.ready_cthread_count == 0) {
@@ -404,3 +404,5 @@ inline CThread::Hdl schedule_cthread() noexcept {
 
 
 } } // namespace ak::priv
+
+

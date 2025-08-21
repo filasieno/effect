@@ -1,4 +1,5 @@
 #include "ak/base/base_api.hpp" // IWYU pragma: keep
+#include "ak/runtime/runtime_api.hpp" // IWYU pragma: keep (Event/op declarations)
 
 // Public inline API implementation
 // --------------------------------

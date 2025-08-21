@@ -1,6 +1,13 @@
 #pragma once
 
 #include "ak/base/base_api.hpp"
+#include <cstdio>
+#include <format>
+#include <print>
+#include <source_location>
+#include <string_view>
+#include <tuple>
+
 
 namespace ak { namespace priv {
 
