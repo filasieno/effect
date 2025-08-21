@@ -129,10 +129,9 @@ build/libak_alloc.a: $(ALLOC_LIB_OBJECTS) | build/.
 	$(call trace,AR -rcs $@ $^)
 	$(AR) rcs $@ $^
 
-# Alloc tests (single executable composed by selected alloc tests without kernel deps)
-ALLOC_TEST_SOURCES := \
-	src/test/alloc/test_freeblock_tree.cc \
-	src/test/alloc/test_freeblock_list_search.cc
+# Alloc tests (single executable composed of alloc tests without kernel deps)
+# Include all current tests under src/test/alloc
+ALLOC_TEST_SOURCES := $(wildcard src/test/alloc/*.cc)
 
 ALLOC_TEST_OBJECTS := $(patsubst src/%.cc,build/%.o,$(ALLOC_TEST_SOURCES))
 

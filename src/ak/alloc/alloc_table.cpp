@@ -97,7 +97,7 @@ namespace ak {
     /// 
     /// Returns nullptr if no suitable block found (heap doesn't grow).
     /// For async version that suspends on failure, use co_await AllocMem(size).
-    Void* try_alloc_table_malloc(AllocTable* at, Size size) noexcept {
+    Void* priv::try_alloc_table_malloc(AllocTable* at, Size size) noexcept {
         using namespace priv;
         check_alloc_table_invariants(at);
         // Compute aligned block size
@@ -341,7 +341,7 @@ namespace ak {
     /// 
     /// \param ptr Pointer returned by TryMalloc (must not be nullptr).
     /// \param side_coalescing Maximum number of merges per side (0 = no coalescing, defaults to UINT_MAX for unlimited).
-    Void alloc_table_free(AllocTable* at, Void* ptr, U32 side_coalescing) noexcept {
+    Void priv::alloc_table_free(AllocTable* at, Void* ptr, U32 side_coalescing) noexcept {
         using namespace priv;
         AK_ASSERT(ptr != nullptr);
         (Void)side_coalescing;
@@ -572,7 +572,7 @@ namespace ak {
         return merged;
     }
 
-    I32 defrag_alloc_table_mem(AllocTable* at, U64 millis_budget) noexcept {
+    I32 priv::defrag_alloc_table_mem(AllocTable* at, U64 millis_budget) noexcept {
         (void)millis_budget;
         priv::check_alloc_table_invariants(at);
         using namespace priv;

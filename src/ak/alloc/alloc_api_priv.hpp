@@ -15,13 +15,13 @@ namespace ak { namespace priv {
     // Allocator Table
     I32   init_alloc_table(AllocTable* at, Void* mem, Size size) noexcept;
     Void* try_alloc_table_malloc(AllocTable* at, Size size) noexcept;
-    Void  alloc_table_free(Void* ptr, U32 side_coalescing) noexcept;
-    Void  check_alloc_table_invariants(AllocTable* at, std::source_location loc = std::source_location::current()) noexcept;
+    Void  alloc_table_free(AllocTable* at, Void* ptr, U32 side_coalescing) noexcept;
     I32   defrag_alloc_table_mem(AllocTable* at, U64 millis_budget) noexcept;
+    Void  check_alloc_table_invariants(AllocTable* at, std::source_location loc = std::source_location::current()) noexcept;
     I64   coalesce_alloc_table_right(AllocTable* at, AllocBlockHeader** out_block, U32 max_merges) noexcept;
     I64   coalesce_alloc_table_left(AllocTable* at, AllocBlockHeader** out_block, U32 max_merges) noexcept;
 
-    // Free block header Tree
+    // Free block Tree
     Void                  init_free_block_tree_root(AllocFreeBlockHeader** root) noexcept;
     Void                  put_free_block(AllocFreeBlockHeader** root, AllocBlockHeader* block) noexcept;
     AllocFreeBlockHeader* find_gte_free_block(AllocFreeBlockHeader* root, U64 block_size) noexcept;
@@ -29,7 +29,7 @@ namespace ak { namespace priv {
     Bool                  is_detached(const AllocFreeBlockHeader* link) noexcept;
     Void                  clear(AllocFreeBlockHeader* link) noexcept;
     
-    // alloc_freelist utilities
+    // Freeblock list bitmask utilities
     Void set_alloc_freelist_mask(U64* bit_field, U64 bin_idx) noexcept;
     Bool get_alloc_freelist_mask(const U64* bit_field, U64 bin_idx) noexcept;
     Void clear_alloc_freelist_mask(U64* bit_field, U64 bin_idx) noexcept;
@@ -37,9 +37,7 @@ namespace ak { namespace priv {
     U32  get_alloc_freelist_index(const AllocBlockHeader* header) noexcept;
     U64 get_alloc_freelist_index(U64 sz) noexcept;
 
-    // Coaleshing
     
-
     // Iteration
     AllocBlockHeader* next(AllocBlockHeader* header) noexcept;
     AllocBlockHeader* prev(AllocBlockHeader* header) noexcept;    
