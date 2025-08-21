@@ -169,8 +169,8 @@ run::
 .NOTPARALLEL: test
 test:: build/test_alloc build/test_base
 	reset
-	$(MAKE) -s test_test_alloc
-	$(MAKE) -s test_test_base
+	$(MAKE) -s test_alloc
+	$(MAKE) -s test_base
 
 ifeq ($(CONFIG),coverage) # coverage support
 
