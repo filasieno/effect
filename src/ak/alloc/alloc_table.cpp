@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ak/alloc/alloc_api.hpp"
+#include "ak/alloc/alloc.hpp" // IWYU pragma: keep
 
 namespace ak { 
     constexpr Size MAX_SMALL_BIN_SIZE = 2048;
