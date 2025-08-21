@@ -289,12 +289,9 @@ namespace ak {
 // Private API Implementation
 // ----------------------------------------------------------------------------------------------------------------
 
-namespace ak { namespace priv {
+namespace ak::priv {
 
-    CThread::Context* get_linked_cthread_context(const priv::DLink* link) noexcept {
-        unsigned long long promise_off = ((unsigned long long)link) - offsetof(CThread::Context, wait_link);
-        return reinterpret_cast<CThread::Context*>(promise_off);
-    }
+
 
     // prep_io used by IO functions
     template <typename PrepFn>
@@ -314,8 +311,8 @@ namespace ak { namespace priv {
         ++ctx->prepared_io;
         return {};
     }
-}} // namespace ak::priv
 
+} // namespace ak::priv
 
 // IO API implementations moved from ak/io/io_ops.cpp
 namespace ak {

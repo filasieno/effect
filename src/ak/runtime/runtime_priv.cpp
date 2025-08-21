@@ -123,11 +123,7 @@ namespace ak::priv {
     // Boot implementation
     // ----------------------------------------------------------------------------------------------------------------
 
-    constexpr RunSchedulerOp run_scheduler() noexcept { return {}; }
-
-    constexpr TerminateSchedulerOp terminate_scheduler() noexcept { return {}; }
-
-    constexpr Void destroy_scheduler(CThread ct) noexcept {
+    Void destroy_scheduler(CThread ct) noexcept {
         using namespace priv;
         auto* context = get_context(ct);
 

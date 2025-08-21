@@ -7,18 +7,17 @@ namespace ak {
     namespace priv 
     {
                 
-        // Boot routines
-        template <typename... Args>
-        BootCThread boot_main_proc(CThread(*main_proc)(Args ...) noexcept, Args ... args) noexcept;
+        // // Boot routines
+        // template <typename... Args>
+        // BootCThread boot_main_proc(CThread(*main_proc)(Args ...) noexcept, Args ... args) noexcept;
 
-        template <typename... Args>
-        CThread scheduler_main_proc(CThread(*main_proc)(Args ...) noexcept, Args... args) noexcept;
+        // template <typename... Args>
+        // CThread scheduler_main_proc(CThread(*main_proc)(Args ...) noexcept, Args... args) noexcept;
         
 
 
         // Scheduler task routines
-        CThread::Hdl      schedule_cthread() noexcept;
-        CThread::Context* get_linked_cthread_context(const DLink* link) noexcept;
+        CThread::Hdl schedule_cthread() noexcept;
 
         // Debug routines
         Void check_invariants() noexcept;
