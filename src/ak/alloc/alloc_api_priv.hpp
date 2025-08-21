@@ -5,7 +5,8 @@
 // Defines the private API of the Allocator module.
 // The contents of this file are part of the private API and WILL NOT be part of the public API
 
-#include "ak/api_priv.hpp"        // IWYU pragma: keep
+#include "ak/base/base_api.hpp"        // IWYU pragma: keep
+#include "ak/alloc/alloc_api.hpp"      // IWYU pragma: keep
 
 namespace ak { namespace priv {
     Void check_alloc_table_invariants(const std::source_location loc = std::source_location::current()) noexcept;

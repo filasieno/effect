@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ak/api_priv.hpp"             // IWYU pragma: keep
+#include "ak/alloc/alloc_api_priv.hpp"             // IWYU pragma: keep
 
 #include "ak/base/base.hpp"
 #include "ak/alloc/alloc_api.hpp"               // IWYU pragma: keep
