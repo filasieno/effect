@@ -1,4 +1,4 @@
-#include "ak/alc/alc_api_priv.hpp" // IWYU pragma: keep
+#include "ak/alloc/alloc_api_priv.hpp" // IWYU pragma: keep
 
 // Private inline API implementation
 // --------------------------------
