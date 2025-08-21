@@ -1,49 +1,17 @@
 #pragma once
 
+#include "ak/io/io_api.hpp" // IWYU pragma: keep
+
 #include <print>
 #include <format>
-#include <source_location>
-#include <string_view>
 #include <cstdio>
-#include <tuple>
-#include "ak/api_priv.hpp"
 
 namespace ak { namespace priv {
-    // Assertions and ensure helpers
-    // ----------------------------------------------------------------------------------------------------------------
-    template <typename... Args>
-    inline Void ensure(Bool condition,
-                       const Char* expression_text,
-                       const std::source_location loc,
-                       const std::string_view fmt,
-                       Args&&... args) noexcept {
-        constexpr const Char* RESET  = "\033[0m";
-        constexpr const Char* RED    = "\033[1;31m"; 
-        if (AK_UNLIKELY(!condition)) {
-            std::print("{}{}:{}: Assertion '{}' failed{}",RED, loc.file_name(), (int)loc.line(), expression_text, RESET);
-            if (fmt.size() > 0 && !std::is_constant_evaluated()) {
-                std::fputs("; ", stdout);
-                if constexpr (sizeof...(Args) > 0) {
-                    auto arg_tuple = std::forward_as_tuple(std::forward<Args>(args)...);
-                    std::apply([&](auto&... refs){
-                        auto fmt_args = std::make_format_args(refs...);
-                        std::vprint_nonunicode(stdout, fmt, fmt_args);
-                    }, arg_tuple);
-                } else {
-                    std::fwrite(fmt.data(), 1, fmt.size(), stdout);
-                }
-            }
-            std::fputc('\n', stdout);
-            std::fflush(stdout);
-            std::abort();
-        }
-    }
-
         
     // Task runtime debug utilities
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline Void dump_task_count() noexcept {
+    Void dump_task_count() noexcept {
         if constexpr (priv::TRACE_DEBUG_CODE) {
             int running_count = global_kernel_state.current_cthread != CThread::Hdl() ? 1 : 0;
             std::print("- {} Running\n", running_count);
@@ -57,7 +25,7 @@ namespace ak { namespace priv {
     // Check Task Invariants
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline Void DoCheckTaskCountInvariant() noexcept {
+    Void do_check_task_count_invariant() noexcept {
         int running_count = global_kernel_state.current_cthread != CThread::Hdl() ? 1 : 0;
         Bool condition = global_kernel_state.cthread_count == running_count + global_kernel_state.ready_cthread_count + global_kernel_state.waiting_cthread_count + global_kernel_state.iowaiting_cthread_count + global_kernel_state.zombie_cthread_count;
         if (!condition) {
@@ -66,16 +34,16 @@ namespace ak { namespace priv {
         }
     }
 
-    inline Void CheckTaskCountInvariant() noexcept {
+    Void CheckTaskCountInvariant() noexcept {
         if constexpr (IS_DEBUG_MODE) {
-            DoCheckTaskCountInvariant();
+            do_check_task_count_invariant();
         }
     }
 
-    inline Void check_invariants() noexcept {
+    Void check_invariants() noexcept {
         if constexpr (IS_DEBUG_MODE) {
             // check the Task invariants
-            DoCheckTaskCountInvariant();
+            do_check_task_count_invariant();
 
             // Ensure that the current Task is valid
             // if (gKernel.currentTask.isValid()) std::abort();
@@ -85,7 +53,7 @@ namespace ak { namespace priv {
     // IO Uring Debug utils
     // ----------------------------------------------------------------------------------------------------------------
     
-    inline Void DebugIOURingFeatures(const unsigned int features) {
+    Void dump_io_uring_features(const unsigned int features) {
         std::print("IO uring features:\n");
         if (features & IORING_FEAT_SINGLE_MMAP)     std::print("  SINGLE_MMAP\n");
         if (features & IORING_FEAT_NODROP)          std::print("  NODROP\n");
@@ -99,7 +67,7 @@ namespace ak { namespace priv {
         if (features & IORING_FEAT_NATIVE_WORKERS)  std::print("  NATIVE_WORKERS\n");
     }
 
-    inline Void DebugIOURingSetupFlags(const unsigned int flags) {
+    Void dump_io_uring_setup_flags(const unsigned int flags) {
         std::print("IO uring flags:\n");
         if (flags & IORING_SETUP_IOPOLL)    std::print("  IOPOLL\n");
         if (flags & IORING_SETUP_SQPOLL)    std::print("  SQPOLL\n");
@@ -109,7 +77,7 @@ namespace ak { namespace priv {
         if (flags & IORING_SETUP_ATTACH_WQ) std::print("  ATTACH_WQ\n");
     }
 
-    inline Void dump_io_uring_params(const io_uring_params* params) {
+    Void dump_io_uring_params(const io_uring_params* params) {
         std::print("IO uring parameters:\n");
         
         // Main parameters
@@ -121,10 +89,10 @@ namespace ak { namespace priv {
         std::print("  wq_fd: {}\n", params->wq_fd);
 
         // Print flags
-        DebugIOURingSetupFlags(params->flags);
+        dump_io_uring_setup_flags(params->flags);
 
         // Print features
-        DebugIOURingFeatures(params->features);
+        dump_io_uring_features(params->features);
 
         // Submission Queue Offsets
 
@@ -150,6 +118,5 @@ namespace ak { namespace priv {
         std::print("\n");
         std::fflush(stdout);
     }
- 
 
 }} // namespace ak::priv

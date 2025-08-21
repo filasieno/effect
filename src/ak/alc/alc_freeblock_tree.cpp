@@ -1,37 +1,29 @@
 #pragma once
 
-#include "ak/alc/alc_api_priv.hpp" // IWYU pragma: keep
-
-namespace ak { 
-    namespace priv { 
-        // AVL utility forward declarations 
-        inline static Void                  clear(AllocFreeBlockHeader* link) noexcept;
-        inline static Bool                  is_detached(const AllocFreeBlockHeader* link) noexcept;
-        inline static I32                   height_of(const AllocFreeBlockHeader* n) noexcept;
-        inline static Void                  update(AllocFreeBlockHeader* n) noexcept;
-        inline static Void                  rotate_left(AllocFreeBlockHeader** root, AllocFreeBlockHeader* x) noexcept;
-        inline static Void                  rotate_right(AllocFreeBlockHeader** root, AllocFreeBlockHeader* y) noexcept;
-        inline static Void                  rebalance_upwards(AllocFreeBlockHeader** root, AllocFreeBlockHeader* n) noexcept;
-        inline static Void                  transplant(AllocFreeBlockHeader** root, AllocFreeBlockHeader* u, AllocFreeBlockHeader* v) noexcept;
-        inline static AllocFreeBlockHeader* min_node(AllocFreeBlockHeader* root) noexcept;
-
-} }
-
+#include "ak/alc/alc_api.hpp"
 
 namespace ak { namespace priv { 
 
-    // (AVL utility implementations are located at the end of the file)
+    // AVL utility forward declarations 
 
-    inline Void init_free_block_tree_root(AllocFreeBlockHeader** root) noexcept {
-        assert(root != nullptr);
+    inline static I32                   height_of(const AllocFreeBlockHeader* n) noexcept;
+    inline static Void                  update(AllocFreeBlockHeader* n) noexcept;
+    inline static Void                  rotate_left(AllocFreeBlockHeader** root, AllocFreeBlockHeader* x) noexcept;
+    inline static Void                  rotate_right(AllocFreeBlockHeader** root, AllocFreeBlockHeader* y) noexcept;
+    inline static Void                  rebalance_upwards(AllocFreeBlockHeader** root, AllocFreeBlockHeader* n) noexcept;
+    inline static Void                  transplant(AllocFreeBlockHeader** root, AllocFreeBlockHeader* u, AllocFreeBlockHeader* v) noexcept;
+    inline static AllocFreeBlockHeader* min_node(AllocFreeBlockHeader* root) noexcept;
+
+    Void init_free_block_tree_root(AllocFreeBlockHeader** root) noexcept {
+        AK_ASSERT(root != nullptr);
         *root = nullptr;
     }
 
-    inline Void put_free_block(AllocFreeBlockHeader** root, AllocBlockHeader* block) noexcept {
-        assert(root != nullptr);
-        assert(block != nullptr);
-        assert(block->this_desc.state == (U32)AllocBlockState::FREE);
-        assert(block->this_desc.size > 2048);
+    Void put_free_block(AllocFreeBlockHeader** root, AllocBlockHeader* block) noexcept {
+        AK_ASSERT(root != nullptr);
+        AK_ASSERT(block != nullptr);
+        AK_ASSERT(block->this_desc.state == (U32)AllocBlockState::FREE);
+        AK_ASSERT(block->this_desc.size > 2048);
 
         auto key_of = [](const AllocFreeBlockHeader* n) noexcept -> U64 { return n->this_desc.size; };
         // (helpers moved to static inline utilities above)
@@ -45,7 +37,7 @@ namespace ak { namespace priv {
             new_link->parent = nullptr;
             new_link->left = nullptr;
             new_link->right = nullptr;
-            utl::init_dlink(&new_link->multimap_link);
+            init_dlink(&new_link->multimap_link);
             *root = new_link;
             return;
         }
@@ -65,7 +57,7 @@ namespace ak { namespace priv {
                 new_link->left = nullptr;
                 new_link->right = nullptr;
                 // append before head (FIFO): head->next remains first inserted
-                utl::insert_prev_dlink(&cur->multimap_link, &new_link->multimap_link);
+                insert_prev_dlink(&cur->multimap_link, &new_link->multimap_link);
                 return;
             } else if (k < ck) {
                 cur = cur->left;
@@ -79,7 +71,7 @@ namespace ak { namespace priv {
         new_link->balance = 0;
         new_link->left = nullptr;
         new_link->right = nullptr;
-        utl::init_dlink(&new_link->multimap_link);
+        init_dlink(&new_link->multimap_link);
         new_link->parent = parent;
         if (k < key_of(parent)) parent->left = new_link; else parent->right = new_link;
 
@@ -88,7 +80,7 @@ namespace ak { namespace priv {
         return;
     }
 
-    inline AllocFreeBlockHeader* find_gte_free_block(AllocFreeBlockHeader* root, U64 block_size) noexcept {
+    AllocFreeBlockHeader* find_gte_free_block(AllocFreeBlockHeader* root, U64 block_size) noexcept {
         if (root == nullptr) return nullptr;
         if (block_size <= 2048) return nullptr;
         
@@ -103,18 +95,18 @@ namespace ak { namespace priv {
         return best;
     }
     
-    inline Void detach_free_block(AllocFreeBlockHeader** root, AllocFreeBlockHeader* node) noexcept {
-        assert(root != nullptr);
-        assert(*root != nullptr);
-        assert(node != nullptr);
-        assert(node->this_desc.state == (U32)AllocBlockState::FREE);
-        assert(node->this_desc.size > 2048);
+    Void detach_free_block(AllocFreeBlockHeader** root, AllocFreeBlockHeader* node) noexcept {
+        AK_ASSERT(root != nullptr);
+        AK_ASSERT(*root != nullptr);
+        AK_ASSERT(node != nullptr);
+        AK_ASSERT(node->this_desc.state == (U32)AllocBlockState::FREE);
+        AK_ASSERT(node->this_desc.size > 2048);
         
         // Case 1: List node case; the node is part of a list; just unlink it
         // It is guarateed that root is stable 
         // Nothing ever to rebalance
         if (node->height < 0) {
-            utl::detach_dlink(&node->multimap_link);
+            detach_dlink(&node->multimap_link);
             clear(node);
             return;
         }
@@ -157,11 +149,11 @@ namespace ak { namespace priv {
         //
         // 1. Get the first element of the list N (FIFO) and detach H from the ring
         
-        utl::DLink* next_node_link = node->multimap_link.next;
+        priv::DLink* next_node_link = node->multimap_link.next;
         AllocFreeBlockHeader* next_node = (AllocFreeBlockHeader*)((Char*)next_node_link - AK_OFFSET(AllocFreeBlockHeader, multimap_link));
-        assert(next_node != nullptr && next_node != node);
+        AK_ASSERT(next_node != nullptr && next_node != node);
         // Remove H from circular list so that N becomes the new head
-        utl::detach_dlink(&node->multimap_link);
+        detach_dlink(&node->multimap_link);
         // H becomes a detached single-node ring (already true after detach)
 
         // 2. Replace in the tree the node H with the node N
@@ -186,18 +178,18 @@ namespace ak { namespace priv {
 
     }
 
+    Bool is_detached(const AllocFreeBlockHeader* link) noexcept {
+        AK_ASSERT(link != nullptr);
+        return link->multimap_link.next == &link->multimap_link && link->multimap_link.prev == &link->multimap_link;
+    }
+    
     // ------------------------------------------------------------------
     // AVL utility implementations (moved to bottom for clarity)
 
-    inline static Void clear(AllocFreeBlockHeader* link) noexcept {
-        assert(link != nullptr);
+    Void clear(AllocFreeBlockHeader* link) noexcept {
+        AK_ASSERT(link != nullptr);
         char* buff = ((char*)link) + sizeof(AllocBlockHeader);
         std::memset(buff, 0, sizeof(AllocFreeBlockHeader) - sizeof(AllocBlockHeader));
-    }
-
-    inline static Bool is_detached(const AllocFreeBlockHeader* link) noexcept {
-        assert(link != nullptr);
-        return link->multimap_link.next == &link->multimap_link && link->multimap_link.prev == &link->multimap_link;
     }
 
     inline static I32 height_of(const AllocFreeBlockHeader* n) noexcept { return n ? n->height : 0; }
@@ -212,7 +204,7 @@ namespace ak { namespace priv {
 
     inline static Void rotate_left(AllocFreeBlockHeader** r, AllocFreeBlockHeader* x) noexcept {
         AllocFreeBlockHeader* y = x->right;
-        assert(y != nullptr);
+        AK_ASSERT(y != nullptr);
         x->right = y->left;
         if (y->left) y->left->parent = x;
         y->parent = x->parent;
@@ -231,7 +223,7 @@ namespace ak { namespace priv {
 
     inline static Void rotate_right(AllocFreeBlockHeader** r, AllocFreeBlockHeader* y) noexcept {
         AllocFreeBlockHeader* x = y->left;
-        assert(x != nullptr);
+        AK_ASSERT(x != nullptr);
         y->left = x->right;
         if (x->right) x->right->parent = y;
         x->parent = y->parent;
@@ -278,7 +270,7 @@ namespace ak { namespace priv {
     }
 
     inline static AllocFreeBlockHeader* min_node(AllocFreeBlockHeader* n) noexcept {
-        assert(n != nullptr);
+        AK_ASSERT(n != nullptr);
         while (n->left) n = n->left;
         return n;
     }

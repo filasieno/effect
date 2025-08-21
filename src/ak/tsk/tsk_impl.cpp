@@ -1,36 +1,22 @@
 #pragma once
 
-#include "ak/api_priv.hpp"
+#include "ak/tsk/tsk_api.hpp" // IWYU pragma: keep
+
+#include <print>
 
 namespace ak {
-
-    inline const Char* to_string(CThread::State state) noexcept 
-    {
-        switch (state) {
-            case CThread::State::INVALID:    return "INVALID";
-            case CThread::State::CREATED:    return "CREATED";
-            case CThread::State::READY:      return "READY";
-            case CThread::State::RUNNING:    return "RUNNING";
-            case CThread::State::IO_WAITING: return "IO_WAITING";
-            case CThread::State::WAITING:    return "WAITING";
-            case CThread::State::ZOMBIE:     return "ZOMBIE";
-            case CThread::State::DELETING:   return "DELETING";
-            default: return nullptr;
-        }
-    }
 
     // TaskContext implementation 
     // ----------------------------------------------------------------------------------------------------------------
 
     inline Void CThread::Context::InitialSuspendTaskOp::await_suspend(CThread::Hdl hdl) const noexcept {
         using namespace priv;
-        using namespace utl;
 
         CThread::Context* promise = &hdl.promise();
 
         // Check initial preconditions
-        assert(promise->state == CThread::State::CREATED);
-        assert(is_dlink_detached(&promise->wait_link));
+        AK_ASSERT(promise->state == CThread::State::CREATED);
+        AK_ASSERT(is_dlink_detached(&promise->wait_link));
         check_invariants();
 
         // Add task to the kernel
@@ -42,21 +28,20 @@ namespace ak {
         promise->state = CThread::State::READY;
 
         // Check post-conditions
-        assert(promise->state == CThread::State::READY);
-        assert(!is_dlink_detached(&promise->wait_link));
+        AK_ASSERT(promise->state == CThread::State::READY);
+        AK_ASSERT(!is_dlink_detached(&promise->wait_link));
         check_invariants();
-        priv::dump_task_count();
+        dump_task_count();
     }
 
     inline CThread::Hdl CThread::Context::FinalSuspendTaskOp::await_suspend(CThread::Hdl hdl) const noexcept {
         using namespace priv;
-        using namespace utl;
 
         // Check preconditions
         CThread::Context* ctx = &hdl.promise();
-        assert(global_kernel_state.current_cthread == hdl);
-        assert(ctx->state == CThread::State::RUNNING);
-        assert(is_dlink_detached(&ctx->wait_link));
+        AK_ASSERT(global_kernel_state.current_cthread == hdl);
+        AK_ASSERT(ctx->state == CThread::State::RUNNING);
+        AK_ASSERT(is_dlink_detached(&ctx->wait_link));
         check_invariants();
 
         // Move the current task from RUNNING to ZOMBIE
@@ -72,28 +57,10 @@ namespace ak {
     // TaskContext ctor/dtor definitions
     inline CThread::Context::~Context() {
         using namespace priv;
-        assert(state == CThread::State::DELETING);
-        assert(is_dlink_detached(&tasklist_link));
-        assert(is_dlink_detached(&wait_link));
+        AK_ASSERT(state == CThread::State::DELETING);
+        AK_ASSERT(is_dlink_detached(&tasklist_link));
+        AK_ASSERT(is_dlink_detached(&wait_link));
         dump_task_count();
-        check_invariants();
-    }
-
-    template <typename... Args>
-    inline CThread::Context::Context(Args&&... ) {
-        using namespace priv;
-
-        init_dlink(&tasklist_link);
-        init_dlink(&wait_link);  
-        init_dlink(&awaiter_list);
-        state = CThread::State::CREATED;
-        prepared_io = 0;
-        res = -1;
-
-        // Check post-conditions
-        assert(is_dlink_detached(&tasklist_link));
-        assert(is_dlink_detached(&wait_link));
-        assert(state == CThread::State::CREATED);
         check_invariants();
     }
 
@@ -126,10 +93,10 @@ namespace ak {
         }
 
         do {
-            utl::DLink* next = dequeue_dlink(&awaiter_list);
+            priv::DLink* next = dequeue_dlink(&awaiter_list);
             CThread::Context* ctx = get_linked_cthread_context(next);
             dump_task_count();
-            assert(ctx->state == CThread::State::WAITING);
+            AK_ASSERT(ctx->state == CThread::State::WAITING);
             --global_kernel_state.waiting_cthread_count;
             ctx->state = CThread::State::READY;
             enqueue_dlink(&global_kernel_state.ready_list, &ctx->wait_link);
@@ -146,16 +113,15 @@ namespace ak {
 
     inline CThread::Hdl op::Suspend::await_suspend(CThread::Hdl current_task) const noexcept {
         using namespace priv;
-        using namespace utl;
 
-        assert(global_kernel_state.current_cthread);
+        AK_ASSERT(global_kernel_state.current_cthread);
 
         CThread::Context* current_promise = &current_task.promise();
 
         if constexpr (IS_DEBUG_MODE) {
-            assert(global_kernel_state.current_cthread == current_task);
-            assert(current_promise->state == CThread::State::RUNNING);
-            assert(is_dlink_detached(&current_promise->wait_link));
+            AK_ASSERT(global_kernel_state.current_cthread == current_task);
+            AK_ASSERT(current_promise->state == CThread::State::RUNNING);
+            AK_ASSERT(is_dlink_detached(&current_promise->wait_link));
             check_invariants();
         }
 
@@ -174,14 +140,13 @@ namespace ak {
 
     inline CThread::Hdl op::ResumeCThread::await_suspend(CThread::Hdl current_task_hdl) const noexcept {
         using namespace priv;
-        using namespace utl;
 
-        assert(global_kernel_state.current_cthread == current_task_hdl);
+        AK_ASSERT(global_kernel_state.current_cthread == current_task_hdl);
 
         // Check the current Task
         CThread::Context* current_promise = get_context(global_kernel_state.current_cthread);
-        assert(is_dlink_detached(&current_promise->wait_link));
-        assert(current_promise->state == CThread::State::RUNNING);
+        AK_ASSERT(is_dlink_detached(&current_promise->wait_link));
+        AK_ASSERT(current_promise->state == CThread::State::RUNNING);
         check_invariants();
 
         // Suspend the current Task
@@ -199,7 +164,7 @@ namespace ak {
         global_kernel_state.current_cthread = hdl;
         check_invariants();
 
-        assert(global_kernel_state.current_cthread);
+        AK_ASSERT(global_kernel_state.current_cthread);
         return hdl;
     }
 
@@ -209,14 +174,13 @@ namespace ak {
     inline CThread::Hdl op::JoinCThread::await_suspend(CThread::Hdl current_task_hdl) const noexcept
     {
         using namespace priv;
-        using namespace utl;
 
         CThread::Context* current_task_ctx = &current_task_hdl.promise();
 
         // Check CurrentTask preconditions
-        assert(current_task_ctx->state == CThread::State::RUNNING);
-        assert(is_dlink_detached(&current_task_ctx->wait_link));
-        assert(global_kernel_state.current_cthread == current_task_hdl);
+        AK_ASSERT(current_task_ctx->state == CThread::State::RUNNING);
+        AK_ASSERT(is_dlink_detached(&current_task_ctx->wait_link));
+        AK_ASSERT(global_kernel_state.current_cthread == current_task_hdl);
         check_invariants();
 
         CThread::Context* joined_task_ctx = &hdl.promise();                
@@ -256,7 +220,7 @@ namespace ak {
 
                 // Move the Scheduler Task from READY to RUNNING
                 CThread::Context* sched_ctx = get_context(global_kernel_state.scheduler_cthread);
-                assert(sched_ctx->state == CThread::State::READY);
+                AK_ASSERT(sched_ctx->state == CThread::State::READY);
                 sched_ctx->state = CThread::State::RUNNING;
                 detach_dlink(&sched_ctx->wait_link);
                 --global_kernel_state.ready_cthread_count;
@@ -279,33 +243,10 @@ namespace ak {
             default:
             {
                 // Illegal State
-                abort();
+                std::abort();
             }
         }
     }
-
-    // Task API Implementation
-    // ----------------------------------------------------------------------------------------------------------------
-
-    inline Bool is_valid(CThread ct) noexcept { return ct.hdl.address() != nullptr; }
-
-    inline CThread::Context* get_context(CThread ct) noexcept { return &ct.hdl.promise(); }
-
-    inline CThread::Context* get_context() noexcept { return &global_kernel_state.current_cthread.hdl.promise(); }
-
-    inline constexpr op::GetCurrentTask get_cthread_context_async() noexcept { return {}; }
-
-    inline constexpr op::Suspend suspend() noexcept { return {}; }
-
-    inline op::JoinCThread join(CThread ct) noexcept { return op::JoinCThread(ct); }
-
-    inline op::JoinCThread operator co_await(CThread ct) noexcept { return op::JoinCThread(ct); }
-
-    inline CThread::State get_state(CThread ct) noexcept { return ct.hdl.promise().state; }
-
-    inline Bool is_done(CThread ct) noexcept { return ct.hdl.done(); }
-
-    inline op::ResumeCThread resume(CThread ct) noexcept { return op::ResumeCThread(ct); }
 
 }
 
@@ -314,7 +255,7 @@ namespace ak {
 
 namespace ak { namespace priv {
 
-    inline CThread::Context* get_linked_cthread_context(const utl::DLink* link) noexcept {
+    inline CThread::Context* get_linked_cthread_context(const priv::DLink* link) noexcept {
         unsigned long long promise_off = ((unsigned long long)link) - offsetof(CThread::Context, wait_link);
         return reinterpret_cast<CThread::Context*>(promise_off);
     }

@@ -1,21 +1,68 @@
 #pragma once
 
 #include <coroutine>
-#include <cassert>
-#include <cstdlib>
-#include <print> // IWYU pragma: keep
-#include <immintrin.h>
-
 #include <liburing.h>
+#include <source_location>
+#include <string_view>
+#include <cstdio>
+#include <format>
+#include <print>
 
-#include "ak/defs.hpp"
-#include "ak/utl.hpp" 
-#include "ak/impl_utl.hpp" // IWYU pragma: keep
 
-namespace ak 
-{
-    struct Event;
-    struct ExitOp;
+#define AK_PACKED_ATTR __attribute__((packed))
+#define AK_OFFSET(TYPE, MEMBER) ((::ak::Size)((U64)&(((TYPE*)0)->MEMBER)))
+#define AK_UNLIKELY(x) __builtin_expect(!!(x), 0)
+
+#define AK_ASSERT(cond, ...)         ::ak::priv::ensure((cond), #cond, std::source_location::current(), ##__VA_ARGS__)
+#define AK_ASSERT_AT(loc, cond, ...) ::ak::priv::ensure((cond), #cond, loc                            , ##__VA_ARGS__)
+
+namespace ak { 
+    using Void  = void;
+    using Bool  = bool;
+    using Char  = char;
+    using WChar = wchar_t;
+
+    using U64  = unsigned long long;  
+    using U32  = unsigned long; 
+    using U16  = unsigned short;
+    using U8   = unsigned char;
+
+    using I64  = signed long long;  
+    using I32  = signed int; 
+    using I16  = signed short;
+    using I8   = signed char;
+    
+    using Size = unsigned long long; 
+    using ISize = signed long long; 
+    using PtrDiff = signed long long;
+
+    using F32 = float;
+    using F64 = double;    
+
+    namespace priv {
+
+        #ifdef NDEBUG
+            constexpr Bool IS_DEBUG_MODE = false;
+        #else
+            constexpr Bool IS_DEBUG_MODE = true;   
+        #endif
+        constexpr Bool ENABLE_AVX2      = false;
+        constexpr Bool TRACE_DEBUG_CODE = false;
+        
+        constexpr Bool ENABLE_FULL_INVARIANT_CHECKS = true;
+
+        constexpr U64 CACHE_LINE = 64;
+
+        struct DLink {
+            DLink* next;
+            DLink* prev;
+        };
+
+        template <typename... Args>
+        inline Void ensure(Bool condition, const Char* expression_text, const std::source_location loc, const std::string_view fmt = {}, Args&&... args) noexcept;
+
+    } // namespace ak::priv
+ 
 
     /// \brief A handle to a cooperative thread (C++20 coroutine)
     /// \ingroup CThread
@@ -37,21 +84,21 @@ namespace ak
             ZOMBIE,      ///< Already dead
             DELETING     ///< Currently being deleted
         };
-        
+
         struct Context {
-            using DLink = utl::DLink;
+            using DLink = priv::DLink;
             struct SizeProbe {};
     
             struct InitialSuspendTaskOp {
-                constexpr Bool await_ready() const noexcept { return false; }
-                Void           await_suspend(Hdl hdl) const noexcept;
+                constexpr Bool await_ready() const noexcept  { return false; }
                 constexpr Void await_resume() const noexcept {}
+                Void           await_suspend(Hdl hdl) const noexcept;
             };
     
             struct FinalSuspendTaskOp {
-                constexpr Bool await_ready() const noexcept { return false; }
-                Hdl            await_suspend(Hdl hdl) const noexcept;
+                constexpr Bool await_ready() const noexcept  { return false; }
                 constexpr Void await_resume() const noexcept {}
+                Hdl            await_suspend(Hdl hdl) const noexcept;
             };
     
             static Void*   operator new(std::size_t n) noexcept;
@@ -62,12 +109,12 @@ namespace ak
             Context(Args&&...);
             ~Context();
             
-            CThread        get_return_object() noexcept { return {Hdl::from_promise(*this)};}
+            CThread        get_return_object() noexcept     { return { Hdl::from_promise(*this) }; }
             constexpr auto initial_suspend() const noexcept { return InitialSuspendTaskOp {}; }
-            constexpr auto final_suspend () const noexcept { return FinalSuspendTaskOp{}; }
+            constexpr auto final_suspend () const noexcept  { return FinalSuspendTaskOp{}; }
             Void           return_value(int value) noexcept;
-            Void           unhandled_exception() noexcept  { std::abort(); /* unreachable */ }
-    
+            Void           unhandled_exception() noexcept;
+
             State state;
             int   res;
             U32   prepared_io;
@@ -103,6 +150,7 @@ namespace ak
     inline CThread::Hdl to_handle(CThread::Context* cthread_context) noexcept {
         return CThread::Hdl::from_promise(*cthread_context);        
     }
+
     // Allocator
     // ----------------------------------------------------------------------------------------------------------------
     // alloc::BlockState
@@ -133,6 +181,7 @@ namespace ak
         FREE_SEGMENT_INDEX_INNER,
         FREE_SEGMENT_INDEX_LEAF_EXTENSION
     };
+
     struct AllocBlockDesc {
         U64 size  : 48;
         U64 state : 4;
@@ -145,7 +194,7 @@ namespace ak
     };
 
     struct AllocPooledFreeBlockHeader : public AllocBlockHeader {
-        utl::DLink freelist_link;
+        priv::DLink freelist_link;
     };
     static_assert(sizeof(AllocPooledFreeBlockHeader) == 32);
 
@@ -153,12 +202,12 @@ namespace ak
     /// \details The key of the AVL tree is `this_desc.size`.
     /// \ingroup Allocator
     struct AllocFreeBlockHeader : public AllocBlockHeader {         
-        utl::DLink           multimap_link; // Multimap ring link
-        AllocFreeBlockHeader* parent;   // AVL Parent node for intrusive "detach"     
-        AllocFreeBlockHeader* left;     // AVL Left child
-        AllocFreeBlockHeader* right;    // AVL Right child
-        I32 height;                     // if height is < 0 the is not a tree node but is a list node in the tree
-        I32 balance;                    // AVL Balance factor
+        priv::DLink            multimap_link; // Multimap ring link
+        AllocFreeBlockHeader* parent;        // AVL Parent node for intrusive "detach"     
+        AllocFreeBlockHeader* left;          // AVL Left child
+        AllocFreeBlockHeader* right;         // AVL Right child
+        I32                   height;        // if height is < 0 the is not a tree node but is a list node in the tree
+        I32                   balance;       // AVL Balance factor
         
     };
     static_assert(sizeof(AllocFreeBlockHeader) == 64, "AllocFreeBlockHeader size is not 64 bytes");
@@ -186,7 +235,7 @@ namespace ak
         static constexpr int ALLOCATOR_BIN_COUNT = AllocStats::ALLOCATOR_BIN_COUNT;
         // FREE LIST MANAGEMENT
         alignas(8)  U64        freelist_mask;   // 64-bit mask
-        alignas(64) utl::DLink freelist_head[ALLOCATOR_BIN_COUNT];
+        alignas(64) priv::DLink freelist_head[ALLOCATOR_BIN_COUNT];
         alignas(64) U32        freelist_count[ALLOCATOR_BIN_COUNT];
 
         // HEAP BOUNDARY MANAGEMENT
@@ -229,8 +278,9 @@ namespace ak
     
             static Void*       operator new(std::size_t) noexcept;
             static Void        operator delete(Void*, std::size_t) noexcept {};
-            static BootCThread get_return_object_on_allocation_failure() noexcept { std::abort(); /* unreachable */ }
-    
+            static BootCThread
+            get_return_object_on_allocation_failure() noexcept;
+
             template <typename... Args>
             Context(CThread(*)(Args ...) noexcept, Args... ) noexcept : exit_code(0) {}
             
@@ -238,7 +288,7 @@ namespace ak
             constexpr InitialSuspend initial_suspend() noexcept { return {}; }
             constexpr FinalSuspend   final_suspend() noexcept { return {}; }
             constexpr Void           return_void() noexcept { }
-            constexpr Void           unhandled_exception() noexcept { std::abort(); } 
+            constexpr Void           unhandled_exception() noexcept;
     
             int exit_code;
         };
@@ -260,7 +310,7 @@ namespace ak
     };
     
     struct Kernel {
-        using DLink = utl::DLink;
+        using DLink = priv::DLink;
         
         // Allocation table
         AllocTable alloc_table;
@@ -272,27 +322,27 @@ namespace ak
         CThread     scheduler_cthread;
         CThread     main_cthread;
         
-        DLink   zombie_list;
-        DLink   ready_list;
-        DLink   cthread_list;
-        Void*   mem;
-        Size    mem_size; // remove mem begin+end
-        I32     main_cthread_exit_code;
+        DLink       zombie_list;
+        DLink       ready_list;
+        DLink       cthread_list;
+        Void*       mem;
+        Size        mem_size; // remove mem begin+end
+        I32         main_cthread_exit_code;
+
         // Count state variables
-        I32     cthread_count;
-        I32     ready_cthread_count;
-        I32     waiting_cthread_count;
-        I32     iowaiting_cthread_count;
-        I32     zombie_cthread_count;
-        I32     interrupted;
+        I32         cthread_count;
+        I32         ready_cthread_count;
+        I32         waiting_cthread_count;
+        I32         iowaiting_cthread_count;
+        I32         zombie_cthread_count;
+        I32         interrupted;
         
         // IOManagement
-        io_uring io_uring_state;
-        U32      ioentry_count;
+        io_uring    io_uring_state;
+        U32         ioentry_count;
     };
 
-    // Global kernel instance declaration (defined in ak.hpp)
-    alignas(64) inline Kernel global_kernel_state;
+    extern Kernel global_kernel_state;
     
     // Main Routine
     struct KernelConfig {
@@ -301,12 +351,13 @@ namespace ak
         unsigned ioEntryCount;
     };
 
-
     int  init_kernel(KernelConfig* config) noexcept;
     Void fini_kernel() noexcept;
+
     template <typename... Args>
     int run_main(CThread (*co_main)(Args ...) noexcept, Args... args) noexcept;
     
+    struct Event;
     //
     // Declarations for ops 
     namespace op {
@@ -388,6 +439,9 @@ namespace ak
     op::ExecIO io_open(const Char* path, int flags, mode_t mode) noexcept;
     op::ExecIO io_open_at(int dfd, const Char* path, int flags, mode_t mode) noexcept;
     op::ExecIO io_open_at_direct(int dfd, const Char* path, int flags, mode_t mode, unsigned file_index) noexcept;
+    op::ExecIO io_open_at2(int dfd, const Char* path, struct open_how* how) noexcept;
+    op::ExecIO io_open_at2_direct(int dfd, const Char* path, struct open_how* how, unsigned file_index) noexcept;
+    op::ExecIO io_open_direct(const Char* path, int flags, mode_t mode, unsigned file_index) noexcept;
     op::ExecIO io_close(int fd) noexcept;
     op::ExecIO io_close_direct(unsigned file_index) noexcept;
     op::ExecIO io_read(int fd, Void* buf, unsigned nbytes, __u64 offset) noexcept;
@@ -406,7 +460,15 @@ namespace ak
     op::ExecIO io_multishot_accept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept;
     op::ExecIO io_multishot_accept_direct(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept;
     op::ExecIO io_connect(int fd, const struct sockaddr* addr, socklen_t addrlen) noexcept;
+    #if defined(IORING_OP_BIND)
+    op::ExecIO io_bind(int fd, const struct sockaddr* addr, socklen_t addrlen) noexcept;
+    #endif
+    #if defined(IORING_OP_LISTEN)
+    op::ExecIO io_listen(int fd, int backlog) noexcept;
+    #endif
     op::ExecIO io_send(int sockfd, const Void* buf, size_t len, int flags) noexcept;
+    op::ExecIO io_send_bundle(int sockfd, size_t len, int flags) noexcept;
+    op::ExecIO io_sendto(int sockfd, const Void* buf, size_t len, int flags, const struct sockaddr* addr, socklen_t addrlen) noexcept;
     op::ExecIO io_send_zc(int sockfd, const Void* buf, size_t len, int flags, unsigned zc_flags) noexcept;
     op::ExecIO io_send_zc_fixed(int sockfd, const Void* buf, size_t len, int flags, unsigned zc_flags, unsigned buf_index) noexcept;
     op::ExecIO io_send_msg(int fd, const struct msghdr* msg, unsigned flags) noexcept;
@@ -418,6 +480,13 @@ namespace ak
     op::ExecIO io_recv_msg_multishot(int fd, struct msghdr* msg, unsigned flags) noexcept;
     op::ExecIO io_socket(int domain, int type, int protocol, unsigned int flags) noexcept;
     op::ExecIO io_socket_direct(int domain, int type, int protocol, unsigned file_index, unsigned int flags) noexcept;
+    #if defined(IORING_FILE_INDEX_ALLOC)
+    op::ExecIO io_socket_direct_alloc(int domain, int type, int protocol, unsigned int flags) noexcept;
+    #endif
+    #if defined(IORING_OP_PIPE)
+    op::ExecIO io_pipe(int* fds, unsigned int flags) noexcept;
+    op::ExecIO io_pipe_direct(int* fds, unsigned int pipe_flags) noexcept;
+    #endif
     op::ExecIO io_mkdir(const Char* path, mode_t mode) noexcept;
     op::ExecIO io_mkdir_at(int dfd, const Char* path, mode_t mode) noexcept;
     op::ExecIO io_symlink(const Char* target, const Char* linkpath) noexcept;
@@ -428,6 +497,50 @@ namespace ak
     op::ExecIO io_unlink_at(int dfd, const Char* path, int flags) noexcept;
     op::ExecIO io_rename(const Char* oldpath, const Char* newpath) noexcept;
     op::ExecIO io_rename_at(int olddfd, const Char* oldpath, int newdfd, const Char* newpath, unsigned int flags) noexcept;
+    op::ExecIO io_sync(int fd, unsigned fsync_flags) noexcept;
+    op::ExecIO io_sync_file_range(int fd, unsigned len, __u64 offset, int flags) noexcept;
+    op::ExecIO io_fallocate(int fd, int mode, __u64 offset, __u64 len) noexcept;
+    op::ExecIO io_statx(int dfd, const Char* path, int flags, unsigned mask, struct statx* statxbuf) noexcept;
+    op::ExecIO io_fadvise(int fd, __u64 offset, __u32 len, int advice) noexcept;
+    op::ExecIO io_fadvise64(int fd, __u64 offset, off_t len, int advice) noexcept;
+    op::ExecIO io_madvise(Void* addr, __u32 length, int advice) noexcept;
+    op::ExecIO io_madvise64(Void* addr, off_t length, int advice) noexcept;
+    op::ExecIO io_get_xattr(const Char* name, Char* value, const Char* path, unsigned int len) noexcept;
+    op::ExecIO io_set_xattr(const Char* name, const Char* value, const Char* path, int flags, unsigned int len) noexcept;
+    op::ExecIO io_fget_xattr(int fd, const Char* name, Char* value, unsigned int len) noexcept;
+    op::ExecIO io_fset_xattr(int fd, const Char* name, const Char* value, int flags, unsigned int len) noexcept;
+    op::ExecIO io_provide_buffers(Void* addr, int len, int nr, int bgid, int bid) noexcept;
+    op::ExecIO io_remove_buffers(int nr, int bgid) noexcept;
+    op::ExecIO io_poll_add(int fd, unsigned poll_mask) noexcept;
+    op::ExecIO io_poll_multishot(int fd, unsigned poll_mask) noexcept;
+    op::ExecIO io_poll_remove(__u64 user_data) noexcept;
+    op::ExecIO io_poll_update(__u64 old_user_data, __u64 new_user_data, unsigned poll_mask, unsigned flags) noexcept;
+    op::ExecIO io_epoll_ctl(int epfd, int fd, int op, struct epoll_event* ev) noexcept;
+    op::ExecIO io_epoll_wait(int fd, struct epoll_event* events, int maxevents, unsigned flags) noexcept;
+    op::ExecIO io_timeout(struct __kernel_timespec* ts, unsigned count, unsigned flags) noexcept;
+    op::ExecIO io_timeout_remove(__u64 user_data, unsigned flags) noexcept;
+    op::ExecIO io_timeout_update(struct __kernel_timespec* ts, __u64 user_data, unsigned flags) noexcept;
+    op::ExecIO io_link_timeout(struct __kernel_timespec* ts, unsigned flags) noexcept;
+    op::ExecIO io_msg_ring(int fd, unsigned int len, __u64 data, unsigned int flags) noexcept;
+    op::ExecIO io_msg_ring_cqe_flags(int fd, unsigned int len, __u64 data, unsigned int flags, unsigned int cqe_flags) noexcept;
+    op::ExecIO io_msg_ring_fd(int fd, int source_fd, int target_fd, __u64 data, unsigned int flags) noexcept;
+    op::ExecIO io_msg_ring_fd_alloc(int fd, int source_fd, __u64 data, unsigned int flags) noexcept;
+    op::ExecIO io_waitid(idtype_t idtype, id_t id, siginfo_t* infop, int options, unsigned int flags) noexcept;
+    op::ExecIO io_futex_wake(uint32_t* futex, uint64_t val, uint64_t mask, uint32_t futex_flags, unsigned int flags) noexcept;
+    op::ExecIO io_futex_wait(uint32_t* futex, uint64_t val, uint64_t mask, uint32_t futex_flags, unsigned int flags) noexcept;
+    op::ExecIO io_futex_waitv(struct futex_waitv* futex, uint32_t nr_futex, unsigned int flags) noexcept;
+    op::ExecIO io_fixed_fd_install(int fd, unsigned int flags) noexcept;
+    op::ExecIO io_files_update(int* fds, unsigned nr_fds, int offset) noexcept;
+    op::ExecIO io_shutdown(int fd, int how) noexcept;
+    op::ExecIO io_ftruncate(int fd, loff_t len) noexcept;
+    op::ExecIO io_cmd_sock(int cmd_op, int fd, int level, int optname, Void* optval, int optlen) noexcept;
+    op::ExecIO io_cmd_discard(int fd, uint64_t offset, uint64_t nbytes) noexcept;
+    op::ExecIO io_nop(__u64 user_data) noexcept;
+    op::ExecIO io_splice(int fd_in, int64_t off_in, int fd_out, int64_t off_out, unsigned int nbytes, unsigned int splice_flags) noexcept;
+    op::ExecIO io_tee(int fd_in, int fd_out, unsigned int nbytes, unsigned int splice_flags) noexcept;
+    op::ExecIO io_cancel64(__u64 user_data, int flags) noexcept;
+    op::ExecIO io_cancel(Void* user_data, int flags) noexcept;
+    op::ExecIO io_cancel_fd(int fd, unsigned int flags) noexcept;
 
     // Allocator
     Void* try_alloc_mem(Size sz) noexcept;
@@ -436,7 +549,7 @@ namespace ak
 
     // Concurrency Tools
     struct Event {  
-        utl::DLink wait_list;
+        priv::DLink wait_list;
     };
 
     Void          init(Event* event);
@@ -446,3 +559,143 @@ namespace ak
     op::WaitEvent wait(Event* event);
 
 }
+
+
+// ================================================================================================================
+// Inline Implementations
+// ================================================================================================================
+
+namespace ak { namespace priv {
+
+    template <typename... Args>
+    inline Void ensure(Bool condition,
+                        const Char* expression_text,
+                        const std::source_location loc,
+                        const std::string_view fmt,
+                        Args&&... args) noexcept {
+        constexpr const Char* RESET  = "\033[0m";
+        constexpr const Char* RED    = "\033[1;31m"; 
+        if (AK_UNLIKELY(!condition)) {
+            std::print("{}{}:{}: Assertion '{}' failed{}", RED, loc.file_name(), (int)loc.line(), expression_text, RESET);
+            if (fmt.size() > 0 && !std::is_constant_evaluated()) {
+                std::fputs("; ", stdout);
+                if constexpr (sizeof...(Args) > 0) {
+                    auto arg_tuple = std::forward_as_tuple(std::forward<Args>(args)...);
+                    std::apply([&](auto&... refs){
+                        auto fmt_args = std::make_format_args(refs...);
+                        std::vprint_nonunicode(stdout, fmt, fmt_args);
+                    }, arg_tuple);
+                } else {
+                    std::fwrite(fmt.data(), 1, fmt.size(), stdout);
+                }
+            }
+            std::fputc('\n', stdout);
+            std::fflush(stdout);
+            std::abort();
+        }
+    } // ensure
+
+}}
+
+
+namespace ak { namespace priv {
+
+    inline Void init_dlink(DLink* link) noexcept {
+        AK_ASSERT(link != nullptr);
+        
+        link->next = link;
+        link->prev = link;
+    }
+
+    inline Bool is_dlink_detached(const DLink* link) noexcept {
+        AK_ASSERT(link != nullptr);
+        AK_ASSERT(link->next != nullptr);
+        AK_ASSERT(link->prev != nullptr);
+
+        return link->next == link && link->prev == link;
+    }
+
+    inline Void detach_dlink(DLink* link) noexcept {
+        AK_ASSERT(link != nullptr);
+        AK_ASSERT(link->next != nullptr);
+        AK_ASSERT(link->prev != nullptr);
+        
+        if (is_dlink_detached(link)) return;
+        link->next->prev = link->prev;
+        link->prev->next = link->next;
+        link->next = link;
+        link->prev = link;
+    }
+
+    inline Void clear_dlink(DLink* link) noexcept {
+        AK_ASSERT(link != nullptr);
+        
+        link->next = nullptr;
+        link->prev = nullptr;
+    }
+
+    inline Void enqueue_dlink(DLink* queue, DLink* link) noexcept {
+        AK_ASSERT(queue != nullptr);
+        AK_ASSERT(link != nullptr);
+        AK_ASSERT(queue->next != nullptr);
+        AK_ASSERT(queue->prev != nullptr);
+
+        link->next = queue->next;
+        link->prev = queue;
+
+        link->next->prev = link;
+        queue->next = link;
+    }
+
+    inline DLink* dequeue_dlink(DLink* queue) noexcept {
+        AK_ASSERT(queue != nullptr);
+        AK_ASSERT(queue->next != nullptr);
+        AK_ASSERT(queue->prev != nullptr);
+        if (is_dlink_detached(queue)) return nullptr;
+        DLink* target = queue->prev;
+        detach_dlink(target);
+        return target;
+    }
+
+    inline Void insert_prev_dlink(DLink* queue, DLink* link) noexcept {
+        AK_ASSERT(queue != nullptr);
+        AK_ASSERT(link != nullptr);
+        AK_ASSERT(queue->next != nullptr);
+        AK_ASSERT(queue->prev != nullptr);
+
+        link->next = queue;
+        link->prev = queue->prev;
+
+        link->next->prev = link;
+        link->prev->next = link;
+    }
+
+    inline Void insert_next_dlink(DLink* queue, DLink* link) noexcept {
+        AK_ASSERT(queue != nullptr);
+        AK_ASSERT(link != nullptr);
+        AK_ASSERT(queue->next != nullptr);
+        AK_ASSERT(queue->prev != nullptr);
+
+        link->next = queue->next;
+        link->prev = queue;
+
+        link->next->prev = link;
+        queue->next = link;
+    }
+
+    inline Void push_dlink(DLink* stack, DLink* link) noexcept {
+        insert_next_dlink(stack, link);
+    }
+
+    inline DLink* pop_dlink(DLink* stack) noexcept {
+        AK_ASSERT(stack != nullptr);
+        AK_ASSERT(stack->next != nullptr);
+        AK_ASSERT(stack->prev != nullptr);
+        AK_ASSERT(!is_dlink_detached(stack));
+        
+        DLink* target = stack->next;
+        detach_dlink(target);
+        return target;
+    }
+
+}} // namespace ak::utl

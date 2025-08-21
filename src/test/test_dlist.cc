@@ -2,10 +2,10 @@
 #include <gtest/gtest.h>
 
 using namespace ak;
-using namespace utl;
+using namespace ak::priv;
 
 struct Data {
-    utl::DLink node;
+    priv::DLink node;
     int        value;
 };
 

@@ -1,12 +1,8 @@
-#pragma once
-
-#include "ak/alc/alc_api_priv.hpp" // IWYU pragma: keep
+#include "ak/alc/alc_api.hpp"
 
 namespace ak { namespace priv {
 
-    
-
-    inline Void check_alloc_table_invariants(std::source_location loc) noexcept {
+    Void check_alloc_table_invariants(std::source_location loc) noexcept {
         if constexpr (IS_DEBUG_MODE && ENABLE_FULL_INVARIANT_CHECKS) {
             AllocTable* at = &global_kernel_state.alloc_table;
 
@@ -121,9 +117,9 @@ namespace ak { namespace priv {
             // Validate small freelist structures: mask and counts
             U64 observed_mask = 0ull;
             for (U32 bin = 0; bin < AllocTable::ALLOCATOR_BIN_COUNT; ++bin) {
-                utl::DLink* head = &at->freelist_head[bin];
+                priv::DLink* head = &at->freelist_head[bin];
                 U64 ring_count = 0ull;
-                for (utl::DLink* it = head->next; it != head; it = it->next) {
+                for (priv::DLink* it = head->next; it != head; it = it->next) {
                     const Size link_off = AK_OFFSET(AllocPooledFreeBlockHeader, freelist_link);
                     AllocBlockHeader* b = (AllocBlockHeader*)((Char*)it - link_off);
                     // Each member must be FREE and in-range
@@ -157,7 +153,7 @@ namespace ak { namespace priv {
                 I32 hr = self(self, node->right, key, max_key);
                 // multimap ring: all nodes must have the same size and FREE state
                 U64 list_count = 0ull;
-                for (utl::DLink* it = node->multimap_link.next; it != &node->multimap_link; it = it->next) {
+                for (priv::DLink* it = node->multimap_link.next; it != &node->multimap_link; it = it->next) {
                     AllocFreeBlockHeader* n = (AllocFreeBlockHeader*)((Char*)it - AK_OFFSET(AllocFreeBlockHeader, multimap_link));
                     AK_ASSERT_AT(loc, n->this_desc.size == key, "large freelist invariant failed");
                     AK_ASSERT_AT(loc, n->this_desc.state == (U32)AllocBlockState::FREE, "large freelist invariant failed");

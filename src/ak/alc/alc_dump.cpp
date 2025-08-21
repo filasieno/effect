@@ -1,53 +1,11 @@
-#pragma once
-
-#include "ak/alc/alc_api_priv.hpp" // IWYU pragma: keep
-#include "ak/alc/alc_check_invariants.hpp" // IWYU pragma: keep
+#include "ak/alc/alc_api.hpp"
 
 namespace ak { namespace priv {
 
     // Allocator Debug utils
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline Void dump_alloc_table() noexcept {
-        AllocTable* at = &global_kernel_state.alloc_table;
-
-        // Basic layout and sizes
-        std::print("AllocTable: {}\n", (Void*)at);
-        
-        std::print("  heapBegin        : {}\n", (Void*)at->heap_begin);
-        std::print("  heapEnd          : {}; size: {}\n", (Void*)at->heap_end, (intptr_t)(at->heap_end - at->heap_begin));
-        std::print("  memBegin         : {}\n", (Void*)at->mem_begin);
-        std::print("  memEnd           : {}; size: {}\n", (Void*)at->mem_end,  (intptr_t)(at->mem_end  - at->mem_begin));
-        std::print("  memSize          : {}\n", at->mem_size);
-        std::print("  freeMemSize      : {}\n", at->free_mem_size);
     
-        // Sentinels and wild/large tracking (addresses only; do not dereference)
-        std::print("  Key Offsets:\n");
-        std::print("    Begin sentinel offset: {}\n", (intptr_t)at->sentinel_begin      - (intptr_t)at->mem_begin);
-        std::print("    Wild  block    offset: {}\n", (intptr_t)at->wild_block          - (intptr_t)at->mem_begin);
-        std::print("    End   sentinel offset: {}\n", (intptr_t)at->sentinel_end        - (intptr_t)at->mem_begin);
-    
-        // Free list availability mask (64 bits)
-        std::print("  FreeListbinMask:\n    ");
-        U64 mask = at->freelist_mask;
-        for (unsigned i = 0; i < 64; ++i) {
-            std::print("{}", (mask >> i) & 1ull);
-        }
-        std::print("\n");
-    
-        // Optional per-bin size accounting
-        
-        std::print("  FreeListBinsSizes begin\n");
-        for (unsigned i = 0; i < 64; ++i) {
-            unsigned cc = at->freelist_count[i];
-            if (cc == 0) continue;
-            std::print("    {:>5} bytes class  : {}\n", (i + 1) * 32, cc);
-        }
-        std::print("  FreeListBinsSizes end\n");
-        std::print("\n");
-    }
-
-
     constexpr const Char* DEBUG_ALLOC_COLOR_RESET  = "\033[0m";
     constexpr const Char* DEBUG_ALLOC_COLOR_WHITE  = "\033[37m"; 
     constexpr const Char* DEBUG_ALLOC_COLOR_GREEN  = "\033[1;32m"; 
@@ -189,9 +147,9 @@ namespace ak { namespace priv {
 
         // Print FreeListPrev (with DLink)
         if (h->this_desc.state == (U32)AllocBlockState::FREE && h->this_desc.size <= 2048) {
-            utl::DLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
-            utl::DLink* prev = free_list_link->prev;
-            utl::DLink* head = &global_kernel_state.alloc_table.freelist_head[bin_idx];
+            priv::DLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
+            priv::DLink* prev = free_list_link->prev;
+            priv::DLink* head = &global_kernel_state.alloc_table.freelist_head[bin_idx];
             if (prev == head) {
                 std::print("{} {:<18} ", state_color, "HEAD");
             } else {
@@ -208,9 +166,9 @@ namespace ak { namespace priv {
 
         // Print FreeList Next (with DLink)
         if (h->this_desc.state == (U32)AllocBlockState::FREE && h->this_desc.size <= 2048) {
-            utl::DLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
-            utl::DLink* next = free_list_link->next;
-            utl::DLink* head = &global_kernel_state.alloc_table.freelist_head[bin_idx];
+            priv::DLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
+            priv::DLink* next = free_list_link->next;
+            priv::DLink* head = &global_kernel_state.alloc_table.freelist_head[bin_idx];
             if (next == head) {
                 std::print("{} {:<18} ", state_color, "HEAD");
             } else {
@@ -226,7 +184,53 @@ namespace ak { namespace priv {
         std::print("{}│{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
 
-    inline Void dump_alloc_block() noexcept 
+    
+
+
+
+
+
+
+    Void dump_alloc_table() noexcept {
+        AllocTable* at = &global_kernel_state.alloc_table;
+
+        // Basic layout and sizes
+        std::print("AllocTable: {}\n", (Void*)at);
+        
+        std::print("  heapBegin        : {}\n", (Void*)at->heap_begin);
+        std::print("  heapEnd          : {}; size: {}\n", (Void*)at->heap_end, (intptr_t)(at->heap_end - at->heap_begin));
+        std::print("  memBegin         : {}\n", (Void*)at->mem_begin);
+        std::print("  memEnd           : {}; size: {}\n", (Void*)at->mem_end,  (intptr_t)(at->mem_end  - at->mem_begin));
+        std::print("  memSize          : {}\n", at->mem_size);
+        std::print("  freeMemSize      : {}\n", at->free_mem_size);
+    
+        // Sentinels and wild/large tracking (addresses only; do not dereference)
+        std::print("  Key Offsets:\n");
+        std::print("    Begin sentinel offset: {}\n", (intptr_t)at->sentinel_begin      - (intptr_t)at->mem_begin);
+        std::print("    Wild  block    offset: {}\n", (intptr_t)at->wild_block          - (intptr_t)at->mem_begin);
+        std::print("    End   sentinel offset: {}\n", (intptr_t)at->sentinel_end        - (intptr_t)at->mem_begin);
+    
+        // Free list availability mask (64 bits)
+        std::print("  FreeListbinMask:\n    ");
+        U64 mask = at->freelist_mask;
+        for (unsigned i = 0; i < 64; ++i) {
+            std::print("{}", (mask >> i) & 1ull);
+        }
+        std::print("\n");
+    
+        // Optional per-bin size accounting
+        
+        std::print("  FreeListBinsSizes begin\n");
+        for (unsigned i = 0; i < 64; ++i) {
+            unsigned cc = at->freelist_count[i];
+            if (cc == 0) continue;
+            std::print("    {:>5} bytes class  : {}\n", (i + 1) * 32, cc);
+        }
+        std::print("  FreeListBinsSizes end\n");
+        std::print("\n");
+    }
+
+    Void dump_alloc_block() noexcept 
     {
         using namespace priv;
         AllocTable* at = &global_kernel_state.alloc_table;
@@ -243,8 +247,6 @@ namespace ak { namespace priv {
 
         PrintBottomBorder();
     }
-    
-
 
 }} // namespace ak::priv
 

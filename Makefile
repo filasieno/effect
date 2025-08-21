@@ -35,6 +35,8 @@ CPPFLAGS = -I./src
 
 CC := $(CXX)
 
+AR := ar
+
 
 COLOR ?= yes
 ifeq ($(COLOR),yes)
@@ -93,10 +95,12 @@ build/precompiled.pch: src/ak/precompiled.hpp | build/.
 .PRECIOUS: build/%.o
 build/%.o: src/%.cc build/precompiled.pch | build/.
 	$(call trace,CXX -o $@ -c $<)
+	mkdir -p "$(@D)"
 	$(COMPILE.cc) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $<
 
 build/%.o: src/test/%.cc build/precompiled.pch | build/.
 	$(call trace,CXX -o $@ -c $<)
+	mkdir -p "$(@D)"
 	$(COMPILE.cc) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $<
 
 -include $(patsubst src/%.cc,build/%.d,$(wildcard src/*.cc))
@@ -104,6 +108,21 @@ build/%.o: src/test/%.cc build/precompiled.pch | build/.
 
 .PRECIOUS: build/%
 build/%: build/%.o  | build/.
+	$(call trace,LINK -o $@ $^ $(LDLIBS))
+	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LDLIBS)
+
+# Static library with all non-test sources
+LIB_SOURCES := $(shell find src -name '*.cc' -not -path 'src/test/*')
+LIB_OBJECTS := $(patsubst src/%.cc,build/%.o,$(LIB_SOURCES))
+
+.PRECIOUS: build/libak.a
+build/libak.a: $(LIB_OBJECTS) | build/.
+	$(call trace,AR -rcs $@ $^)
+	$(AR) rcs $@ $^
+
+# Link tests against the static library
+.PRECIOUS: build/test_%
+build/test_%: build/test_%.o build/libak.a | build/.
 	$(call trace,LINK -o $@ $^ $(LDLIBS))
 	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LDLIBS)
 
@@ -231,4 +250,4 @@ test:: test_alloc_freeblock_tree
 test:: test_alloc_split
 test:: test_alloc_defragment
 
-all:: build/ak_impl.o test doxygen
+all:: build/libak.a test doxygen

@@ -1,6 +1,7 @@
 #pragma once
 
-#include "ak/alc/alc_api_priv.hpp" // IWYU pragma: keep
+#include "ak/alc/alc_api.hpp"
+#include <cstdlib>
 
 // Private Allocator API implementation
 // ----------------------------------------------------------------------------------------------------------------
@@ -15,8 +16,8 @@ namespace ak { namespace priv {
     /// \pre AVX2 is available
     /// \pre bitField is 64 byte aligned
     /// \internal
-    inline I32 find_alloc_freelist_index(const U64* bit_field, Size alloc_size) noexcept {
-        assert(bit_field != nullptr);
+    I32 find_alloc_freelist_index(const U64* bit_field, Size alloc_size) noexcept {
+        AK_ASSERT(bit_field != nullptr);
         // If no bins are populated, signal not found
         const U64 word = *bit_field;
         if (word == 0ull) return -1;
@@ -32,49 +33,48 @@ namespace ak { namespace priv {
         return (I32)__builtin_ctzll(value);
     }
 
-    
 
-    inline Void set_alloc_freelist_mask(U64* bit_field, U64 bin_idx) noexcept {
-        assert(bit_field != nullptr);
-        assert(bin_idx < 64);
+    Void set_alloc_freelist_mask(U64* bit_field, U64 bin_idx) noexcept {
+        AK_ASSERT(bit_field != nullptr);
+        AK_ASSERT(bin_idx < 64);
         *bit_field |= (1ull << bin_idx);
     }
 
-    inline Bool get_alloc_freelist_mask(const U64* bit_field, U64 bin_idx) noexcept {
-        assert(bit_field != nullptr);
-        assert(bin_idx < 64);
+    Bool get_alloc_freelist_mask(const U64* bit_field, U64 bin_idx) noexcept {
+        AK_ASSERT(bit_field != nullptr);
+        AK_ASSERT(bin_idx < 64);
         return ((*bit_field >> bin_idx) & 1ull) != 0ull;
     }
 
-    inline Void clear_alloc_freelist_mask(U64* bit_field, U64 bin_idx) noexcept {
-        assert(bit_field != nullptr);
-        assert(bin_idx < 64);
+    Void clear_alloc_freelist_mask(U64* bit_field, U64 bin_idx) noexcept {
+        AK_ASSERT(bit_field != nullptr);
+        AK_ASSERT(bin_idx < 64);
         *bit_field &= ~(1ull << bin_idx);
     }
 
-    inline AllocBlockHeader* next(AllocBlockHeader* header) noexcept {
+    AllocBlockHeader* next(AllocBlockHeader* header) noexcept {
         size_t sz = (size_t)header->this_desc.size;
         if (sz == 0) return header;
         return (AllocBlockHeader*)((Char*)header + sz);
     }
 
-    inline AllocBlockHeader* prev(AllocBlockHeader* header) noexcept {
+    AllocBlockHeader* prev(AllocBlockHeader* header) noexcept {
         size_t sz = (size_t)header->prev_desc.size;
         if (sz == 0) return header;
         return (AllocBlockHeader*)((Char*)header - sz);
     }
 
 
-    inline U64 get_alloc_freelist_index(U64 sz) noexcept {
+    U64 get_alloc_freelist_index(U64 sz) noexcept {
         // New mapping: 0..32 -> 0, 33..64 -> 1, ..., up to 2048 -> 63
-        assert(sz > 0);
+        AK_ASSERT(sz > 0);
         U64 bin = (U64)((sz - 1ull) >> 5);
         const U64 mask = (U64)-(bin > 63u);
         bin = (bin & ~mask) | (63ull & mask);
         return bin;
     }
 
-    inline U32 get_alloc_freelist_index(const AllocBlockHeader* header) noexcept {
+    U32 get_alloc_freelist_index(const AllocBlockHeader* header) noexcept {
         switch ((AllocBlockState)header->this_desc.state) {
             case AllocBlockState::WILD_BLOCK:
                 return 63;

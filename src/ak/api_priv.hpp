@@ -27,7 +27,7 @@ namespace ak { namespace priv {
 
     // Scheduling routines
     CThread::Hdl      schedule_cthread() noexcept;
-    CThread::Context* get_linked_cthread_context(const utl::DLink* link) noexcept;
+    CThread::Context* get_linked_cthread_context(const DLink* link) noexcept;
     
     // Debug routines
     Void dump_task_count() noexcept;
@@ -37,6 +37,5 @@ namespace ak { namespace priv {
     
     // Invariant checking routines
     Void check_invariants() noexcept;
-    
-}} // namespace ak::priv
-
+  
+}}

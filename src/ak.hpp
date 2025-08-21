@@ -1,14 +1,10 @@
 #pragma once
 
-#include "ak/defs.hpp"        // IWYU pragma: keep
-#include "ak/utl.hpp"         // IWYU pragma: keep
-#include "ak/api.hpp"         // IWYU pragma: keep
-#include "ak/api_priv.hpp"    // IWYU pragma: keep
-#include "ak/impl_debug.hpp"  // IWYU pragma: keep
-#include "ak/impl_task.hpp"   // IWYU pragma: keep
-#include "ak/impl_boot.hpp"   // IWYU pragma: keep
-#include "ak/impl_io.hpp"     // IWYU pragma: keep
-#include "ak/impl_event.hpp"  // IWYU pragma: keep
-#include "ak/impl_utl.hpp"    // IWYU pragma: keep
+#include "ak/api.hpp"                // IWYU pragma: keep
 
-#include "ak/alc/alc.hpp"     // IWYU pragma: keep
+// inline implmentation
+#include "ak/alc/alc_api_inl.hpp"    // IWYU pragma: keep
+#include "ak/cctl/cctl_api_inl.hpp"  // IWYU pragma: keep
+#include "ak/io/io_api_inl.hpp"      // IWYU pragma: keep
+#include "ak/tsk/tsk_api_inl.hpp"    // IWYU pragma: keep
+

@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <algorithm>  // std::max
 
-#include "ak/alc/alc_freeblock_tree.hpp"
+#include "ak/alc/alc_api_priv.hpp"
 
 using namespace ak;
 using namespace ak::priv;
@@ -46,7 +46,7 @@ void verify_tree(const AllocFreeBlockHeader* node, U64 min_key = 0, U64 max_key 
     if (!node) return;
 
     if (!is_tree_node(node)) {
-        EXPECT_TRUE(is_detached(const_cast<AllocFreeBlockHeader*>(node)) || (node->multimap_link.next && node->multimap_link.prev));
+        EXPECT_TRUE(is_detached(node) || (node->multimap_link.next && node->multimap_link.prev));
         EXPECT_EQ(node->height, -1);
         EXPECT_EQ(node->balance, 0);
         EXPECT_EQ(node->left, nullptr);
@@ -69,7 +69,7 @@ void verify_tree(const AllocFreeBlockHeader* node, U64 min_key = 0, U64 max_key 
     verify_tree(node->left, min_key, node->this_desc.size);
     verify_tree(node->right, node->this_desc.size, max_key);
 
-    if (!is_detached(const_cast<AllocFreeBlockHeader*>(node))) {
+    if (!is_detached(node)) {
         const AllocFreeBlockHeader* current = node;
         int count = 0;
         do {
@@ -77,7 +77,7 @@ void verify_tree(const AllocFreeBlockHeader* node, U64 min_key = 0, U64 max_key 
             if (!is_tree_node(current)) {
                 verify_tree(current);
             }
-            utl::DLink* nl = current->multimap_link.next;
+            priv::DLink* nl = current->multimap_link.next;
             current = (const AllocFreeBlockHeader*)((const Char*)nl - AK_OFFSET(AllocFreeBlockHeader, multimap_link));
             ++count;
             ASSERT_LT(count, 1000) << "Infinite list loop";
@@ -600,10 +600,10 @@ TEST(AllocFreeBlockHeaderTest, IsDetached) {
     b->multimap_link.prev = &b->multimap_link;
     EXPECT_TRUE(is_detached(b));
 
-    b->multimap_link.next = reinterpret_cast<utl::DLink*>(0x1);
+    b->multimap_link.next = reinterpret_cast<priv::DLink*>(0x1);
     EXPECT_FALSE(is_detached(b));
 
-    b->multimap_link.prev = reinterpret_cast<utl::DLink*>(0x2);
+    b->multimap_link.prev = reinterpret_cast<priv::DLink*>(0x2);
     EXPECT_FALSE(is_detached(b));
 
     b->multimap_link.next = &b->multimap_link;
