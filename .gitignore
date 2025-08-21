@@ -41,14 +41,14 @@
 #*.dwo
 
 # build artifacts
-build
+/build
 /.config.mk
 
 #nix result folder
-result
+/result
 
-#cland cache
-.cache
+#clangd cache
+/.cache
 
 #valgrind
 vgcore.*
