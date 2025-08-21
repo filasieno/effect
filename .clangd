@@ -1,5 +1,13 @@
+If:
+  PathMatch:
+    - "src/.*\\.hpp"
+    - "src/.*\\.cc"
+    - "examples/.*\\.hpp"
+    - "examples/.*\\.cc"
+
 CompileFlags:
-  Add:
+  Compiler: clang++
+  Add: 
     - "-std=c++2c"
     - "-fcoroutines"
     - "-fno-exceptions"
@@ -12,7 +20,8 @@ CompileFlags:
     - "-I/nix/store/qqjsw1fzand71ajx326r84zgi485mqb8-liburing-2.11-dev/include"
     - "-I/nix/store/5xrzl2s73vp8ff9ywz748hnkg0kflxsr-gtest-1.17.0-dev/include"
     - "-I/nix/store/08w3zci7z09fnpkfir56pi3rby58cj7z-gbenchmark-1.9.4/include"
-  Compiler: clang++
+    - "-D_CLANGD=1"
+    - "-O1"
 
 Diagnostics:
   ClangTidy:
@@ -21,13 +30,3 @@ Diagnostics:
 
 Index:
   Background: Skip
-
-If:
-  PathMatch:
-    - "src/ak/base/.*"
-    - "src/ak/alloc/.*"
-    - "src/test/base/.*"
-    - "src/test/alloc/.*"
-
-
-
