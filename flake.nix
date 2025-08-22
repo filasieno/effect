@@ -70,9 +70,7 @@
         ];
 
         buildPhase = ''
-          make lib
-          objects=$(find build -name '*.o')
-          $CXX -shared $objects -o build/libak.so -luring
+          make CONFIG=release lib
         '';
 
         checkPhase = ''

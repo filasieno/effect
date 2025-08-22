@@ -19,10 +19,14 @@ CXXFLAGS = -Wall -Wextra
 CXXFLAGS += -std=c++2c -fno-exceptions -fno-rtti
 CXXFLAGS += -fdiagnostics-color=always
 CXXFLAGS += -mavx2 -mbmi -mbmi2
+CXXFLAGS += -fPIC
 
 CONFIG ?= debug
 ifeq ($(CONFIG),debug)
 CXXFLAGS += -g
+endif
+ifeq ($(CONFIG),release)
+CXXFLAGS += -O3 -DNDEBUG
 endif
 
 LDFLAGS =
@@ -227,7 +231,7 @@ build/test_sync: $(SYNC_TEST_OBJECTS) build/libak_sync.a build/libak_runtime.a b
 # =====================================================================================================================================
 
 .PHONY: lib
-lib:: build/libak.a
+lib:: build/libak.a build/libak.so
 
 ALL_LIB_OBJECTS = $(BASE_LIB_OBJECTS) $(ALLOC_LIB_OBJECTS) $(RUNTIME_LIB_OBJECTS) $(SYNC_LIB_OBJECTS)
 
@@ -236,6 +240,10 @@ build/libak.a: $(ALL_LIB_OBJECTS) | build/.
 	$(call trace,AR -rcs $@ $^)
 	$(AR) rcs $@ $^
 
+.PRECIOUS: build/libak.so
+build/libak.so: $(ALL_LIB_OBJECTS) | build/.
+	$(call trace,LINK -shared -o $@ $^)
+	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -shared -o $@ $^
 
 # =====================================================================================================================================
 # Code coverage
@@ -281,6 +289,10 @@ coverage:: coverage-term coverage-html build/lcov.info
 
 endif # coverage support
 
+# =====================================================================================================================================
+# Generate the .config.mk file
+# =====================================================================================================================================
+
 define CONFIG_TEMPLATE
 # Configuration for the project: [debug], coverage, release
 CONFIG = $(CONFIG)
@@ -299,20 +311,20 @@ config:: .config.mk
 	$(CONFIG_TEMPLATE)
 	EOF
 
-.PHONY: watch
-watch: 
-	printf -- '%b---------- Watching for changes...%b\n' '$(ANSI_YELLOW)' '$(ANSI_RESET)'
-	inotifywait -qmr -e close_write,delete,move ./src | while read -r event; do
-		reset
-		printf -- '%b---------- Detected change:%b %s\n' '$(ANSI_YELLOW)' "$$event" '$(ANSI_RESET)'
-		while read -r -t 1.0 debounce_event; do :; done
-		declare -i exit_code=0
-		if ! $(MAKE) all; then
-			printf -- '%b---------- Build failed%b\n' '$(ANSI_RED)' '$(ANSI_RESET)'
-		else
-			printf -- '%b---------- Build successful%b\n' '$(ANSI_GREEN)' '$(ANSI_RESET)'
-		fi
-	done
+# .PHONY: watch
+# watch: 
+# 	printf -- '%b---------- Watching for changes...%b\n' '$(ANSI_YELLOW)' '$(ANSI_RESET)'
+# 	inotifywait -qmr -e close_write,delete,move ./src | while read -r event; do
+# 		reset
+# 		printf -- '%b---------- Detected change:%b %s\n' '$(ANSI_YELLOW)' "$$event" '$(ANSI_RESET)'
+# 		while read -r -t 1.0 debounce_event; do :; done
+# 		declare -i exit_code=0
+# 		if ! $(MAKE) all; then
+# 			printf -- '%b---------- Build failed%b\n' '$(ANSI_RED)' '$(ANSI_RESET)'
+# 		else
+# 			printf -- '%b---------- Build successful%b\n' '$(ANSI_GREEN)' '$(ANSI_RESET)'
+# 		fi
+# 	done
 
 # =====================================================================================================================================
 # Doc
