@@ -7,7 +7,7 @@ static_assert(sizeof(timespec) == 16, "timespec is not 16 bytes");
 namespace ak {
     U64 query_timer_ns() noexcept {
         timespec ts;
-        ::clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts);
-        return ts.tv_sec * 1e9 + ts.tv_nsec;
+        ::clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+        return ts.tv_sec * 1000000000 + ts.tv_nsec;
     }
 }
