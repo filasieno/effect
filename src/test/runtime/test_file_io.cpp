@@ -23,12 +23,16 @@ protected:
 
 static CThread io_sequence(const Char* p) noexcept {
 	int fd = co_await io_open(p, O_RDWR | O_CREAT | O_TRUNC | O_NONBLOCK, 0666);
+	std::print("open fd: {}\n", fd);
 	EXPECT_GE(fd, 0);
 	int wr = co_await io_write(fd, "hello world!\n", 13, 0);
+	std::print("written : {}\n", wr);
 	EXPECT_GE(wr, 0);
 	int cl = co_await io_close(fd);
+	std::print("close res: {}\n", cl);
 	EXPECT_GE(cl, 0);
 	int ul = co_await io_unlink(p, 0);
+	std::print("unlink res: {}\n", ul);
 	EXPECT_GE(ul, 0);
 	co_return 0;
 }

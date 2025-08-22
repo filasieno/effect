@@ -35,7 +35,7 @@ namespace ak { namespace priv {
     Void clear_alloc_freelist_mask(U64* bit_field, U64 bin_idx) noexcept;
     I32  find_alloc_freelist_index(const U64* bit_field, Size alloc_size) noexcept;
     U32  get_alloc_freelist_index(const AllocBlockHeader* header) noexcept;
-    U64 get_alloc_freelist_index(U64 sz) noexcept;
+    U64  get_alloc_freelist_index(U64 sz) noexcept;
 
     
     // Iteration

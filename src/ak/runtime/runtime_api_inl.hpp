@@ -4,8 +4,19 @@
 // --------------------------------
 
 #include "ak/runtime/runtime_api.hpp"
+#include <cstdlib>
 
 namespace ak { 
+
+    // Inline Context
+    // ----------------------------------------------------------------------------------------------------------------
+
+    
+
+    inline BootCThread BootCThread::Context::get_return_object_on_allocation_failure() noexcept 
+    {
+        std::abort(); /* unreachable */
+    }
 
     template <typename... Args>
     inline CThread::Context::Context(Args&&... ) {
@@ -40,6 +51,9 @@ namespace ak {
         }
     }
 
+    // Inline Public API Implementation
+    // ----------------------------------------------------------------------------------------------------------------
+
     inline Bool is_valid(CThread ct) noexcept { return ct.hdl.address() != nullptr; }
 
     inline CThread::Context* get_context(CThread ct) noexcept { return &ct.hdl.promise(); }
@@ -60,7 +74,25 @@ namespace ak {
 
     inline op::ResumeCThread resume(CThread ct) noexcept { return op::ResumeCThread(ct); }
 
+    inline Void* try_alloc_mem(Size sz) noexcept { return priv::try_alloc_table_malloc(&global_kernel_state.alloc_table, sz); }
+
+    inline Void free_mem(Void* ptr, U32 side_coalesching) noexcept { priv::alloc_table_free(&global_kernel_state.alloc_table, ptr, side_coalesching); }
+
+    inline I32 defragment_mem(U64 millis_time_budget) noexcept { return priv::defrag_alloc_table_mem(&global_kernel_state.alloc_table, millis_time_budget); }
+
+    // Boot operations
+    // ----------------------------------------------------------------------------------------------------------------
+
     namespace priv {
+        
+        inline CThread::Context* get_linked_cthread_context(const DLink* link) noexcept {
+            unsigned long long promise_off = ((unsigned long long)link) - offsetof(CThread::Context, wait_link);
+            return reinterpret_cast<CThread::Context*>(promise_off);
+        }
+
+        // Scheduler operations
+        // ----------------------------------------------------------------------------------------------------------------
+
         struct RunSchedulerOp {
             constexpr Bool await_ready() const noexcept { return false; }
             constexpr Void await_resume() const noexcept { }
@@ -73,26 +105,24 @@ namespace ak {
             BootCThread::Hdl await_suspend(CThread::Hdl hdl) const noexcept;
         };
 
-        inline CThread::Context* get_linked_cthread_context(const DLink* link) noexcept {
-            unsigned long long promise_off = ((unsigned long long)link) - offsetof(CThread::Context, wait_link);
-            return reinterpret_cast<CThread::Context*>(promise_off);
-        }
- 
-        // Scheduler task routines
         constexpr RunSchedulerOp       run_scheduler() noexcept       { return {}; }
+        
         constexpr TerminateSchedulerOp terminate_scheduler() noexcept { return {}; }
         
-        Void destroy_scheduler(CThread hdl) noexcept;
+        Void                           destroy_scheduler(CThread hdl) noexcept;
         
+        // Coroutine System Boot
+        // ----------------------------------------------------------------------------------------------------------------
+
         template <typename... Args>
         BootCThread boot_main_proc(CThread(*main_proc)(Args ...) noexcept, Args ... args) noexcept;
         
         template <typename... Args>
         CThread scheduler_main_proc(CThread(*main_proc)(Args ...) noexcept, Args... args) noexcept;
 
-
         template <typename... Args>
-        BootCThread boot_main_proc(CThread(*main_proc)(Args ...) noexcept, Args ... args) noexcept {
+        BootCThread boot_main_proc(CThread(*main_proc)(Args ...) noexcept, Args ... args) noexcept 
+        {
             CThread::Hdl scheduler_hdl = ::ak::priv::scheduler_main_proc(main_proc, std::forward<Args>(args) ... );
             global_kernel_state.scheduler_cthread = scheduler_hdl;
 
@@ -102,9 +132,8 @@ namespace ak {
         }
 
         template <typename... Args>
-        CThread scheduler_main_proc(CThread(*main_proc)(Args ...) noexcept, Args... args) noexcept {
-            using namespace priv;
-
+        CThread scheduler_main_proc(CThread(*main_proc)(Args ...) noexcept, Args... args) noexcept 
+        {
             CThread::Hdl main_task = main_proc(args...);
             global_kernel_state.main_cthread = main_task;
             AK_ASSERT(!main_task.done());
@@ -124,8 +153,8 @@ namespace ak {
 
                 // If we have a ready task, resume it
                 if (global_kernel_state.ready_cthread_count > 0) {
-                    priv::DLink* next_node = global_kernel_state.ready_list.prev;
-                    CThread::Context* next_promise = priv::get_linked_cthread_context(next_node);
+                    DLink* next_node = global_kernel_state.ready_list.prev;
+                    CThread::Context* next_promise = get_linked_cthread_context(next_node);
                     CThread::Hdl next_task = CThread::Hdl::from_promise(*next_promise);
                     AK_ASSERT(next_task != global_kernel_state.scheduler_cthread);
                     co_await op::ResumeCThread(next_task);
@@ -135,8 +164,8 @@ namespace ak {
 
                 // Zombie bashing
                 while (global_kernel_state.zombie_cthread_count > 0) {
-                    priv::DLink* zombie_link = dequeue_dlink(&global_kernel_state.zombie_list);
-                    CThread::Context* ctx = priv::get_linked_cthread_context(zombie_link);
+                    DLink* zombie_link = dequeue_dlink(&global_kernel_state.zombie_list);
+                    CThread::Context* ctx = get_linked_cthread_context(zombie_link);
                     AK_ASSERT(ctx->state == CThread::State::ZOMBIE);
 
                     // Remove from zombie list
@@ -191,8 +220,7 @@ namespace ak {
     // Make the main entry template visible to all translation units
     template <typename... Args>
     int run_main(CThread(*main_proc)(Args ...) noexcept , Args... args) noexcept {
-        using namespace priv;
-        auto boot_cthread = ::ak::priv::boot_main_proc(main_proc, std::forward<Args>(args) ...);
+        auto boot_cthread = priv::boot_main_proc(main_proc, std::forward<Args>(args) ...);
         global_kernel_state.boot_cthread = boot_cthread;
         boot_cthread.hdl.resume();
         return global_kernel_state.main_cthread_exit_code;

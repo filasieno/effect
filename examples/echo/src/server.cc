@@ -8,7 +8,7 @@
 using namespace ak;
 
 // Handle individual client connection
-DefineTask HandleClient(int taskId,int clientFd) noexcept {
+CThread processor_thread(int taskId,int clientFd) noexcept {
     char buffer[1024];
     
     while (true) {
@@ -31,7 +31,7 @@ DefineTask HandleClient(int taskId,int clientFd) noexcept {
 }
 
 // Accept and handle new connections
-DefineTask AcceptConnections(int serverFd) noexcept {
+CThread acceptor_thread(int serverFd) noexcept {
     static int task_id = 0;
     while (true) {
         struct sockaddr_in clientAddr;
@@ -45,13 +45,13 @@ DefineTask AcceptConnections(int serverFd) noexcept {
         std::print("Accepted client: {}\n", task_id);
 
         // Handle client in a new task
-        HandleClient(task_id, clientFd);
+        processor_thread(task_id, clientFd);
         ++task_id;
         // Note: We don't wait for the client handler to complete
     }
 }
 
-DefineTask MainTask() noexcept {
+CThread co_main() noexcept {
     int res;
 
     // Create server socket
@@ -93,7 +93,7 @@ DefineTask MainTask() noexcept {
     std::print("Echo server listening on port 8080...\n");
 
     // Start accepting connections
-    co_await AcceptConnections(serverFd);
+    co_await acceptor_thread(serverFd);
 
     // Cleanup
     res = co_await io_close(serverFd);
@@ -106,5 +106,8 @@ int main() {
         .memSize = 0,
         .ioEntryCount = 256
     };
-    return RunMain(&config, MainTask);
+    init_kernel(&config);
+    int res = run_main(co_main);
+    fini_kernel();
+    return res;
 }

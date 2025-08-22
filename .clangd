@@ -2,8 +2,8 @@ If:
   PathMatch:
     - "src/.*\\.hpp"
     - "src/.*\\.cpp"
-    - "examples/.*\\.hpp"
-    - "examples/.*\\.cpp"
+    - "examples/echo/.*\\.hpp"
+    - "examples/echo/.*\\.cpp"
 
 CompileFlags:
   Compiler: clang++

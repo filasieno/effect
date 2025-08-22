@@ -34,13 +34,13 @@ namespace ak {
             using DLink = priv::DLink;
             struct SizeProbe {};
     
-            struct InitialSuspendTaskOp {
+            struct InitialSuspend {
                 constexpr Bool await_ready() const noexcept  { return false; }
                 constexpr Void await_resume() const noexcept {}
                 Void           await_suspend(Hdl hdl) const noexcept;
             };
     
-            struct FinalSuspendTaskOp {
+            struct FinalSuspend {
                 constexpr Bool await_ready() const noexcept  { return false; }
                 constexpr Void await_resume() const noexcept {}
                 Hdl            await_suspend(Hdl hdl) const noexcept;
@@ -54,9 +54,9 @@ namespace ak {
             Context(Args&&...);
             ~Context();
             
-            CThread        get_return_object() noexcept     { return { Hdl::from_promise(*this) }; }
-            constexpr auto initial_suspend() const noexcept { return InitialSuspendTaskOp {}; }
-            constexpr auto final_suspend () const noexcept  { return FinalSuspendTaskOp{}; }
+            CThread        get_return_object() noexcept { return { Hdl::from_promise(*this) }; }
+            constexpr auto initial_suspend() const noexcept { return InitialSuspend {}; }
+            constexpr auto final_suspend () const noexcept { return FinalSuspend{}; }
             Void           return_value(int value) noexcept;
             Void           unhandled_exception() noexcept;
 
@@ -90,7 +90,7 @@ namespace ak {
 
         Hdl hdl;
     };
-    const Char* to_string(CThread::State state) noexcept;
+    const char* to_string(CThread::State state) noexcept;
     
     inline CThread::Hdl to_handle(CThread::Context* cthread_context) noexcept {
         return CThread::Hdl::from_promise(*cthread_context);        
@@ -145,7 +145,7 @@ namespace ak {
         AllocTable alloc_table;
         
         // Task management
-        Char        boot_cthread_frame_buffer[64];
+        char        boot_cthread_frame_buffer[64];
         BootCThread boot_cthread;
         CThread     current_cthread;
         CThread     scheduler_cthread;
@@ -228,9 +228,6 @@ namespace ak {
 
             Hdl hdl;
         };
-
-
-
     }
     // Declarations for ops 
 
@@ -260,12 +257,12 @@ namespace ak {
     }
 
     // IO Routines
-    op::ExecIO io_open(const Char* path, int flags, mode_t mode) noexcept;
-    op::ExecIO io_open_at(int dfd, const Char* path, int flags, mode_t mode) noexcept;
-    op::ExecIO io_open_at_direct(int dfd, const Char* path, int flags, mode_t mode, unsigned file_index) noexcept;
-    op::ExecIO io_open_at2(int dfd, const Char* path, struct open_how* how) noexcept;
-    op::ExecIO io_open_at2_direct(int dfd, const Char* path, struct open_how* how, unsigned file_index) noexcept;
-    op::ExecIO io_open_direct(const Char* path, int flags, mode_t mode, unsigned file_index) noexcept;
+    op::ExecIO io_open(const char* path, int flags, mode_t mode) noexcept;
+    op::ExecIO io_open_at(int dfd, const char* path, int flags, mode_t mode) noexcept;
+    op::ExecIO io_open_at_direct(int dfd, const char* path, int flags, mode_t mode, unsigned file_index) noexcept;
+    op::ExecIO io_open_at2(int dfd, const char* path, struct open_how* how) noexcept;
+    op::ExecIO io_open_at2_direct(int dfd, const char* path, struct open_how* how, unsigned file_index) noexcept;
+    op::ExecIO io_open_direct(const char* path, int flags, mode_t mode, unsigned file_index) noexcept;
     op::ExecIO io_close(int fd) noexcept;
     op::ExecIO io_close_direct(unsigned file_index) noexcept;
     op::ExecIO io_read(int fd, Void* buf, unsigned nbytes, __u64 offset) noexcept;
@@ -311,28 +308,28 @@ namespace ak {
     op::ExecIO io_pipe(int* fds, unsigned int flags) noexcept;
     op::ExecIO io_pipe_direct(int* fds, unsigned int pipe_flags) noexcept;
 #endif
-    op::ExecIO io_mkdir(const Char* path, mode_t mode) noexcept;
-    op::ExecIO io_mkdir_at(int dfd, const Char* path, mode_t mode) noexcept;
-    op::ExecIO io_symlink(const Char* target, const Char* linkpath) noexcept;
-    op::ExecIO io_symlink_at(const Char* target, int newdirfd, const Char* linkpath) noexcept;
-    op::ExecIO io_link(const Char* oldpath, const Char* newpath, int flags) noexcept;
-    op::ExecIO io_link_at(int olddfd, const Char* oldpath, int newdfd, const Char* newpath, int flags) noexcept;
-    op::ExecIO io_unlink(const Char* path, int flags) noexcept;
-    op::ExecIO io_unlink_at(int dfd, const Char* path, int flags) noexcept;
-    op::ExecIO io_rename(const Char* oldpath, const Char* newpath) noexcept;
-    op::ExecIO io_rename_at(int olddfd, const Char* oldpath, int newdfd, const Char* newpath, unsigned int flags) noexcept;
+    op::ExecIO io_mkdir(const char* path, mode_t mode) noexcept;
+    op::ExecIO io_mkdir_at(int dfd, const char* path, mode_t mode) noexcept;
+    op::ExecIO io_symlink(const char* target, const char* linkpath) noexcept;
+    op::ExecIO io_symlink_at(const char* target, int newdirfd, const char* linkpath) noexcept;
+    op::ExecIO io_link(const char* oldpath, const char* newpath, int flags) noexcept;
+    op::ExecIO io_link_at(int olddfd, const char* oldpath, int newdfd, const char* newpath, int flags) noexcept;
+    op::ExecIO io_unlink(const char* path, int flags) noexcept;
+    op::ExecIO io_unlink_at(int dfd, const char* path, int flags) noexcept;
+    op::ExecIO io_rename(const char* oldpath, const char* newpath) noexcept;
+    op::ExecIO io_rename_at(int olddfd, const char* oldpath, int newdfd, const char* newpath, unsigned int flags) noexcept;
     op::ExecIO io_sync(int fd, unsigned fsync_flags) noexcept;
     op::ExecIO io_sync_file_range(int fd, unsigned len, __u64 offset, int flags) noexcept;
     op::ExecIO io_fallocate(int fd, int mode, __u64 offset, __u64 len) noexcept;
-    op::ExecIO io_statx(int dfd, const Char* path, int flags, unsigned mask, struct statx* statxbuf) noexcept;
+    op::ExecIO io_statx(int dfd, const char* path, int flags, unsigned mask, struct statx* statxbuf) noexcept;
     op::ExecIO io_fadvise(int fd, __u64 offset, __u32 len, int advice) noexcept;
     op::ExecIO io_fadvise64(int fd, __u64 offset, off_t len, int advice) noexcept;
     op::ExecIO io_madvise(Void* addr, __u32 length, int advice) noexcept;
     op::ExecIO io_madvise64(Void* addr, off_t length, int advice) noexcept;
-    op::ExecIO io_get_xattr(const Char* name, Char* value, const Char* path, unsigned int len) noexcept;
-    op::ExecIO io_set_xattr(const Char* name, const Char* value, const Char* path, int flags, unsigned int len) noexcept;
-    op::ExecIO io_fget_xattr(int fd, const Char* name, Char* value, unsigned int len) noexcept;
-    op::ExecIO io_fset_xattr(int fd, const Char* name, const Char* value, int flags, unsigned int len) noexcept;
+    op::ExecIO io_get_xattr(const char* name, char* value, const char* path, unsigned int len) noexcept;
+    op::ExecIO io_set_xattr(const char* name, const char* value, const char* path, int flags, unsigned int len) noexcept;
+    op::ExecIO io_fget_xattr(int fd, const char* name, char* value, unsigned int len) noexcept;
+    op::ExecIO io_fset_xattr(int fd, const char* name, const char* value, int flags, unsigned int len) noexcept;
     op::ExecIO io_provide_buffers(Void* addr, int len, int nr, int bgid, int bid) noexcept;
     op::ExecIO io_remove_buffers(int nr, int bgid) noexcept;
     op::ExecIO io_poll_add(int fd, unsigned poll_mask) noexcept;

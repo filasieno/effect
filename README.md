@@ -1,7 +1,4 @@
 # libak
 
-Stackless coros to experiment with frambuffers
+Stackless coro experimentation
 
-## Code Layout
-
-![Physical Code Layout](doc/code-layout.svg)

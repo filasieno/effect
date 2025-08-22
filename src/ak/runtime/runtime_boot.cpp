@@ -2,69 +2,14 @@
 
 #include <print>
 
-// namespace ak { namespace priv {
-//     struct RunSchedulerOp;
-//     struct TerminateSchedulerOp;
-            
-//     // Boot routines
-//     // templates moved to runtime_api_priv_inl.hpp
-    
-//     // Scheduler task routines
-//     constexpr RunSchedulerOp       run_scheduler() noexcept;
-//     constexpr TerminateSchedulerOp terminate_scheduler() noexcept;
-//     constexpr Void                 destroy_scheduler(CThread hdl) noexcept;
-    
-// }}
-
-// ================================================================================================================
-// Implementation
-// ================================================================================================================
-
 namespace ak { 
-
-    int init_kernel(KernelConfig* config) noexcept {
-        using namespace priv;
-        
-        if (init_alloc_table(&global_kernel_state.alloc_table, config->mem, config->memSize) != 0) {
-            return -1;
-        }
-
-        int res = io_uring_queue_init(config->ioEntryCount, &global_kernel_state.io_uring_state, 0);
-        if (res < 0) {
-            std::print("io_uring_queue_init failed\n");
-            return -1;
-        }
-
-        global_kernel_state.mem = config->mem;
-        global_kernel_state.mem_size = config->memSize;
-        global_kernel_state.cthread_count = 0;
-        global_kernel_state.ready_cthread_count = 0;
-        global_kernel_state.waiting_cthread_count = 0;
-        global_kernel_state.iowaiting_cthread_count = 0;
-        global_kernel_state.zombie_cthread_count = 0;
-        global_kernel_state.interrupted = 0;
-
-        global_kernel_state.current_cthread.reset();
-        global_kernel_state.scheduler_cthread.reset();
-
-        init_dlink(&global_kernel_state.zombie_list);
-        init_dlink(&global_kernel_state.ready_list);
-        init_dlink(&global_kernel_state.cthread_list);
-        
-        return 0;
-    }
-
-    Void fini_kernel() noexcept {
-        io_uring_queue_exit(&global_kernel_state.io_uring_state);
-    }
    
     Void* BootCThread::Context::operator new(std::size_t n) noexcept {
-        std::print("KernelTaskPromise::operator new with size: {}\n", n);
         AK_ASSERT(n <= sizeof(global_kernel_state.boot_cthread_frame_buffer));
         return (Void*)global_kernel_state.boot_cthread_frame_buffer;
-    }
-}
+    }    
 
+}
 
 // Kernel boot implementation 
 // ================================================================================================================
@@ -149,7 +94,7 @@ namespace ak::priv {
     ///
     /// \return the next Task to be resumed
     /// \internal
-    CThread::Hdl schedule_cthread() noexcept {
+    CThread::Hdl schedule_next_thread() noexcept {
         using namespace priv;
 
         // If we have a ready task, resume it

@@ -1,5 +1,3 @@
-#pragma once
-
 #include "ak/sync/sync.hpp" // IWYU pragma: keep
 
 namespace ak {
@@ -21,7 +19,7 @@ namespace ak {
         global_kernel_state.current_cthread.reset();
         check_invariants();
 
-        return schedule_cthread();
+        return schedule_next_thread();
     }
 
     // Event routines implementation

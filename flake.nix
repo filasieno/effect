@@ -51,15 +51,12 @@
         name = "libak";
         version = "0.0.1";
         srcs = [./.];
-
+        
         nativeBuildInputs = with pkgs; [
           clang 
           clang-tools          
           liburing.dev
-          doxygen
           valgrind 
-          graphviz
-          # gtest.dev
           gtest
           gbenchmark
         ];          
@@ -69,10 +66,10 @@
           llvmPackages.libcxx 
         ];
 
-        outputs  = [ "out" "doc" ];
-
         buildPhase = ''
-          make doxygen
+          make lib
+          objects=$(find build -name '*.o')
+          $CXX -shared $objects -o build/libak.so -luring
         '';
 
         checkPhase = ''
@@ -85,12 +82,13 @@
         '';
 
         installPhase = ''
+          mkdir -p $out/lib
+          cp build/libak.a $out/lib/
+          cp build/libak.so $out/lib/
           mkdir -p $out/include
-          cp ./src/ak.hpp $out/include/ak.hpp
-          
-          mkdir -p $doc/share/doc/api
-          cp -R ./build/doc $doc/share/doc/api
-          
+          for file in $(find src -name '*_api.hpp' -o -name '*_api_inl.hpp' -o -name 'ak.hpp'); do
+            install -D -m644 "$file" "$out/include/$file"
+          done
         ''; 
       };
 

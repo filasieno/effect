@@ -19,7 +19,7 @@
     // Check Task Invariants
     // ----------------------------------------------------------------------------------------------------------------
 
-    Void do_check_task_count_invariant() noexcept {
+    static Void do_check_task_count_invariant() noexcept {
         int running_count = global_kernel_state.current_cthread != CThread::Hdl() ? 1 : 0;
         Bool condition = global_kernel_state.cthread_count == running_count + global_kernel_state.ready_cthread_count + global_kernel_state.waiting_cthread_count + global_kernel_state.iowaiting_cthread_count + global_kernel_state.zombie_cthread_count;
         if (!condition) {
@@ -28,7 +28,7 @@
         }
     }
 
-    Void CheckTaskCountInvariant() noexcept {
+    Void check_task_count_invariant() noexcept {
         if constexpr (IS_DEBUG_MODE) {
             do_check_task_count_invariant();
         }

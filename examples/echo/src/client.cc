@@ -1,4 +1,4 @@
-#define AK_IMPLEMENTATION
+
 #include "ak.hpp" // IWYU pragma: keep
 #include <arpa/inet.h>
 #include <cstring>
@@ -7,8 +7,7 @@
 
 using namespace ak;
 
-
-DefineTask ClientTask(int taskId,const char* serverIp, int port, int msgPerClient) noexcept {
+CThread client_task(int taskId,const char* serverIp, int port, int msgPerClient) noexcept {
     // Create socket
     int sock = co_await io_socket(AF_INET, SOCK_STREAM, 0, 0);
     if (sock < 0) {
@@ -67,18 +66,18 @@ DefineTask ClientTask(int taskId,const char* serverIp, int port, int msgPerClien
     co_return 0;
 }
 
-DefineTask MainTask(int clientCount, int msgPerClient, const char* serverIp, int serverPort) noexcept {
+CThread co_main(int clientCount, int msgPerClient, const char* serverIp, int serverPort) noexcept {
     // Create array to store client task handles
-    std::vector<TaskHdl> clients(clientCount);
+    std::vector<CThread> clients(clientCount);
 
     // Launch client tasks
     for (int i = 0; i < clientCount; i++) {
-        clients[i] = ClientTask(i, serverIp, serverPort, msgPerClient);
+        clients[i] = client_task(i, serverIp, serverPort, msgPerClient);
     }
 
     // Wait for all clients to complete
-    for (TaskHdl& client : clients) {
-        co_await JoinTask(client);
+    for (auto& client : clients) {
+        co_await client;
     }
     std::print("All clients completed\n");
     co_return 0;
@@ -103,5 +102,9 @@ int main(int argc, char* argv[]) {
     };
 
     // Run the main task
-    return RunMain(&config, MainTask, clientCount, msgPerClient, serverIp, serverPort);
+    init_kernel(&config);
+    int res = run_main(co_main, clientCount, msgPerClient, serverIp, serverPort);
+    AK_ASSERT(res == 0);
+    fini_kernel();
+    return 0;
 }
