@@ -1,6 +1,5 @@
 #include "ak/runtime/runtime.hpp" // IWYU pragma: keep
 
-#include <print>
 #include <liburing.h>
 
 namespace ak {

@@ -1,7 +1,8 @@
 {
   "env": {
     "myIncludePath": [
-      "${workspaceFolder}/src",
+      "${workspaceFolder}/libak/src",
+      "${workspaceFolder}/libak/test",
       "/nix/store/gbwf7by78vgqjmcjf1smbh1zib0mycf8-libcxx-20.1.6-dev/include",
       "/nix/store/qqjsw1fzand71ajx326r84zgi485mqb8-liburing-2.11-dev/include",
       "/nix/store/5xrzl2s73vp8ff9ywz748hnkg0kflxsr-gtest-1.17.0-dev/include",

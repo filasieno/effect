@@ -1,57 +1,18 @@
-## Prerequisites
-#*.d
-
-## Compiled Object files
-#*.slo
-#*.lo
-#*.o
-#*.obj
-
-## Precompiled Headers
-#*.gch
-#*.pch
-
-## Linker files
-#*.ilk
-
-## Debugger Files
-#*.pdb
-
-## Compiled Dynamic libraries
-#*.so
-#*.dylib
-#*.dll
-
-## Fortran module files
-#*.mod
-#*.smod
-
-## Compiled Static libraries
-#*.lai
-#*.la
-#*.a
-#*.lib
-
-## Executables
-#*.exe
-#*.out
-#*.app
-
-## debug information files
-#*.dwo
-
-# build artifacts
-/build
-/.config.mk
-
-#nix result folder
-/result
-
-#clangd cache
-/.cache
-
-#valgrind
+# C/C++ outputs
+*.d
+*.o
+*.pch
+*.a
+*.so
 vgcore.*
+
+# Build/output folders
+build
+result
+
+# dots
+.config.mk
+.cache
 
 #others
 *.original

@@ -48,17 +48,20 @@
 
     packages.x86_64-linux = {
       libak = pkgs.llvmPackages.stdenv.mkDerivation {
-        name = "libak";
+        pname = "libak";
+        description = "ak library"
         version = "0.0.1";
-        srcs = [./.];
-        
+        src = ./libak;
+
+        outputs = [ "out" "dev" ];
+
         nativeBuildInputs = with pkgs; [
           clang 
           clang-tools          
           liburing.dev
           valgrind 
-          gtest
-          gbenchmark
+          ak_gtest
+          ak_gbenchmark
         ];          
 
         buildInputs = with pkgs; [
@@ -76,18 +79,16 @@
           make test
         '';
 
-        preCheck = ''
-          export GTEST_INCLUDE="${pkgs.gtest.dev}/include"
-          export GTEST_LIB="${pkgs.gtest}/lib"
-        '';
-
         installPhase = ''
           mkdir -p $out/lib
-          cp build/libak.a $out/lib/
           cp build/libak.so $out/lib/
-          mkdir -p $out/include
+
+          mkdir -p $dev/lib
+          cp build/libak.a $dev/lib/
+
+          mkdir -p $dev/include
           for file in $(find src -name '*_api.hpp' -o -name '*_api_inl.hpp' -o -name 'ak.hpp'); do
-            install -D -m644 "$file" "$out/include/$file"
+            install -D -m644 "$file" "$dev/include/$file"
           done
         ''; 
       };
@@ -95,7 +96,7 @@
       libak-examples-echo = pkgs.llvmPackages.stdenv.mkDerivation {
         name = "libak-examples-echo";
         version = "0.0.1";
-        srcs = [./examples/echo];
+        src = ./libak/examples/echo;
 
         nativeBuildInputs = with pkgs; [
           clang 
@@ -124,9 +125,6 @@
           cp ./build/echo-server $out/bin/echo-server
         ''; 
       };
-
-      # Allow building only these vendored deps with our overlayed flags
-      
 
       default = self.packages.x86_64-linux.libak;
     };
@@ -163,10 +161,13 @@
             ];
 
             shellHook = ''
+              export PROJECT_ROOT=$(git rev-parse --show-toplevel)
+              export LIBAK_ROOT="$PROJECT_ROOT/libak"
+              export TERM=xterm-256color
               export COMPILER="clang++"
               export CC="clang++"
               export CXX="clang++"
-              export PS1='$ '
+              export PS1='\[\033[1;33m\](libak)\[\033[0m\] \[\033[1;32m\][\w]\[\033[0m\] $ '
               echo "liburing inc   : ${pkgs.liburing.dev}" 
               echo "liburing lib   : ${pkgs.liburing}" 
               echo "C++ compiler   : ${pkgs.clang}"
@@ -178,6 +179,9 @@
               echo "gbenchmark lib : ${pkgs.gbenchmark}/lib"
               export PKG_CONFIG_PATH="${pkgs.gtest.dev}/lib/pkgconfig:$PKG_CONFIG_PATH"
               export PKG_CONFIG_PATH="${pkgs.gbenchmark}/lib/pkgconfig:$PKG_CONFIG_PATH"
+              export PROJECT_ROOT=$(git rev-parse --show-toplevel)
+              cd $PROJECT_ROOT/libak
+              pwd
             '';
           };
         };

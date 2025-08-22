@@ -96,13 +96,13 @@ build/%.o: src/%.cpp build/precompiled.pch | build/.
 	mkdir -p "$(@D)"
 	$(COMPILE.cpp) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $<
 
-build/%.o: src/test/%.cpp build/precompiled.pch | build/.
+build/%.o: test/%.cpp build/precompiled.pch | build/.
 	$(call trace,CXX -o $@ -c $<)
 	mkdir -p "$(@D)"
 	$(COMPILE.cpp) -MMD -MP -MF build/$*.d -include-pch build/precompiled.pch -o $@ -c $<
 
 -include $(patsubst src/%.cpp,build/%.d,$(wildcard src/*.cpp))
--include $(patsubst src/test/%.cpp,build/%.d,$(wildcard src/test/*.cpp))
+-include $(patsubst test/%.cpp,build/%.d,$(wildcard test/*.cpp))
 
 .PRECIOUS: build/%
 build/%: build/%.o  | build/.
@@ -129,8 +129,8 @@ build/libak_base.a: $(BASE_LIB_OBJECTS) | build/.
 # Base Module Test
 # ----------------
 
-BASE_TEST_SOURCES := $(wildcard src/test/base/*.cpp)
-BASE_TEST_OBJECTS := $(patsubst src/%.cpp,build/%.o,$(BASE_TEST_SOURCES))
+BASE_TEST_SOURCES := $(wildcard test/base/*.cpp)
+BASE_TEST_OBJECTS := $(patsubst test/%.cpp,build/%.o,$(BASE_TEST_SOURCES))
 
 .PRECIOUS: build/test_base
 build/test_base: $(BASE_TEST_OBJECTS) build/libak_base.a | build/.
@@ -158,8 +158,8 @@ build/libak_alloc.a: $(ALLOC_LIB_OBJECTS) | build/.
 # Alloc Module Test
 # -----------------
 
-ALLOC_TEST_SOURCES := $(wildcard src/test/alloc/*.cpp)
-ALLOC_TEST_OBJECTS := $(patsubst src/%.cpp,build/%.o,$(ALLOC_TEST_SOURCES))
+ALLOC_TEST_SOURCES := $(wildcard test/alloc/*.cpp)
+ALLOC_TEST_OBJECTS := $(patsubst test/%.cpp,build/%.o,$(ALLOC_TEST_SOURCES))
 
 .PRECIOUS: build/test_alloc
 build/test_alloc: $(ALLOC_TEST_OBJECTS) build/libak_base.a build/libak_alloc.a | build/.
@@ -186,8 +186,8 @@ build/libak_runtime.a: $(RUNTIME_LIB_OBJECTS) | build/.
 # Runtime Module Test
 # -----------------
 
-RUNTIME_TEST_SOURCES := $(wildcard src/test/runtime/*.cpp)
-RUNTIME_TEST_OBJECTS := $(patsubst src/%.cpp,build/%.o,$(patsubst src/%.cc,build/%.o,$(RUNTIME_TEST_SOURCES)))
+RUNTIME_TEST_SOURCES := $(wildcard test/runtime/*.cpp)
+RUNTIME_TEST_OBJECTS := $(patsubst test/%.cpp,build/%.o,$(patsubst test/%.cc,build/%.o,$(RUNTIME_TEST_SOURCES)))
 
 .PRECIOUS: build/test_runtime
 build/test_runtime: $(RUNTIME_TEST_OBJECTS) build/libak_base.a build/libak_alloc.a build/libak_runtime.a | build/.
@@ -214,8 +214,8 @@ build/libak_sync.a: $(SYNC_LIB_OBJECTS) | build/.
 # Sync Module Test
 # -----------------
 
-SYNC_TEST_SOURCES := $(wildcard src/test/sync/*.cpp)
-SYNC_TEST_OBJECTS := $(patsubst src/%.cpp,build/%.o,$(SYNC_TEST_SOURCES))
+SYNC_TEST_SOURCES := $(wildcard test/sync/*.cpp)
+SYNC_TEST_OBJECTS := $(patsubst test/%.cpp,build/%.o,$(SYNC_TEST_SOURCES))
 
 .PRECIOUS: build/test_sync
 build/test_sync: $(SYNC_TEST_OBJECTS) build/libak_base.a build/libak_alloc.a build/libak_runtime.a build/libak_sync.a | build/.
@@ -351,14 +351,11 @@ run::
 .PHONY: test
 .NOTPARALLEL: test
 test:: build/test_base build/test_alloc build/test_runtime build/test_sync
-	reset
 	$(MAKE) -s test_base
 	$(MAKE) -s test_alloc
 	$(MAKE) -s test_runtime
 	$(MAKE) -s test_sync
 
-
-# Limit default 'all' to base/alloc only; docs optional
 .PHONY: all
 all:: test 
 all:: lib
