@@ -49,7 +49,7 @@
     packages.x86_64-linux = {
       libak = pkgs.llvmPackages.stdenv.mkDerivation {
         pname = "libak";
-        description = "ak library"
+        description = "ak library";
         version = "0.0.1";
         src = ./libak;
 
