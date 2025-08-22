@@ -2,6 +2,10 @@ If:
   PathMatch:
     - "libak/src/.*\\.hpp"
     - "libak/src/.*\\.cpp"
+    - "libak/test/.*\\.hpp"
+    - "libak/test/.*\\.cpp"
+    - "libak/benchmark/.*\\.hpp"
+    - "libak/benchmark/.*\\.cpp"
     - "libak/examples/echo/.*\\.hpp"
     - "libak/examples/echo/.*\\.cpp"
 
@@ -28,5 +32,3 @@ Diagnostics:
     Remove: ['*']
   UnusedIncludes: Strict
 
-Index:
-  Background: Skip
