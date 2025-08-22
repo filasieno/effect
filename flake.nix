@@ -153,6 +153,7 @@
               gnumake
               clang 
               clang-tools
+              ccache
             ] ++ [ak_gtest ak_gbenchmark];
             
             buildInputs = with pkgs; [

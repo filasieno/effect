@@ -13,7 +13,7 @@ MAKEFLAGS += --output-sync=target
 include .config.mk
 
 TARGET_ARCH = -march=x86-64-v3
-CXX = clang++
+CXX = ccache clang++
 
 CXXFLAGS = -Wall -Wextra
 CXXFLAGS += -std=c++2c -fno-exceptions -fno-rtti
@@ -162,7 +162,7 @@ ALLOC_TEST_SOURCES := $(wildcard test/alloc/*.cpp)
 ALLOC_TEST_OBJECTS := $(patsubst test/%.cpp,build/%.o,$(ALLOC_TEST_SOURCES))
 
 .PRECIOUS: build/test_alloc
-build/test_alloc: $(ALLOC_TEST_OBJECTS) build/libak_base.a build/libak_alloc.a | build/.
+build/test_alloc: $(ALLOC_TEST_OBJECTS) build/libak_alloc.a build/libak_base.a | build/.
 	$(call trace,LINK -o $@ $^ $(LDLIBS))
 	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LDLIBS)
 
@@ -190,9 +190,9 @@ RUNTIME_TEST_SOURCES := $(wildcard test/runtime/*.cpp)
 RUNTIME_TEST_OBJECTS := $(patsubst test/%.cpp,build/%.o,$(patsubst test/%.cc,build/%.o,$(RUNTIME_TEST_SOURCES)))
 
 .PRECIOUS: build/test_runtime
-build/test_runtime: $(RUNTIME_TEST_OBJECTS) build/libak_base.a build/libak_alloc.a build/libak_runtime.a | build/.
+build/test_runtime: $(RUNTIME_TEST_OBJECTS) build/libak_runtime.a build/libak_alloc.a build/libak_base.a | build/.
 	$(call trace,LINK -o $@ $^ $(LDLIBS))
-	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -Wl,--start-group build/libak_base.a build/libak_alloc.a build/libak_runtime.a $(RUNTIME_TEST_OBJECTS) -Wl,--end-group $(LDLIBS) -o $@
+	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LDLIBS)
 
 # =====================================================================================================================================
 # Sync
@@ -218,9 +218,9 @@ SYNC_TEST_SOURCES := $(wildcard test/sync/*.cpp)
 SYNC_TEST_OBJECTS := $(patsubst test/%.cpp,build/%.o,$(SYNC_TEST_SOURCES))
 
 .PRECIOUS: build/test_sync
-build/test_sync: $(SYNC_TEST_OBJECTS) build/libak_base.a build/libak_alloc.a build/libak_runtime.a build/libak_sync.a | build/.
+build/test_sync: $(SYNC_TEST_OBJECTS) build/libak_sync.a build/libak_runtime.a build/libak_alloc.a build/libak_base.a | build/.
 	$(call trace,LINK -o $@ $^ $(LDLIBS))
-	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -Wl,--start-group build/libak_base.a build/libak_alloc.a build/libak_runtime.a build/libak_sync.a $(SYNC_TEST_OBJECTS) -Wl,--end-group $(LDLIBS) -o $@
+	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $^ $(LDLIBS)
 
 # =====================================================================================================================================
 # Static AK Library (combine modules)
@@ -229,10 +229,10 @@ build/test_sync: $(SYNC_TEST_OBJECTS) build/libak_base.a build/libak_alloc.a bui
 .PHONY: lib
 lib:: build/libak.a
 
-COMBINED_LIBS = build/libak_base.a build/libak_alloc.a build/libak_runtime.a build/libak_sync.a
+ALL_LIB_OBJECTS = $(BASE_LIB_OBJECTS) $(ALLOC_LIB_OBJECTS) $(RUNTIME_LIB_OBJECTS) $(SYNC_LIB_OBJECTS)
 
 .PRECIOUS: build/libak.a
-build/libak.a: $(COMBINED_LIBS) | build/.
+build/libak.a: $(ALL_LIB_OBJECTS) | build/.
 	$(call trace,AR -rcs $@ $^)
 	$(AR) rcs $@ $^
 
