@@ -62,4 +62,8 @@ namespace ak {
                            Args&&... args) noexcept;
     } // namespace priv
 
+    /// 
+    U64 query_timer_ns() noexcept;
+
+
 } // namespace ak
