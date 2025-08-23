@@ -32,27 +32,6 @@ LDFLAGS  += -flto
 endif
 
 
-define precompiled_pch.content
-#pragma once
-#include <cassert>         // IWYU pragma: keep
-#include <coroutine>       // IWYU pragma: keep
-#include <print>           // IWYU pragma: keep
-#include <cstdint>         // IWYU pragma: keep
-#include <cstring>         // IWYU pragma: keep
-#include <cstddef>         // IWYU pragma: keep
-#include <immintrin.h>     // IWYU pragma: keep - AVX2 intrinsics
-#include <liburing.h>      // IWYU pragma: keep
-#include <source_location> // IWYU pragma: keep
-endef
-
-precompiled_pch.source := $(build_dir)/precompiled.hpp
-
-$(precompiled_pch.source): | $(build_dir)/.
-	$(call shell.title,Generating $(auto.target))
-	cat <<-'EOF' > $(auto.target)
-	$(precompiled_pch.content)
-	EOF
-
 #------------------------------------------
 $(mk.load.setup)
 #------------------------------------------

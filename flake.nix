@@ -9,21 +9,20 @@
   let
     system = "x86_64-linux";
 
+    
     akOverlay = self: super: {
       llvmPackages = super.llvmPackages_latest;
       clang-tools = super.clang-tools.override {
         enableLibcxx = true;
       };
-      libcxx = super.llvmPackages.libcxx;
-     
-      
+      libcxx = super.llvmPackages.libcxx;      
     };
+
 
     pkgs = import nixpkgs {
       inherit system;
       overlays = [ akOverlay ];
     };
-
     # Setup custom gtest/gbenchmark
     cmakeFlagsArray = ''cmakeFlagsArray+=(-DCMAKE_CXX_FLAGS="-fno-exceptions -fno-rtti")'';
 
@@ -31,6 +30,7 @@
       stdenv = pkgs.llvmPackages.stdenv;
       preConfigure = cmakeFlagsArray;
     });
+
 
     ak_gbenchmark = pkgs.gbenchmark.overrideAttrs (old: {
       stdenv = pkgs.llvmPackages.stdenv;
@@ -118,9 +118,7 @@
           ./compile.sh
         '';
 
-        checkPhase = ''
-          
-        '';
+        checkPhase = '' '';
 
         installPhase = ''
           mkdir -p $out/bin
@@ -172,6 +170,10 @@
               export CC="clang++"
               export CXX="clang++"
               export PS1='\[\033[1;33m\](libak)\[\033[0m\] \[\033[1;32m\][\w]\[\033[0m\] $ '
+              export PKG_CONFIG_PATH="${pkgs.gtest.dev}/lib/pkgconfig:$PKG_CONFIG_PATH"
+              export PKG_CONFIG_PATH="${pkgs.gbenchmark}/lib/pkgconfig:$PKG_CONFIG_PATH"
+              export PROJECT_ROOT=$(git rev-parse --show-toplevel)
+
               echo "liburing inc   : ${pkgs.liburing.dev}" 
               echo "liburing lib   : ${pkgs.liburing}" 
               echo "C++ compiler   : ${pkgs.clang}"
@@ -181,9 +183,7 @@
               echo "gtest lib      : ${pkgs.gtest}/lib"
               echo "gbenchmark inc : ${pkgs.gbenchmark}/include"
               echo "gbenchmark lib : ${pkgs.gbenchmark}/lib"
-              export PKG_CONFIG_PATH="${pkgs.gtest.dev}/lib/pkgconfig:$PKG_CONFIG_PATH"
-              export PKG_CONFIG_PATH="${pkgs.gbenchmark}/lib/pkgconfig:$PKG_CONFIG_PATH"
-              export PROJECT_ROOT=$(git rev-parse --show-toplevel)
+              
               cd $PROJECT_ROOT/libak
               pwd
             '';
