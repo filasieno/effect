@@ -6,5 +6,7 @@
         "github.vscode-github-actions",
         "github.vscode-codeql",
         "shd101wyy.markdown-preview-enhanced",
+        "ryanluker.vscode-coverage-gutters",
+        "llvm-vs-code-extensions.vscode-clangd",
     ]
 }

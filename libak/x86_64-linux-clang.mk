@@ -256,7 +256,6 @@ run::
 .PHONY: test
 .NOTPARALLEL: test
 test::
-	reset
 
 
 .PHONY: watch
@@ -349,11 +348,11 @@ $(coverage.build_dir)/lcov.info: $(coverage.build_dir)/coverage.profdata
 	$(call shell.trace,Generating lcov info file)
 	declare -a options
 	readarray -t options < $(auto.prereq1).options
-	llvm-cov export -instr-profile=$(auto.prereq1) -format=lcov "$${options[@]}"
+	llvm-cov export -instr-profile=$(auto.prereq1) -format=lcov "$${options[@]}" > $(coverage.build_dir)/lcov.info
 
 
 .PHONY: coverage
-coverage:: coverage-term coverage-html build/lcov.info
+coverage:: coverage-term coverage-html $(coverage.build_dir)/lcov.info
 
 .PHONY: clean.coverage
 clean.coverage:

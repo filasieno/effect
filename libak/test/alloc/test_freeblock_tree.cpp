@@ -588,7 +588,7 @@ TEST(AllocFreeBlockHeaderTest, Clear) {
     EXPECT_EQ(b->multimap_link.next, nullptr);
     EXPECT_EQ(b->multimap_link.prev, nullptr);
 
-    EXPECT_EQ(b->this_desc.size, 8192);
+    EXPECT_EQ((U64)b->this_desc.size, (U64)8192);
     EXPECT_EQ(b->this_desc.state, static_cast<U32>(AllocBlockState::FREE));
 
     std::free(b);
