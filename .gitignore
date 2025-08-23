@@ -1,20 +1,12 @@
-# C/C++ outputs
-*.d
-*.o
-*.pch
-*.a
-*.so
-vgcore.*
-
 # Build/output folders
-build
-result
+/libak/build
+/libak/result
 
 # dots
-.config.mk
-.cache
+/libak/.config.mk
+/.cache
 
-#others
+# others
 *.original
 scratch.*
 compile_commands.json
