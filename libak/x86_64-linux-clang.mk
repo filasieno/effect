@@ -671,8 +671,8 @@ $1:: §($1.lib-path)
 		§(call shell.quote.list,§($1.objects))\
 		§($1.LDLIBS)\
 		# end
-	ln -sf §($1.lib-path) §($1.build_dir)/§($1.lib-name).so
-	ln -sf §($1.lib-path) §($1.build_dir)/§($1.soname)
+	ln -sfr §($1.lib-path) §($1.build_dir)/§($1.lib-name).so
+	ln -sfr §($1.lib-path) §($1.build_dir)/§($1.soname)
 
 
 

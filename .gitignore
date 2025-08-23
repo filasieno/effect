@@ -1,10 +1,11 @@
 # Build/output folders
-/libak/build
-/libak/result
+# build
+# result
+# result-dev
 
 # dots
-/libak/.config.mk
-/.cache
+.config.mk
+.cache
 
 # others
 *.original

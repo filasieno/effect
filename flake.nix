@@ -60,17 +60,22 @@
           clang-tools          
           liburing.dev
           valgrind 
-          ak_gtest
-          ak_gbenchmark
-        ];          
+          pkgconf
+          ccache
+        ] ++ [ak_gtest ak_gbenchmark];          
 
         buildInputs = with pkgs; [
           liburing
           llvmPackages.libcxx 
         ];
 
+        propagatedBuildInputs = with pkgs; [
+          liburing
+          llvmPackages.libcxx
+        ];
+
         buildPhase = ''
-          make CONFIG=release lib
+          make CONFIG=release all
         '';
 
         checkPhase = ''
@@ -79,11 +84,11 @@
 
         installPhase = ''
           mkdir -p $out/lib
-          cp build/libak.so $out/lib/
+          cp build/libak-so/libak.so* $out/lib/
+          
 
           mkdir -p $dev/lib
-          cp build/libak.a $dev/lib/
-
+          cp build/libak-a/libak.a $dev/lib/
           mkdir -p $dev/include
           for file in $(find src -name '*_api.hpp' -o -name '*_api_inl.hpp' -o -name 'ak.hpp'); do
             install -D -m644 "$file" "$dev/include/$file"

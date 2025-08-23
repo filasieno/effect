@@ -131,5 +131,6 @@ all:: libak-a
 
 libak-so.sources := $(libak_base.sources) $(libak_alloc.sources) $(libak_runtime.sources) $(libak_sync.sources)
 libak-so.lib-name := libak
+libak-so.version := 0.0.1
 $(call template.eval,$(call template-solib,libak-so))
 all:: libak-so
