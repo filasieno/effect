@@ -107,5 +107,6 @@
         "--query-driver=/nix/store/*-clang-wrapper-*/bin/clang++;*/bin/clang++"
     ],
     "clangd.path": "/nix/store/adm1gf89bmd29d6nawzx6bb91zvwi316-clang-tools-20.1.6/bin/clangd",
-    "clangd.onConfigChanged": "restart"
+    "clangd.onConfigChanged": "restart",
+    "makefile.makefilePath": "libak/Makefile"
 }
