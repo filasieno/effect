@@ -20,7 +20,7 @@ namespace ak {
     using WChar  = wchar_t;
 
     using U64    = unsigned long long;
-    using U32    = unsigned long;
+    using U32    = unsigned int;
     using U16    = unsigned short;
     using U8     = unsigned char;
 

@@ -1,0 +1,117 @@
+#pragma once
+
+#include <ak/alloc/alloc.hpp>
+
+namespace ak {
+
+    struct FrameId {
+        U32 id;
+
+        explicit FrameId(const U32& id) noexcept : id(id) {}
+        FrameId() noexcept = default;
+        FrameId(const FrameId& other) noexcept = default;
+        FrameId(FrameId&& other) noexcept = default;
+        FrameId& operator=(const FrameId& other) noexcept = default;
+        FrameId& operator=(FrameId&& other) noexcept = default;
+
+        Bool operator==(const FrameId& other) const noexcept { return id == other.id; }
+        Bool operator!=(const FrameId& other) const noexcept { return id != other.id; }
+        Bool operator<(const FrameId& other) const noexcept { return id < other.id; }
+        Bool operator>(const FrameId& other) const noexcept { return id > other.id; }
+        Bool operator<=(const FrameId& other) const noexcept { return id <= other.id; }
+        Bool operator>=(const FrameId& other) const noexcept { return id >= other.id; }
+    };
+
+    struct PageId {
+        U32 id;
+
+        explicit PageId(const U32& id) noexcept : id(id) {}
+        PageId() noexcept = default;
+        PageId(const PageId& other) noexcept = default;
+        PageId(PageId&& other) noexcept = default;
+        PageId& operator=(const PageId& other) noexcept = default;
+        PageId& operator=(PageId&& other) noexcept = default;
+
+        Bool operator==(const PageId& other) const noexcept { return id == other.id; }
+        Bool operator!=(const PageId& other) const noexcept { return id != other.id; }
+        Bool operator<(const PageId& other) const noexcept { return id < other.id; }
+        Bool operator>(const PageId& other) const noexcept { return id > other.id; }
+        Bool operator<=(const PageId& other) const noexcept { return id <= other.id; }
+        Bool operator>=(const PageId& other) const noexcept { return id >= other.id; }
+    };
+
+    struct VPageId {
+        U32 id;
+
+        explicit VPageId(const U32& id) noexcept : id(id) {}
+        VPageId() noexcept = default;
+        VPageId(const VPageId& other) noexcept = default;
+        VPageId(VPageId&& other) noexcept = default;
+        VPageId& operator=(const VPageId& other) noexcept = default;
+        constexpr VPageId& operator=(VPageId&& other) noexcept = default;
+
+        Bool operator==(const VPageId& other) const noexcept { return id == other.id; }
+        Bool operator!=(const VPageId& other) const noexcept { return id != other.id; }
+        Bool operator<(const VPageId& other) const noexcept { return id < other.id; }
+        Bool operator>(const VPageId& other) const noexcept { return id > other.id; }
+        Bool operator<=(const VPageId& other) const noexcept { return id <= other.id; }
+        Bool operator>=(const VPageId& other) const noexcept { return id >= other.id; }
+    };
+
+    enum class BufferPool {
+        INVALID = 0,
+        DEFAULT,
+        RECYCLE,
+        KEEP
+    };
+    const char* to_string(BufferPool p) noexcept;
+
+    struct FrameEntry {
+        U32        pool      : 2;
+        U32        is_dirty  : 1;
+        U32        evict     : 1;
+        U32        pin_count : 28;
+        FrameId    pool_index;
+        PageId     page_cache_bucket;
+        VPageId    vpage_cache_bucket;
+    };
+    static_assert(sizeof(FrameEntry) == 16, "FrameEntry must have a size of 16");
+
+    struct FramePool {
+        FrameId* entries;
+        U32      count;
+        U32      capacity;
+    };
+
+
+    struct FrameTable {
+        FrameEntry* entries;
+        FramePool   free_pool;
+        FramePool   default_pool;
+        FramePool   recycle_pool;
+        FramePool   keep_pool;
+        U32         clock;
+    };
+
+    void        init_frame_table(FrameTable* ft, U32 capacity, AllocTable* at) noexcept;
+    void        fini_frame_table(FrameTable* ft, AllocTable* at) noexcept;
+    void        dump_frame_table_debug(const FrameTable* ft) noexcept;
+    FrameId     allocate_frame(FrameTable* ft, BufferPool pool) noexcept;
+    void        free_frame(FrameTable* ft, FrameId frame_id) noexcept;
+    FrameEntry* get_frame_entry(FrameTable* ft, FrameId frame_id) noexcept;
+    U32         get_frame_table_capacity(const FrameTable* ft) noexcept;
+    U32         get_frame_table_free_count(const FrameTable* ft) noexcept;
+    void        validate_frame_id(const FrameTable* ft, FrameId frame_id) noexcept;
+    void        move_frame_to_pool(FrameTable* ft, FrameId frame_id, BufferPool dest_pool_type) noexcept;
+
+    // FramePool
+    void        init_frame_pool(FramePool* framePool, U32 capacity, AllocTable* at) noexcept;
+    void        fini_frame_pool(FramePool* pool, AllocTable* at) noexcept;
+    Bool        is_frame_pool_full(const FramePool* pool) noexcept;
+
+    void        check_invariants_free_pool(const FrameTable* ft) noexcept;
+    void        check_invariants_keep_pool(const FrameTable* ft) noexcept;
+    void        check_invariants_recycle_pool(const FrameTable* ft) noexcept;
+    void        check_invariants_pool_capacity(const FrameTable* ft) noexcept;
+
+} // namespace ak
