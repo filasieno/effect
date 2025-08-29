@@ -144,6 +144,8 @@
               valgrind 
               graphviz
               ragel
+              flex
+              bison
               python3
               bear
               gnumake

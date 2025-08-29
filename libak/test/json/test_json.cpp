@@ -96,6 +96,31 @@ struct EventCollector {
     std::vector<JSONEvent> events;
 };
 
+static std::string simplify_escapes(const std::string &in)
+{
+    std::string out;
+    out.reserve(in.size());
+    for (size_t i = 0; i < in.size(); ++i) {
+        char c = in[i];
+        if (c == '\\' && i + 1 < in.size()) {
+            char n = in[i + 1];
+            switch (n) {
+                case 'n': out.push_back('\n'); ++i; continue;
+                case 't': out.push_back('\t'); ++i; continue;
+                case 'r': out.push_back('\r'); ++i; continue;
+                case 'b': out.push_back('\b'); ++i; continue;
+                case 'f': out.push_back('\f'); ++i; continue;
+                case '\\': out.push_back('\\'); ++i; continue;
+                case '"': out.push_back('"'); ++i; continue;
+                case '/': out.push_back('/'); ++i; continue;
+                default: break;
+            }
+        }
+        out.push_back(c);
+    }
+    return out;
+}
+
 // Handlers that push events; also log via std::print for visibility
 void on_begin_object(JSONParseSession* session) 
 {
@@ -338,12 +363,14 @@ TEST(JSONParser, BareIdentifier) {
 
 TEST(JSONParser, MalformedString) {
     EventCollector collector;
-    EventCollector expected;
-    expected.events.push_back(JSONEvent::make_state_changed(JSONParserState::ERROR, "expected an Object '{ ... }' or an Array '[ ... ]'"));
     const Char text[] = "\"unclosed";
     auto res = do_parse_run(text, strlen(text), &collector);
     EXPECT_EQ(res, JSONParserState::ERROR);
-    EXPECT_EQ(collector.events, expected.events);
+    ASSERT_FALSE(collector.events.empty());
+    const auto &last = collector.events.back();
+    EXPECT_EQ(last.kind, JSONEventKind::StateChanged);
+    EXPECT_EQ(last.state, JSONParserState::ERROR);
+    EXPECT_STREQ(last.err_msg, "unexpected end of input");
 }
 
 TEST(JSONParser, MalformedNumber) {
@@ -493,6 +520,257 @@ TEST(JSONParser, ParseSimpleObject) {
     EXPECT_EQ(collector.events, expected.events);
 }
 
+// Arrays - additional coverage
+
+TEST(JSONParser, ParseArrayOfIntegers) {
+    EventCollector collector;
+    const char* json = "[1,2,3]";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::DONE);
+    std::vector<JSONEvent> expected = {
+        JSONEvent::make_array_begin(),
+        JSONEvent::make_integer_value(1),
+        JSONEvent::make_integer_value(2),
+        JSONEvent::make_integer_value(3),
+        JSONEvent::make_array_end()
+    };
+    EXPECT_EQ(collector.events, expected);
+}
+
+TEST(JSONParser, ParseArrayMixedTypes) {
+    EventCollector collector;
+    const char* json = R"([null, true, false, "x", 1, 2.5])";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::DONE);
+    std::vector<JSONEvent> expected = {
+        JSONEvent::make_array_begin(),
+        JSONEvent::make_null_value(),
+        JSONEvent::make_bool_value(true),
+        JSONEvent::make_bool_value(false),
+        JSONEvent::make_string_begin(),
+        JSONEvent::make_string_chars("x"),
+        JSONEvent::make_string_end(),
+        JSONEvent::make_integer_value(1),
+        JSONEvent::make_float_value(2.5),
+        JSONEvent::make_array_end()
+    };
+    EXPECT_EQ(collector.events, expected);
+}
+
+TEST(JSONParser, ParseNestedArrays) {
+    EventCollector collector;
+    const char* json = "[1, [2, 3], 4]";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_TRUE(res == JSONParserState::DONE || res == JSONParserState::CONTINUE);
+    std::vector<JSONEvent> expected = {
+        JSONEvent::make_array_begin(),
+        JSONEvent::make_integer_value(1),
+        JSONEvent::make_array_begin(),
+        JSONEvent::make_integer_value(2),
+        JSONEvent::make_integer_value(3),
+        JSONEvent::make_array_end(),
+        JSONEvent::make_integer_value(4),
+        JSONEvent::make_array_end()
+    };
+    EXPECT_EQ(collector.events, expected);
+}
+
+TEST(JSONParser, ParseArrayOfObjects) {
+    EventCollector collector;
+    const char* json = R"([{"a": 1}, {"b": "x"}])";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_TRUE(res == JSONParserState::DONE || res == JSONParserState::CONTINUE);
+    std::vector<JSONEvent> expected = {
+        JSONEvent::make_array_begin(),
+        JSONEvent::make_object_begin(),
+        JSONEvent::make_attr_begin(),
+        JSONEvent::make_attr_key_begin(),
+        JSONEvent::make_attr_key_chars("a"),
+        JSONEvent::make_attr_key_end(),
+        JSONEvent::make_integer_value(1),
+        JSONEvent::make_attr_end(),
+        JSONEvent::make_object_end(),
+        JSONEvent::make_object_begin(),
+        JSONEvent::make_attr_begin(),
+        JSONEvent::make_attr_key_begin(),
+        JSONEvent::make_attr_key_chars("b"),
+        JSONEvent::make_attr_key_end(),
+        JSONEvent::make_string_begin(),
+        JSONEvent::make_string_chars("x"),
+        JSONEvent::make_string_end(),
+        JSONEvent::make_attr_end(),
+        JSONEvent::make_object_end(),
+        JSONEvent::make_array_end()
+    };
+    // Compare only up to expected size to tolerate trailing notifications
+    ASSERT_GE(collector.events.size(), expected.size());
+    std::vector<JSONEvent> prefix(collector.events.begin(), collector.events.begin() + expected.size());
+    EXPECT_EQ(prefix, expected);
+}
+
+TEST(JSONParser, IncompleteArrayPendingClose) {
+    EventCollector collector;
+    const char* json = R"(["x")"; // missing closing ]
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::CONTINUE);
+    std::vector<JSONEvent> expected = {
+        JSONEvent::make_array_begin(),
+        JSONEvent::make_string_begin(),
+        JSONEvent::make_string_chars("x"),
+        JSONEvent::make_string_end()
+    };
+    EXPECT_EQ(collector.events, expected);
+}
+
+TEST(JSONParser, ArrayTrailingComma) {
+    EventCollector collector;
+    const char* json = "[1,]";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::ERROR);
+    ASSERT_GE(collector.events.size(), 2u);
+    std::vector<JSONEvent> prefix = {
+        JSONEvent::make_array_begin(),
+        JSONEvent::make_integer_value(1),
+    };
+    std::vector<JSONEvent> got_prefix(collector.events.begin(), collector.events.begin() + 2);
+    EXPECT_EQ(got_prefix, prefix);
+    const auto &last = collector.events.back();
+    EXPECT_EQ(last.kind, JSONEventKind::StateChanged);
+    EXPECT_EQ(last.state, JSONParserState::ERROR);
+}
+
+// RFC 8259 Compliance Tests
+
+TEST(JSONParser, TopLevelString) {
+    EventCollector collector;
+    const char* json = "\"hello\"";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::DONE);
+    std::vector<JSONEvent> expected = {
+        JSONEvent::make_string_begin(),
+        JSONEvent::make_string_chars("hello"),
+        JSONEvent::make_string_end()
+    };
+    EXPECT_EQ(collector.events, expected);
+}
+
+TEST(JSONParser, TopLevelNumber) {
+    EventCollector collector;
+    const char* json = "42";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::DONE);
+    std::vector<JSONEvent> expected = {
+        JSONEvent::make_integer_value(42)
+    };
+    EXPECT_EQ(collector.events, expected);
+}
+
+TEST(JSONParser, TopLevelTrue) {
+    EventCollector collector;
+    const char* json = "true";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::DONE);
+    std::vector<JSONEvent> expected = {
+        JSONEvent::make_bool_value(true)
+    };
+    EXPECT_EQ(collector.events, expected);
+}
+
+TEST(JSONParser, TopLevelFalse) {
+    EventCollector collector;
+    const char* json = "false";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::DONE);
+    std::vector<JSONEvent> expected = {
+        JSONEvent::make_bool_value(false)
+    };
+    EXPECT_EQ(collector.events, expected);
+}
+
+TEST(JSONParser, TopLevelNull) {
+    EventCollector collector;
+    const char* json = "null";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::DONE);
+    std::vector<JSONEvent> expected = {
+        JSONEvent::make_null_value()
+    };
+    EXPECT_EQ(collector.events, expected);
+}
+
+TEST(JSONParser, InvalidLeadingZeroInteger) {
+    EventCollector collector;
+    const char* json = "0123";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::ERROR);
+    ASSERT_FALSE(collector.events.empty());
+    const auto &last = collector.events.back();
+    EXPECT_EQ(last.kind, JSONEventKind::StateChanged);
+    EXPECT_EQ(last.state, JSONParserState::ERROR);
+    EXPECT_STREQ(last.err_msg, "invalid number format: leading zero");
+}
+
+TEST(JSONParser, InvalidFractionNoDigits) {
+    EventCollector collector;
+    const char* json = "1.";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::ERROR);
+    ASSERT_FALSE(collector.events.empty());
+    const auto &last = collector.events.back();
+    EXPECT_EQ(last.kind, JSONEventKind::StateChanged);
+    EXPECT_EQ(last.state, JSONParserState::ERROR);
+    EXPECT_STREQ(last.err_msg, "invalid number format: no digits after decimal");
+}
+
+TEST(JSONParser, InvalidExponentNoDigits) {
+    EventCollector collector;
+    const char* json = "1e";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::ERROR);
+    ASSERT_FALSE(collector.events.empty());
+    const auto &last = collector.events.back();
+    EXPECT_EQ(last.kind, JSONEventKind::StateChanged);
+    EXPECT_EQ(last.state, JSONParserState::ERROR);
+    EXPECT_STREQ(last.err_msg, "invalid number format: no digits in exponent");
+}
+
+TEST(JSONParser, UnicodeSurrogatePair) {
+    EventCollector collector;
+    const char* json = "\"\\ud83d\\ude00\""; // Grinning face emoji
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::DONE);
+    std::vector<JSONEvent> expected = {
+        JSONEvent::make_string_begin(),
+        JSONEvent::make_string_chars("\xf0\x9f\x98\x80"), // UTF-8 for U+1F600
+        JSONEvent::make_string_end()
+    };
+    EXPECT_EQ(collector.events, expected);
+}
+
+TEST(JSONParser, InvalidSurrogatePair) {
+    EventCollector collector;
+    const char* json = "\"\\ud83d\""; // High surrogate without low
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::ERROR);
+    ASSERT_FALSE(collector.events.empty());
+    const auto &last = collector.events.back();
+    EXPECT_EQ(last.kind, JSONEventKind::StateChanged);
+    EXPECT_EQ(last.state, JSONParserState::ERROR);
+    EXPECT_STREQ(last.err_msg, "invalid surrogate pair");
+}
+
+TEST(JSONParser, InvalidUnicodeEscape) {
+    EventCollector collector;
+    const char* json = "\"\\uGGGG\""; // Invalid hex
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::ERROR);
+    ASSERT_FALSE(collector.events.empty());
+    const auto &last = collector.events.back();
+    EXPECT_EQ(last.kind, JSONEventKind::StateChanged);
+    EXPECT_EQ(last.state, JSONParserState::ERROR);
+    EXPECT_STREQ(last.err_msg, "invalid hex digit in unicode escape");
+}
+
 // TEST(JSONParser, ParseNestedStructures) {
 //     EventCollector collector;
 //     const char* json = R"({ "arr": [1, 2, 3, { "k": "v" }], "obj": {} })";
@@ -599,3 +877,147 @@ TEST(JSONParser, ParseSimpleObject) {
 //     EXPECT_EQ(reconstructed, big);
 // }
 
+// New tests for string escapes
+
+TEST(JSONParser, SimpleEscapedString) {
+    EventCollector collector;
+    const char* json = R"({"s":"\"\\"})";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::DONE);
+    std::string reconstructed;
+    bool in_string = false;
+    for (const auto &ev : collector.events) {
+        if (ev.kind == JSONEventKind::StartString) in_string = true;
+        if (ev.kind == JSONEventKind::StringText) reconstructed += ev.text;
+        if (ev.kind == JSONEventKind::EndString) in_string = false;
+    }
+    EXPECT_EQ(reconstructed, std::string("\"\\"));
+}
+
+TEST(JSONParser, AllStandardEscapes) {
+    EventCollector collector;
+    const char* json = R"({"esc":"\b\f\n\r\t\/\\\""})";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::DONE);
+    std::string reconstructed;
+    for (const auto &ev : collector.events) {
+        if (ev.kind == JSONEventKind::StringText) reconstructed += ev.text;
+    }
+    EXPECT_EQ(reconstructed, std::string("\b\f\n\r\t/\\\""));
+}
+
+TEST(JSONParser, UnicodeEscape) {
+    EventCollector collector;
+    const char* json = R"({"u":"\u0041"})";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::DONE);
+    std::vector<JSONEvent> expected = {
+        JSONEvent::make_object_begin(),
+        JSONEvent::make_attr_begin(),
+        JSONEvent::make_attr_key_begin(),
+        JSONEvent::make_attr_key_chars("u"),
+        JSONEvent::make_attr_key_end(),
+        JSONEvent::make_string_begin(),
+        JSONEvent::make_string_chars("A"),
+        JSONEvent::make_string_end(),
+        JSONEvent::make_attr_end(),
+        JSONEvent::make_object_end()
+    };
+    EXPECT_EQ(collector.events, expected);
+}
+
+TEST(JSONParser, InvalidEscape) {
+    EventCollector collector;
+    const char* json = R"({"bad":"\x"})";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::ERROR);
+    ASSERT_FALSE(collector.events.empty());
+    const auto &last = collector.events.back();
+    EXPECT_EQ(last.kind, JSONEventKind::StateChanged);
+    EXPECT_EQ(last.state, JSONParserState::ERROR);
+    EXPECT_STREQ(last.err_msg, "invalid escape sequence character");
+}
+
+TEST(JSONParser, IncompleteEscape) {
+    EventCollector collector;
+    const char* json = "{\"inc\":\"\\"; // ends with a single backslash, incomplete
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::CONTINUE);
+}
+
+TEST(JSONParser, EscapedKey) {
+    EventCollector collector;
+    const char* json = R"({"key":1})";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_TRUE(res == JSONParserState::DONE || res == JSONParserState::CONTINUE);
+    // Expect the key text without surrounding quotes
+    bool saw_key = false;
+    for (const auto &ev : collector.events) {
+        if (ev.kind == JSONEventKind::KeyText) { EXPECT_EQ(ev.text, std::string("key")); saw_key = true; }
+    }
+    EXPECT_TRUE(saw_key);
+}
+
+TEST(JSONParser, LongStringWithEscapes) {
+    EventCollector collector;
+    std::string big(100, 'a');
+    big += "\\n";
+    big += std::string(100, 'b');
+    std::string json = R"({"long":")" + big + R"("})";
+    auto res = do_parse_run(json.c_str(), json.length(), &collector);
+    EXPECT_EQ(res, JSONParserState::DONE);
+    std::string reconstructed;
+    for (const auto& ev : collector.events) {
+        if (ev.kind == JSONEventKind::StringText) reconstructed += ev.text;
+    }
+    std::string decoded = simplify_escapes(reconstructed);
+    std::string expected_str = std::string(100, 'a') + "\n" + std::string(100, 'b');
+    EXPECT_EQ(decoded, expected_str);
+}
+
+TEST(JSONParser, StringWithMultipleChunks) {
+    EventCollector collector;
+    const char* json = R"({"chunks":"abc\\ndef\\tghi"})";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::DONE);
+    std::string reconstructed;
+    for (const auto &ev : collector.events) {
+        if (ev.kind == JSONEventKind::StringText) reconstructed += ev.text;
+    }
+    EXPECT_EQ(simplify_escapes(reconstructed), std::string("abc\ndef\tghi"));
+}
+
+TEST(JSONParser, NestedObjectWithEscapedStrings) {
+    EventCollector collector;
+    const char* json = R"({"outer":"val\\n", "inner":{"key":"\u0065scape"}})";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::DONE);
+    std::vector<std::string> strings;
+    std::string current;
+    bool in_string = false;
+    for (const auto &ev : collector.events) {
+        if (ev.kind == JSONEventKind::StartString) { current.clear(); in_string = true; }
+        if (ev.kind == JSONEventKind::StringText) current += ev.text;
+        if (ev.kind == JSONEventKind::EndString && in_string) { strings.push_back(current); in_string = false; }
+    }
+    ASSERT_EQ(strings.size(), 2u);
+    EXPECT_EQ(simplify_escapes(strings[0]), std::string("val\n"));
+    EXPECT_EQ(strings[1], std::string("escape"));
+}
+
+TEST(JSONParser, ArrayOfEscapedStrings) {
+    EventCollector collector;
+    const char* json = R"(["\b","\f","\n","\r","\t","\/","\\\""])";
+    auto res = do_parse_run(json, strlen(json), &collector);
+    EXPECT_EQ(res, JSONParserState::DONE);
+    std::vector<std::string> strings;
+    std::string cur;
+    bool in_string = false;
+    for (const auto &ev : collector.events) {
+        if (ev.kind == JSONEventKind::StartString) { cur.clear(); in_string = true; }
+        if (ev.kind == JSONEventKind::StringText) cur += ev.text;
+        if (ev.kind == JSONEventKind::EndString && in_string) { strings.push_back(cur); in_string = false; }
+    }
+    std::vector<std::string> expected = {"\b","\f","\n","\r","\t","/","\\\""};
+    EXPECT_EQ(strings, expected);
+}

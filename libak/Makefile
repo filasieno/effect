@@ -13,15 +13,15 @@ ENABLE_PCH ?= yes
 # ------------------------------------------------------------------------------------------------------------------------------
 
 TARGET_ARCH := -march=x86-64-v3
-CXX := ccache clang++
-CXXFLAGS := 
-CXXFLAGS += -fno-exceptions -fno-rtti
-CXXFLAGS += -Wall -Wextra -std=c++2c  
-CXXFLAGS += -fdiagnostics-color=always 
-CXXFLAGS += -mavx2 -mbmi -mbmi2 -fPIC
-CXXFLAGS += $(TARGET_ARCH)
-CXXFLAGS += -I$(source_dir)
-CXXFLAGS += -I$(test_dir)
+CXX         := ccache clang++
+CXXFLAGS    := 
+CXXFLAGS    += -fno-exceptions -fno-rtti
+CXXFLAGS    += -Wall -Wextra -std=c++2c  
+CXXFLAGS    += -fdiagnostics-color=always 
+CXXFLAGS    += -mavx2 -mbmi -mbmi2 -fPIC
+CXXFLAGS    += $(TARGET_ARCH)
+CXXFLAGS    += -I$(source_dir)
+CXXFLAGS    += -I$(test_dir)
 
 # Dependency flags
 DEPFLAGS := -MMD -MP
@@ -197,6 +197,7 @@ test:: test_storage
 # ------------------------------------------------------------------------------------------------------------------------------
 # Individual test targets
 # ------------------------------------------------------------------------------------------------------------------------------
+
 test_base: $(build_dir)/test_base
 	$(run_test)
 

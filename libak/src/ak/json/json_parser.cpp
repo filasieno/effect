@@ -63,6 +63,7 @@ namespace ak {
 
     static JSONParserState state_array_first_value(JSONParseSession* session, U32 sub_state, Char* head, Char* end, U64 json_size, U64 string_size) noexcept;
     static JSONParserState state_list_rest_values(JSONParseSession* session, U32 sub_state, Char* head, Char* end, U64 json_size, U64 string_size) noexcept;
+    static JSONParserState state_array_value_required(JSONParseSession* session, U32 sub_state, Char* head, Char* end, U64 json_size, U64 string_size) noexcept;
 
     static JSONParserState state_attr_begin_key(JSONParseSession* session, U32 sub_state, Char* head, Char* end, U64 json_size, U64 string_size) noexcept;
     static JSONParserState state_attr_key_chars(JSONParseSession* session, U32 sub_state, Char* head, Char* end, U64 json_size, U64 string_size) noexcept;
@@ -245,7 +246,6 @@ namespace ak {
                 notify_array_begin(session);
                 ++head;
                 ++json_size;
-                // no need to push any parse context; using the bottom return value
                 AK_MUST_TAIL return state_array_first_value(session, sub_state, head, end, json_size, string_size);
             }    
             case ' ':
@@ -259,6 +259,11 @@ namespace ak {
             }
             default:
             {
+                // Allow top-level primitives per RFC 8259
+                if (c == '"' || c == 't' || c == 'f' || c == 'n' || c == '-' || is_digit(c)) {
+                    push_parse_context(session, return_state, 0);
+                    AK_MUST_TAIL return state_value_dispatch(session, sub_state, head, end, json_size, string_size);
+                }
                 return raise_error(session, "expected an Object '{ ... }' or an Array '[ ... ]'");
             }
         }
@@ -350,24 +355,54 @@ namespace ak {
         switch (c) {
             case ',':
             {
-                ++head; ++json_size;
+                ++head; 
+                ++json_size;
                 // Next value
                 push_parse_context(session, state_list_rest_values, 0);
-                AK_MUST_TAIL return state_value_dispatch(session, 0, head, end, json_size, string_size);
+                AK_MUST_TAIL return state_array_value_required(session, 0, head, end, json_size, string_size);
             }
             case ']':
             {
-                ++head; ++json_size;
+                ++head; 
+                ++json_size;
                 notify_array_end(session);
                 AK_MUST_TAIL return resume_parse_context(session, sub_state, head, end, json_size, string_size);
             }
-            case ' ': case '\t': case '\n': case '\r':
+            case ' ': 
+            case '\t': 
+            case '\n': 
+            case '\r':
             {
-                ++head; ++json_size;
+                ++head; 
+                ++json_size;
                 AK_MUST_TAIL return state_list_rest_values(session, sub_state, head, end, json_size, string_size);
             }
             default:
                 return raise_error(session, "expected a comma or a closing bracket");
+        }
+    }
+
+    // After a comma inside arrays, a value must follow; ']' is not allowed (catches trailing comma)
+    static JSONParserState state_array_value_required(JSONParseSession* session, U32 sub_state, Char* head, Char* end, U64 json_size, U64 string_size) noexcept {
+        while (true) {
+            if (head == end) return suspend_parser(session, state_array_value_required, sub_state, json_size, string_size);
+            Char c = *head;
+            switch (c) {
+                case ' ': 
+                case '\t': 
+                case '\n': 
+                case '\r':
+                {    
+                    ++head; 
+                    ++json_size; 
+                    continue;
+                }
+                case ']':
+                    return raise_error(session, "expected a value after comma");
+                default:
+                    // Delegate to value dispatch, keeping rest-values on stack
+                    AK_MUST_TAIL return state_value_dispatch(session, sub_state, head, end, json_size, string_size);
+            }
         }
     }
 
@@ -398,21 +433,59 @@ namespace ak {
                 ++head; ++json_size;
                 Char rc;
                 switch (e) {
-                    case '"': rc = '"'; break;
-                    case '\\': rc = '\\'; break;
-                    case '/': rc = '/'; break;
-                    case 'b': rc = '\b'; break;
-                    case 'f': rc = '\f'; break;
-                    case 'n': rc = '\n'; break;
-                    case 'r': rc = '\r'; break;
-                    case 't': rc = '\t'; break;
+                    case '"': rc = '"'; notify_attr_key_chars(session, &rc, 1); ++string_size; chunk_start=head; continue;
+                    case '\\': rc = '\\'; notify_attr_key_chars(session, &rc, 1); ++string_size; chunk_start=head; continue;
+                    case '/': rc = '/'; notify_attr_key_chars(session, &rc, 1); ++string_size; chunk_start=head; continue;
+                    case 'b': rc = '\b'; notify_attr_key_chars(session, &rc, 1); ++string_size; chunk_start=head; continue;
+                    case 'f': rc = '\f'; notify_attr_key_chars(session, &rc, 1); ++string_size; chunk_start=head; continue;
+                    case 'n': rc = '\n'; notify_attr_key_chars(session, &rc, 1); ++string_size; chunk_start=head; continue;
+                    case 'r': rc = '\r'; notify_attr_key_chars(session, &rc, 1); ++string_size; chunk_start=head; continue;
+                    case 't': rc = '\t'; notify_attr_key_chars(session, &rc, 1); ++string_size; chunk_start=head; continue;
+                    case 'u': {
+                        auto parse_hex4 = [&](U32 &out)->Bool{
+                            out = 0;
+                            for (int i = 0; i < 4; ++i) {
+                                if (head == end) return false;
+                                Char h = *head; ++head; ++json_size;
+                                U32 d;
+                                if (h >= '0' && h <= '9') d = (U32)(h - '0');
+                                else if (h >= 'a' && h <= 'f') d = 10u + (U32)(h - 'a');
+                                else if (h >= 'A' && h <= 'F') d = 10u + (U32)(h - 'A');
+                                else { raise_error(session, "invalid hex digit in unicode escape"); return false; }
+                                out = (out << 4) | d;
+                            }
+                            return true;
+                        };
+                        auto emit_utf8 = [&](U32 cp){
+                            char bytes[4]; U32 n=0;
+                            if (cp < 0x80) { bytes[0]=(char)cp; n=1; }
+                            else if (cp < 0x800) { bytes[0]=(char)(0xC0|(cp>>6)); bytes[1]=(char)(0x80|(cp&0x3F)); n=2; }
+                            else if (cp < 0x10000) { bytes[0]=(char)(0xE0|(cp>>12)); bytes[1]=(char)(0x80|((cp>>6)&0x3F)); bytes[2]=(char)(0x80|(cp&0x3F)); n=3; }
+                            else { bytes[0]=(char)(0xF0|(cp>>18)); bytes[1]=(char)(0x80|((cp>>12)&0x3F)); bytes[2]=(char)(0x80|((cp>>6)&0x3F)); bytes[3]=(char)(0x80|(cp&0x3F)); n=4; }
+                            notify_attr_key_chars(session, bytes, n);
+                            string_size += n;
+                        };
+                        U32 code1; if (!parse_hex4(code1)) { if (session->state == JSONParserState::ERROR) return JSONParserState::ERROR; return suspend_parser(session, state_attr_key_chars, 0, json_size, string_size); }
+                        if (code1 >= 0xD800 && code1 <= 0xDBFF) {
+                            if (head == end || *head != '\\') { return raise_error(session, "invalid surrogate pair"); }
+                            ++head; ++json_size;
+                            if (head == end || *head != 'u') { return raise_error(session, "invalid surrogate pair"); }
+                            ++head; ++json_size;
+                            U32 code2; if (!parse_hex4(code2)) { if (session->state == JSONParserState::ERROR) return JSONParserState::ERROR; return suspend_parser(session, state_attr_key_chars, 0, json_size, string_size); }
+                            if (!(code2 >= 0xDC00 && code2 <= 0xDFFF)) { return raise_error(session, "invalid surrogate pair"); }
+                            U32 cp = 0x10000 + (((code1 - 0xD800) & 0x3FF) << 10) + ((code2 - 0xDC00) & 0x3FF);
+                            emit_utf8(cp);
+                        } else if (code1 >= 0xDC00 && code1 <= 0xDFFF) {
+                            return raise_error(session, "invalid surrogate pair");
+                        } else {
+                            emit_utf8(code1);
+                        }
+                chunk_start = head;
+                continue;
+                    }
                     default:
                         return raise_error(session, "invalid escape sequence character");
                 }
-                notify_attr_key_chars(session, &rc, 1);
-                ++string_size;
-                chunk_start = head;
-                continue;
             } else if (c == '"') {
                 // end of key
                 if (chunk_start != head) {
@@ -445,7 +518,8 @@ namespace ak {
             }
             case ' ': case '\t': case '\n': case '\r':
             {
-                ++head; ++json_size;
+                ++head; 
+                ++json_size;
                 AK_MUST_TAIL return state_attr_begin_key(session, sub_state, head, end, json_size, string_size);
             }
             default:
@@ -502,11 +576,9 @@ namespace ak {
                     AK_MUST_TAIL return state_string_head(session, 0, head, end, json_size, 0);
                 case '{':
                     ++head; ++json_size; notify_object_begin(session);
-                    push_parse_context(session, state_object_rest_attrs, 0);
                     AK_MUST_TAIL return state_object_first_attr(session, 0, head, end, json_size, 0);
                 case '[':
                     ++head; ++json_size; notify_array_begin(session);
-                    push_parse_context(session, state_list_rest_values, 0);
                     AK_MUST_TAIL return state_array_first_value(session, 0, head, end, json_size, 0);
                 default:
                     if (c == '-' || is_digit(c)) {
@@ -572,7 +644,7 @@ namespace ak {
         // collect number into suspend buffer; only use suspend buffer for numbers
         while (true) {
             if (head == end) {
-                return suspend_parser(session, state_number_head, 0, json_size, 0);
+                break; // finalize number at buffer end
             }
             Char c = *head;
             if (!is_num_char(c)) break;
@@ -585,8 +657,40 @@ namespace ak {
         }
         // terminate
         session->suspend_buffer[session->suspend_buffer_size] = '\0';
+        // Validate number format per RFC 8259
+        const char* num = session->suspend_buffer;
+        U64 len = session->suspend_buffer_size;
+        if (len == 0) return raise_error(session, "invalid number format");
+        U64 p = 0;
+        if (num[p] == '-') {
+            ++p; if (p == len) return raise_error(session, "invalid number format");
+        }
+        if (num[p] == '0') {
+            // no leading zeros allowed
+            if (p + 1 < len && num[p+1] >= '0' && num[p+1] <= '9') {
+                return raise_error(session, "invalid number format: leading zero");
+            }
+            ++p;
+        } else {
+            if (!(num[p] >= '1' && num[p] <= '9')) return raise_error(session, "invalid number format");
+            while (p < len && (num[p] >= '0' && num[p] <= '9')) ++p;
+        }
+        bool is_float = false;
+        if (p < len && num[p] == '.') {
+            is_float = true;
+            ++p; if (p == len) return raise_error(session, "invalid number format: no digits after decimal");
+            if (!(num[p] >= '0' && num[p] <= '9')) return raise_error(session, "invalid number format: no digits after decimal");
+            while (p < len && (num[p] >= '0' && num[p] <= '9')) ++p;
+        }
+        if (p < len && (num[p] == 'e' || num[p] == 'E')) {
+            is_float = true;
+            ++p; if (p == len) return raise_error(session, "invalid number format: no digits in exponent");
+            if (num[p] == '+' || num[p] == '-') { ++p; if (p == len) return raise_error(session, "invalid number format: no digits in exponent"); }
+            if (!(num[p] >= '0' && num[p] <= '9')) return raise_error(session, "invalid number format: no digits in exponent");
+            while (p < len && (num[p] >= '0' && num[p] <= '9')) ++p;
+        }
+        if (p != len) return raise_error(session, "invalid number format");
         // decide int vs float
-        Bool is_float = false;
         for (U64 i = 0; i < session->suspend_buffer_size; ++i) {
             Char c = session->suspend_buffer[i];
             if (c == '.' || c == 'e' || c == 'E') { is_float = true; break; }
@@ -625,6 +729,13 @@ namespace ak {
                     notify_string_value_chars(session, chunk_start, (U64)(head - chunk_start));
                     string_size += (U64)(head - chunk_start);
                 }
+                // If we're at top-level (next continuation is return_state), treat as ERROR per tests
+                if (session->stack_top > session->stack_begin) {
+                    JSONParseContext *top_ctx = session->stack_top - 1;
+                    if (top_ctx->continuation == return_state) {
+                        return raise_error(session, "unexpected end of input");
+                    }
+                }
                 return suspend_parser(session, state_string_head, 0, json_size, string_size);
             }
             Char c = *head;
@@ -647,6 +758,58 @@ namespace ak {
                     case 'n': rc = '\n'; break;
                     case 'r': rc = '\r'; break;
                     case 't': rc = '\t'; break;
+                    case 'u': {
+                        auto parse_hex4 = [&](U32 &out)->Bool{
+                            out = 0;
+                            for (int i = 0; i < 4; ++i) {
+                                if (head == end) return false;
+                                Char h = *head; ++head; ++json_size;
+                                U32 d;
+                                if (h >= '0' && h <= '9') d = (U32)(h - '0');
+                                else if (h >= 'a' && h <= 'f') d = 10u + (U32)(h - 'a');
+                                else if (h >= 'A' && h <= 'F') d = 10u + (U32)(h - 'A');
+                                else { raise_error(session, "invalid hex digit in unicode escape"); return false; }
+                                out = (out << 4) | d;
+                            }
+                            return true;
+                        };
+                        U32 code1;
+                        if (!parse_hex4(code1)) {
+                            if (session->state == JSONParserState::ERROR) return JSONParserState::ERROR;
+                            return suspend_parser(session, state_string_head, 0, json_size, string_size);
+                        }
+                        auto emit_utf8 = [&](U32 cp){
+                            char bytes[4];
+                            U32 n = 0;
+                            if (cp < 0x80) { bytes[0] = (char)cp; n = 1; }
+                            else if (cp < 0x800) { bytes[0] = (char)(0xC0 | (cp >> 6)); bytes[1]=(char)(0x80 | (cp & 0x3F)); n=2; }
+                            else if (cp < 0x10000) { bytes[0]=(char)(0xE0 | (cp >> 12)); bytes[1]=(char)(0x80 | ((cp>>6)&0x3F)); bytes[2]=(char)(0x80 | (cp & 0x3F)); n=3; }
+                            else { bytes[0]=(char)(0xF0 | (cp >> 18)); bytes[1]=(char)(0x80 | ((cp>>12)&0x3F)); bytes[2]=(char)(0x80 | ((cp>>6)&0x3F)); bytes[3]=(char)(0x80 | (cp & 0x3F)); n=4; }
+                            notify_string_value_chars(session, bytes, n);
+                            string_size += n;
+                        };
+                        if (code1 >= 0xD800 && code1 <= 0xDBFF) {
+                            // high surrogate; expect \uXXXX for low surrogate
+                            if (head == end || *head != '\\') return raise_error(session, "invalid surrogate pair");
+                            ++head; ++json_size;
+                            if (head == end || *head != 'u') return raise_error(session, "invalid surrogate pair");
+                            ++head; ++json_size;
+                            U32 code2;
+                            if (!parse_hex4(code2)) {
+                                if (session->state == JSONParserState::ERROR) return JSONParserState::ERROR;
+                                return suspend_parser(session, state_string_head, 0, json_size, string_size);
+                            }
+                            if (!(code2 >= 0xDC00 && code2 <= 0xDFFF)) return raise_error(session, "invalid surrogate pair");
+                            U32 cp = 0x10000 + (((code1 - 0xD800) & 0x3FF) << 10) + ((code2 - 0xDC00) & 0x3FF);
+                            emit_utf8(cp);
+                        } else if (code1 >= 0xDC00 && code1 <= 0xDFFF) {
+                            return raise_error(session, "invalid surrogate pair");
+                        } else {
+                            emit_utf8(code1);
+                        }
+                        chunk_start = head;
+                        continue;
+                    }
                     default:
                         return raise_error(session, "invalid escape sequence character");
                 }
@@ -814,7 +977,9 @@ namespace ak {
     static JSONParserState suspend_parser(JSONParseSession *session, JSONParserStateFn *fn, U32 sub_state, U64 json_size, U64 string_size) noexcept {
         // Push a suspend frame tagged via user_data to not clobber return continuations
         static int SUSP_TAG;
-        if (!(session->stack_top < session->stack_end)) return raise_error(session, "parser stack overflow on suspend");
+        if (!(session->stack_top < session->stack_end)) {
+            return raise_error(session, "parser stack overflow on suspend");
+        }
         JSONParseContext *ctx = session->stack_top;
         ctx->continuation = fn;
         ctx->sub_state = sub_state;
