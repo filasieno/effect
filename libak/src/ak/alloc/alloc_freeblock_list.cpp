@@ -92,7 +92,7 @@ namespace ak { namespace priv {
             {
                // Unreachable
                std::abort();
-               return UINT_MAX;
+               return (U32)~0;
             }
         }
     }

@@ -8,7 +8,6 @@
   outputs = { self, nixpkgs }:
   let
     system = "x86_64-linux";
-
     
     akOverlay = self: super: {
       llvmPackages = super.llvmPackages_latest;
@@ -17,7 +16,6 @@
       };
       libcxx = super.llvmPackages.libcxx;      
     };
-
 
     pkgs = import nixpkgs {
       inherit system;
@@ -30,7 +28,6 @@
       stdenv = pkgs.llvmPackages.stdenv;
       preConfigure = cmakeFlagsArray;
     });
-
 
     ak_gbenchmark = pkgs.gbenchmark.overrideAttrs (old: {
       stdenv = pkgs.llvmPackages.stdenv;
@@ -59,14 +56,13 @@
           clang 
           clang-tools          
           liburing.dev
-          valgrind 
-          pkgconf
+          valgrind
           ccache
         ] ++ [ak_gtest ak_gbenchmark];          
 
         buildInputs = with pkgs; [
           liburing
-          llvmPackages.libcxx 
+          llvmPackages.libcxx
         ];
 
         propagatedBuildInputs = with pkgs; [
@@ -144,7 +140,6 @@
             nativeBuildInputs = with pkgs; [
               lldb
               liburing.dev            
-              inotify-tools  
               doxygen
               valgrind 
               graphviz
@@ -159,7 +154,7 @@
             
             buildInputs = with pkgs; [
               liburing
-              llvmPackages.libcxx 
+              llvmPackages.libcxx
             ];
 
             shellHook = ''
@@ -169,9 +164,9 @@
               export COMPILER="clang++"
               export CC="clang++"
               export CXX="clang++"
-              export PS1='\[\033[1;33m\](libak)\[\033[0m\] \[\033[1;32m\][\w]\[\033[0m\] $ '
-              export PKG_CONFIG_PATH="${pkgs.gtest.dev}/lib/pkgconfig:$PKG_CONFIG_PATH"
-              export PKG_CONFIG_PATH="${pkgs.gbenchmark}/lib/pkgconfig:$PKG_CONFIG_PATH"
+              export CPATH="${pkgs.gtest.dev}/include:${pkgs.gbenchmark}/include:${pkgs.liburing.dev}/include:$CPATH"
+              export LIBRARY_PATH="${pkgs.gtest}/lib:${pkgs.gbenchmark}/lib:${pkgs.liburing}/lib:$LIBRARY_PATH"
+              export PS1='\[\033[1;33m\](libak)\[\033[0m\] \[\033[1;32m\][\w]$\[\033[0m\] '
               export PROJECT_ROOT=$(git rev-parse --show-toplevel)
 
               echo "liburing inc   : ${pkgs.liburing.dev}" 
@@ -185,7 +180,6 @@
               echo "gbenchmark lib : ${pkgs.gbenchmark}/lib"
               
               cd $PROJECT_ROOT/libak
-              pwd
             '';
           };
         };

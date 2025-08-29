@@ -2,6 +2,16 @@
 BasedOnStyle: LLVM
 IndentWidth: 4
 UseTab: Never
-ColumnLimit: 120
+ColumnLimit: 256
 SortIncludes: false
+
+BraceWrapping:
+  AfterFunction: true           # { on next line for functions
+  AfterStruct: true             # { on next line for structs/classes
+  AfterClass: true              # Similar to structs
+  AfterControlStatement: false  
+  AfterEnum: true               
+  AfterNamespace: true    
+  BeforeElse: false             # } else { on separate lines
+  IndentBraces: false           # Don't indent the braces themselves
 ---

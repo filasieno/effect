@@ -1,4 +1,5 @@
 #include "ak/alloc/alloc.hpp" // IWYU pragma: keep
+#include <cstring>
 
 namespace ak { 
     constexpr Size MAX_SMALL_BIN_SIZE = 2048;
@@ -27,7 +28,7 @@ namespace ak {
         AK_ASSERT(mem != nullptr);
         AK_ASSERT(size >= 4096);
 
-        memset((Void*)at, 0, sizeof(AllocTable));
+        std::memset((Void*)at, 0, sizeof(AllocTable));
         
         // Establish heap boundaries
         Char* heap_begin = (Char*)(mem);

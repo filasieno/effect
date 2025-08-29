@@ -46,7 +46,7 @@ namespace ak { namespace priv {
 // Allocator convenience wrappers used by runtime
 namespace ak {
     Void* try_alloc_mem(Size sz) noexcept;
-    Void  free_mem(Void* ptr, U32 side_coalesching = UINT_MAX) noexcept;
+    Void  free_mem(Void* ptr, U32 side_coalesching = (U32)~0) noexcept;
     I32   defragment_mem(U64 millis_time_budget = ~0ull) noexcept;
 }
 

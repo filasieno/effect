@@ -1,4 +1,5 @@
 #include "ak/alloc/alloc.hpp" // IWYU pragma: keep
+#include <cstring>
 
 namespace ak { namespace priv { 
 

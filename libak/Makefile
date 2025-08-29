@@ -1,115 +1,253 @@
 #!/usr/bin/make
 
-include x86_64-linux-clang.mk
-
-build_dir := build
+build_dir  := build
 source_dir := src
-test_dir := test
+test_dir   := test
+
+# Default values
+CONFIG ?= debug
+ENABLE_PCH ?= yes
+
+# ------------------------------------------------------------------------------------------------------------------------------
+# Configuraion
+# ------------------------------------------------------------------------------------------------------------------------------
 
 TARGET_ARCH := -march=x86-64-v3
 CXX := ccache clang++
+CXXFLAGS := 
+CXXFLAGS += -fno-exceptions -fno-rtti
+CXXFLAGS += -Wall -Wextra -std=c++2c  
+CXXFLAGS += -fdiagnostics-color=always 
+CXXFLAGS += -mavx2 -mbmi -mbmi2 -fPIC
+CXXFLAGS += $(TARGET_ARCH)
+CXXFLAGS += -I$(source_dir)
+CXXFLAGS += -I$(test_dir)
 
-CXXFLAGS := -Wall -Wextra
-CXXFLAGS += -std=c++2c -fno-exceptions -fno-rtti
-CXXFLAGS += -fdiagnostics-color=always
-CXXFLAGS += -mavx2 -mbmi -mbmi2
-CXXFLAGS += -fPIC
- 
-LDFLAGS :=
-LDFLAGS += $(shell pkgconf gtest gtest_main benchmark benchmark_main --libs)
+# Dependency flags
+DEPFLAGS := -MMD -MP
 
-LDLIBS :=
-CPPFLAGS := -I$(call shell.quote.var,$(source_dir))
-CPPFLAGS += $(shell pkgconf gtest gtest_main benchmark benchmark_main --cflags)
-
-
+# Configuration
 ifeq ($(CONFIG),debug)
-CXXFLAGS += -g -O0
+  CXXFLAGS += -g -O1
 else ifeq ($(CONFIG),release)
-CXXFLAGS += -O3 -flto
-CPPFLAGS += -DNDEBUG
-LDFLAGS  += -flto
+  CXXFLAGS += -O3 -flto
+  CPPFLAGS += -DNDEBUG
+  LDFLAGS  += -flto
 endif
 
+# Precompiled headers
+ifeq ($(ENABLE_PCH),yes)
+  PCH = $(build_dir)/precompiled.pch
+  PCH_FLAG = -include-pch $(PCH)
+else
+  PCH =
+  PCH_FLAG =
+endif
 
-#------------------------------------------
-$(mk.load.setup)
-#------------------------------------------
+# Valgrind support
+ifeq ($(RUN_WITH_VALGRIND),yes)
+  VALGRIND_CMD := valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes
+else
+  VALGRIND_CMD :=
+endif
 
+# ------------------------------------------------------------------------------------------------------------------------------
+# Pattern Rules
+# ------------------------------------------------------------------------------------------------------------------------------
+
+$(build_dir)/%.o: src/%.cpp $(PCH) | $(build_dir)
+	@mkdir -p $(@D)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(PCH_FLAG) $(DEPFLAGS) -c $< -o $@
+
+$(build_dir)/test/%.o: test/%.cpp $(PCH) | $(build_dir)
+	@mkdir -p $(@D)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(PCH_FLAG) $(DEPFLAGS) -c $< -o $@
+
+# Directories
+$(build_dir):
+	mkdir -p $@
+
+# Doxygen
 .PHONY: doc
-doc:: doxygen
-
+doc: doxygen
 
 .PHONY: doxygen
-doxygen: | $(build_dir)/doc/.
+doxygen: | $(build_dir)/doc
 	doxygen Doxyfile
 
+$(build_dir)/doc:
+	mkdir -p $@
 
+ifneq ($(PCH),)
+$(PCH): $(source_dir)/precompiled.hpp | $(build_dir)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -x c++-header $< -o $@
+endif
 
+# ==============================================================================================================================
+# Modules 
+# ==============================================================================================================================
 
-libak_base.sources := $(shell find $(source_dir)/ak/base -name "*.cpp")
-$(call template.eval,$(call template-lib,libak_base))
+# Notes:
+#   $@ is the target
+#   $^ is the dependencies
+#   $< is the first dependency
+#   $$ is the first argument of the target
 
+# ------------------------------------------------------------------------------------------------------------------------------
+# Base
+# ------------------------------------------------------------------------------------------------------------------------------
 
-test_base.sources := $(shell find $(test_dir)/base -name "*.cpp")
-test_base.LDFLAGS := -L$(call std.dir,$(libak_base.lib-path))
-test_base.LDLIBS := -lgtest_main -lgtest -lak_base
-$(call template.eval,$(call template-test,test_base))
-$(test_base.test-path): $(libak_base.lib-path)
+base_sources := $(shell find $(source_dir)/ak/base -name "*.cpp")
+base_objects := $(patsubst $(source_dir)/%.cpp, $(build_dir)/%.o, $(base_sources))
+$(build_dir)/libak_base.a: $(base_objects)
+	ar rcs $@ $^
 
+test_base_sources := $(shell find $(test_dir)/base -name "*.cpp")
+test_base_objects := $(patsubst $(test_dir)/%.cpp, $(build_dir)/test/%.o, $(test_base_sources))
+$(build_dir)/test_base: $(test_base_objects) $(build_dir)/libak_base.a
+	$(CXX) $(LDFLAGS) -L$(build_dir) $^ -lgtest_main -lgtest -o $@
 
-libak_alloc.sources := $(shell find $(source_dir)/ak/alloc -name "*.cpp")
-$(call template.eval,$(call template-lib,libak_alloc))
+# ------------------------------------------------------------------------------------------------------------------------------
+# Alloc
+# ------------------------------------------------------------------------------------------------------------------------------
 
-test_alloc.sources := $(shell find $(test_dir)/alloc -name "*.cpp")
-test_alloc.LDFLAGS := -L$(call std.dir,$(libak_base.lib-path)) -L$(call std.dir,$(libak_alloc.lib-path))
-test_alloc.LDLIBS := -lgtest_main -lgtest -lak_base -lak_alloc
-$(call template.eval,$(call template-test,test_alloc))
-$(test_alloc.test-path): $(libak_base.lib-path)
-$(test_alloc.test-path): $(libak_alloc.lib-path)
+alloc_sources := $(shell find $(source_dir)/ak/alloc -name "*.cpp")
+alloc_objects := $(patsubst $(source_dir)/%.cpp, $(build_dir)/%.o, $(alloc_sources))
+$(build_dir)/libak_alloc.a: $(alloc_objects)
+	ar rcs $@ $^
 
+test_alloc_sources := $(shell find $(test_dir)/alloc -name "*.cpp")
+test_alloc_objects := $(patsubst $(test_dir)/%.cpp, $(build_dir)/test/%.o, $(test_alloc_sources))
+$(build_dir)/test_alloc: $(test_alloc_objects) $(build_dir)/libak_base.a $(build_dir)/libak_alloc.a
+	$(CXX) $(LDFLAGS) -L$(build_dir) $^ -lgtest_main -lgtest -o $@
 
+# ------------------------------------------------------------------------------------------------------------------------------
+# Runtime
+# ------------------------------------------------------------------------------------------------------------------------------
 
-libak_runtime.sources := $(shell find $(source_dir)/ak/runtime -name "*.cpp")
-$(call template.eval,$(call template-lib,libak_runtime))
+runtime_sources := $(shell find $(source_dir)/ak/runtime -name "*.cpp")
+runtime_objects := $(patsubst $(source_dir)/%.cpp, $(build_dir)/%.o, $(runtime_sources))
+$(build_dir)/libak_runtime.a: $(runtime_objects)
+	ar rcs $@ $^
 
+test_runtime_sources := $(shell find $(test_dir)/runtime -name "*.cpp")
+test_runtime_objects := $(patsubst $(test_dir)/%.cpp, $(build_dir)/test/%.o, $(test_runtime_sources))
+$(build_dir)/test_runtime: $(test_runtime_objects) $(build_dir)/libak_base.a $(build_dir)/libak_runtime.a $(build_dir)/libak_alloc.a
+	$(CXX) $(LDFLAGS) -L$(build_dir) $^ -lgtest_main -lgtest -luring -o $@
 
-test_runtime.sources := $(shell find $(test_dir)/runtime -name "*.cpp")
-test_runtime.LDFLAGS := -L$(call std.dir,$(libak_base.lib-path)) -L$(call std.dir,$(libak_alloc.lib-path)) -L$(call std.dir,$(libak_runtime.lib-path))
-test_runtime.LDLIBS := -lgtest_main -lgtest -lak_base -lak_alloc -lak_runtime -luring
-$(call template.eval,$(call template-test,test_runtime))
-$(test_runtime.test-path): $(libak_base.lib-path)
-$(test_runtime.test-path): $(libak_alloc.lib-path)
-$(test_runtime.test-path): $(libak_runtime.lib-path)
+# ------------------------------------------------------------------------------------------------------------------------------
+# Sync
+# ------------------------------------------------------------------------------------------------------------------------------
 
+sync_sources := $(shell find $(source_dir)/ak/sync -name "*.cpp")
+sync_objects := $(patsubst $(source_dir)/%.cpp, $(build_dir)/%.o, $(sync_sources))
+$(build_dir)/libak_sync.a: $(sync_objects)
+	ar rcs $@ $^
 
-libak_sync.sources := $(shell find $(source_dir)/ak/sync -name "*.cpp")
-$(call template.eval,$(call template-lib,libak_sync))
+test_sync_sources := $(shell find $(test_dir)/sync -name "*.cpp")
+test_sync_objects := $(patsubst $(test_dir)/%.cpp, $(build_dir)/test/%.o, $(test_sync_sources))
+$(build_dir)/test_sync: $(test_sync_objects) $(build_dir)/libak_base.a $(build_dir)/libak_runtime.a $(build_dir)/libak_alloc.a $(build_dir)/libak_sync.a
+	$(CXX) $(LDFLAGS) -L$(build_dir) $^ -lgtest_main -lgtest -luring -o $@
 
+# ------------------------------------------------------------------------------------------------------------------------------
+# JSON
+# ------------------------------------------------------------------------------------------------------------------------------
 
-test_sync.sources := $(shell find $(test_dir)/sync -name "*.cpp")
-test_sync.LDFLAGS := -L$(call std.dir,$(libak_base.lib-path))
-test_sync.LDFLAGS += -L$(call std.dir,$(libak_alloc.lib-path))
-test_sync.LDFLAGS += -L$(call std.dir,$(libak_runtime.lib-path))
-test_sync.LDFLAGS += -L$(call std.dir,$(libak_sync.lib-path))
-test_sync.LDLIBS := -lak_sync -lak_runtime -lak_alloc -lak_base -luring -lgtest_main -lgtest 
-$(call template.eval,$(call template-test,test_sync))
-$(test_sync.test-path): $(libak_base.lib-path)
-$(test_sync.test-path): $(libak_alloc.lib-path)
-$(test_sync.test-path): $(libak_runtime.lib-path)
-$(test_sync.test-path): $(libak_sync.lib-path)
+json_sources := $(shell find $(source_dir)/ak/json -name "*.cpp")
+json_objects := $(patsubst $(source_dir)/%.cpp, $(build_dir)/%.o, $(json_sources))
+$(build_dir)/libak_json.a: $(json_objects)
+	ar rcs $@ $^
 
+test_json_sources := $(shell find $(test_dir)/json -name "*.cpp")
+test_json_objects := $(patsubst $(test_dir)/%.cpp, $(build_dir)/test/%.o, $(test_json_sources))
+$(build_dir)/test_json: $(test_json_objects) $(build_dir)/libak_base.a $(build_dir)/libak_runtime.a $(build_dir)/libak_alloc.a $(build_dir)/libak_sync.a $(build_dir)/libak_json.a
+	$(CXX) $(LDFLAGS) -L$(build_dir) $^ -lgtest_main -lgtest -luring -o $@
 
+# ------------------------------------------------------------------------------------------------------------------------------
+# Storage
+# ------------------------------------------------------------------------------------------------------------------------------
 
-libak-a.objects := $(libak_base.objects) $(libak_alloc.objects) $(libak_runtime.objects) $(libak_sync.objects)
-libak-a.lib-name := libak
-$(call template.eval,$(call template-lib,libak-a))
-$(libak-a.lib-path): $(libak_base.lib-path) $(libak_alloc.lib-path) $(libak_runtime.lib-path) $(libak_sync.lib-path)
-all:: libak-a
+storage_sources := $(shell find $(source_dir)/ak/storage -name "*.cpp")
+storage_objects := $(patsubst $(source_dir)/%.cpp, $(build_dir)/%.o, $(storage_sources))
+$(build_dir)/libak_storage.a: $(storage_objects)
+	ar rcs $@ $^
 
+test_storage_sources := $(shell find $(test_dir)/storage -name "*.cpp")
+test_storage_objects := $(patsubst $(test_dir)/%.cpp, $(build_dir)/test/%.o, $(test_storage_sources))
+$(build_dir)/test_storage: $(test_storage_objects) $(build_dir)/libak_base.a $(build_dir)/libak_alloc.a $(build_dir)/libak_runtime.a $(build_dir)/libak_sync.a $(build_dir)/libak_json.a $(build_dir)/libak_storage.a
+	$(CXX) $(LDFLAGS) -L$(build_dir) $^ -lgtest_main -lgtest -luring -o $@
 
-libak-so.sources := $(libak_base.sources) $(libak_alloc.sources) $(libak_runtime.sources) $(libak_sync.sources)
-libak-so.lib-name := libak
-libak-so.version := 0.0.1
-$(call template.eval,$(call template-solib,libak-so))
-all:: libak-so
+# ==============================================================================================================================
+# Test
+# ==============================================================================================================================
+
+define run_test
+  @echo "Running $$@"
+  $(VALGRIND_CMD) ./$<
+endef
+
+.PHONY: test
+test:: test_base
+test:: test_alloc
+test:: test_runtime
+test:: test_sync
+test:: test_json
+test:: test_storage
+
+# ------------------------------------------------------------------------------------------------------------------------------
+# Individual test targets
+# ------------------------------------------------------------------------------------------------------------------------------
+test_base: $(build_dir)/test_base
+	$(run_test)
+
+test_alloc: $(build_dir)/test_alloc
+	$(run_test)
+
+test_runtime: $(build_dir)/test_runtime
+	$(run_test)
+
+test_sync: $(build_dir)/test_sync
+	$(run_test)
+
+test_json: $(build_dir)/test_json
+	$(run_test)
+
+test_storage: $(build_dir)/test_storage
+	$(run_test)
+
+# Dependency includes
+all_test_objects := $(test_base_objects) $(test_alloc_objects) $(test_runtime_objects) $(test_sync_objects) $(test_json_objects) $(test_storage_objects)
+all_objects := $(base_objects) $(alloc_objects) $(runtime_objects) $(sync_objects) $(json_objects) $(storage_objects)
+
+-include $(all_objects:.o=.d)
+-include $(all_test_objects:.o=.d)
+
+# ==============================================================================================================================
+# Libraries
+# ==============================================================================================================================
+
+# ------------------------------------------------------------------------------------------------------------------------------
+# static lib
+# ------------------------------------------------------------------------------------------------------------------------------
+
+$(build_dir)/libak.a: $(all_objects)
+	ar rcs $@ $^
+
+# ------------------------------------------------------------------------------------------------------------------------------
+# Shared lib
+# ------------------------------------------------------------------------------------------------------------------------------
+
+$(build_dir)/libak.so: $(all_objects)
+	$(CXX) $(LDFLAGS) -shared -Wl,-soname,libak.so.0 $^ -o $@ -luring
+
+# ==============================================================================================================================
+# Phony
+# ==============================================================================================================================
+
+.PHONY: all
+all: $(build_dir)/libak.a $(build_dir)/libak.so
+
+.PHONY: clean
+clean::
+	rm -rf $(build_dir)
+

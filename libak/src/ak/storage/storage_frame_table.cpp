@@ -58,7 +58,7 @@ void init_frame_table(FrameTable *ft, U32 capacity, AllocTable *at) noexcept {
     U32 free_pool_slot = aligned - 1;
     while (true) {
         FrameEntry *entry = &entries[entry_id];
-        *entry = {0};
+        *entry = FrameEntry();
         entry->pool_index = FrameId(free_pool_slot);
         entry->pool = static_cast<U32>(BufferPool::INVALID);
         ft->free_pool.entries[free_pool_slot] = FrameId(entry_id);

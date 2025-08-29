@@ -1,6 +1,8 @@
 #pragma once
 
+#ifdef AK_ENABLE_IO_URING
 #include <liburing.h>
+#endif
 #include <string_view>  
 #include <source_location>
 
@@ -49,7 +51,7 @@ namespace ak {
         constexpr Bool TRACE_DEBUG_CODE = false;
         constexpr Bool ENABLE_FULL_INVARIANT_CHECKS = true;
 
-        constexpr U64 CACHE_LINE = 64;
+        constexpr U64 CACHE_LINE_SIZE = 64;
 
         struct DLink { DLink* next; DLink* prev; };
 

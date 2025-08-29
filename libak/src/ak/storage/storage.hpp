@@ -7,3 +7,4 @@
 #include "ak/storage/storage_api_priv_inl.hpp" // IWYU pragma: keep
 #include "storage_frame_table.hpp"             // IWYU pragma: keep
 #include "storage_frame_table_inl.hpp"         // IWYU pragma: keep
+#include "storage_page_cache_priv.hpp"         // IWYU pragma: keep

@@ -1,62 +1,10 @@
 #pragma once
 
+#include <ak/storage/storage_api.hpp>
 #include <ak/alloc/alloc.hpp>
 
+
 namespace ak {
-
-    struct FrameId {
-        U32 id;
-
-        explicit FrameId(const U32& id) noexcept : id(id) {}
-        FrameId() noexcept = default;
-        FrameId(const FrameId& other) noexcept = default;
-        FrameId(FrameId&& other) noexcept = default;
-        FrameId& operator=(const FrameId& other) noexcept = default;
-        FrameId& operator=(FrameId&& other) noexcept = default;
-
-        Bool operator==(const FrameId& other) const noexcept { return id == other.id; }
-        Bool operator!=(const FrameId& other) const noexcept { return id != other.id; }
-        Bool operator<(const FrameId& other) const noexcept { return id < other.id; }
-        Bool operator>(const FrameId& other) const noexcept { return id > other.id; }
-        Bool operator<=(const FrameId& other) const noexcept { return id <= other.id; }
-        Bool operator>=(const FrameId& other) const noexcept { return id >= other.id; }
-    };
-
-    struct PageId {
-        U32 id;
-
-        explicit PageId(const U32& id) noexcept : id(id) {}
-        PageId() noexcept = default;
-        PageId(const PageId& other) noexcept = default;
-        PageId(PageId&& other) noexcept = default;
-        PageId& operator=(const PageId& other) noexcept = default;
-        PageId& operator=(PageId&& other) noexcept = default;
-
-        Bool operator==(const PageId& other) const noexcept { return id == other.id; }
-        Bool operator!=(const PageId& other) const noexcept { return id != other.id; }
-        Bool operator<(const PageId& other) const noexcept { return id < other.id; }
-        Bool operator>(const PageId& other) const noexcept { return id > other.id; }
-        Bool operator<=(const PageId& other) const noexcept { return id <= other.id; }
-        Bool operator>=(const PageId& other) const noexcept { return id >= other.id; }
-    };
-
-    struct VPageId {
-        U32 id;
-
-        explicit VPageId(const U32& id) noexcept : id(id) {}
-        VPageId() noexcept = default;
-        VPageId(const VPageId& other) noexcept = default;
-        VPageId(VPageId&& other) noexcept = default;
-        VPageId& operator=(const VPageId& other) noexcept = default;
-        constexpr VPageId& operator=(VPageId&& other) noexcept = default;
-
-        Bool operator==(const VPageId& other) const noexcept { return id == other.id; }
-        Bool operator!=(const VPageId& other) const noexcept { return id != other.id; }
-        Bool operator<(const VPageId& other) const noexcept { return id < other.id; }
-        Bool operator>(const VPageId& other) const noexcept { return id > other.id; }
-        Bool operator<=(const VPageId& other) const noexcept { return id <= other.id; }
-        Bool operator>=(const VPageId& other) const noexcept { return id >= other.id; }
-    };
 
     enum class BufferPool {
         INVALID = 0,
@@ -82,7 +30,6 @@ namespace ak {
         U32      count;
         U32      capacity;
     };
-
 
     struct FrameTable {
         FrameEntry* entries;
