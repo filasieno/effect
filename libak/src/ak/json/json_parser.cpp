@@ -87,12 +87,10 @@ static Void notify_state_changed(JSONParseSession *session) noexcept;
 static Void notify_object_begin(JSONParseSession *session) noexcept;
 static Void notify_object_end(JSONParseSession *session) noexcept;
 
-static Void notify_attr_begin(JSONParseSession *session) noexcept;
 static Void notify_attr_key_begin(JSONParseSession *session) noexcept;
 static Void notify_attr_key_end(JSONParseSession *session) noexcept;
 static Void notify_attr_key_chars(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
 static Void notify_key(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
-static Void notify_attr_end(JSONParseSession *session) noexcept;
 
 // Literal Values
 static Void notify_null_value(JSONParseSession *session) noexcept;
@@ -138,10 +136,10 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
 // Public function implementation
 // ==========================================
 
-JSONParseSession *init_json_parse_session(void *buffer, U64 buffer_size, JSONParseSessionConfig *cfg, ParseHandlers *handlers, Void *user_data) noexcept {
+JSONParseSession *init_json_parse_session(void *buffer, U64 buffer_size, JSONParseSessionConfig *cfg, JSONParserCallbackFn* on_event, Void *user_data) noexcept {
     AK_ASSERT(buffer_size >= sizeof(JSONParseSession));
     AK_ASSERT(cfg != nullptr);
-    AK_ASSERT(handlers != nullptr);
+    AK_ASSERT(on_event != nullptr);
 
     if constexpr (priv::IS_DEBUG_MODE) {
         std::memset(buffer, 0, buffer_size);
@@ -163,7 +161,7 @@ JSONParseSession *init_json_parse_session(void *buffer, U64 buffer_size, JSONPar
     session->stack_top = session->stack_begin;
 
     session->config = *cfg;
-    session->handlers = *handlers;
+    session->on_event = on_event;
     session->state = JSONParserState::INITIALIZED;
 
     session->buffer = nullptr;
@@ -207,14 +205,13 @@ static JSONParserState resume_parse_context(JSONParseSession *session, U32 sub_s
 }
 
 // Public API wrappers to match json_api.hpp
-JSONParseSession *init_json_parser(Void *parser_buffer, U64 parser_buffer_size, const JSONParseSessionConfig *cfg, const ParseHandlers *handlers, Void *user_data) noexcept {
+JSONParseSession *init_json_parser(Void *parser_buffer, U64 parser_buffer_size, const JSONParseSessionConfig *cfg, JSONParserCallbackFn* on_event, Void *user_data) noexcept {
     AK_ASSERT(parser_buffer != nullptr);
     AK_ASSERT(cfg != nullptr);
-    AK_ASSERT(handlers != nullptr);
+    AK_ASSERT(on_event != nullptr);
     // We reuse the existing initializer and copy parameters
     JSONParseSessionConfig tmp_cfg = *cfg;
-    ParseHandlers tmp_handlers = *handlers;
-    return init_json_parse_session(parser_buffer, parser_buffer_size, &tmp_cfg, &tmp_handlers, user_data);
+    return init_json_parse_session(parser_buffer, parser_buffer_size, &tmp_cfg, on_event, user_data);
 }
 
 JSONParserState parse_buffer(JSONParseSession *session, Void *buffer, U64 buffer_size) noexcept {
@@ -354,12 +351,10 @@ static JSONParserState state_object_rest_attrs(JSONParseSession *session, U32 su
     case '}': {
         ++head;
         ++json_size;
-        notify_attr_end(session);
         notify_object_end(session);
         AK_MUST_TAIL return resume_parse_context(session, sub_state, head, end, json_size, string_size);
     }
     case ',': {
-        notify_attr_end(session);
         ++head;
         ++json_size;
         AK_MUST_TAIL return state_attr_begin_key(session, sub_state, head, end, json_size, string_size);
@@ -648,7 +643,6 @@ static JSONParserState state_attr_begin_key(JSONParseSession *session, U32 sub_s
     case '"': {
         ++head;
         ++json_size;
-        notify_attr_begin(session);
         push_parse_context(session, state_object_rest_attrs, 0);
         // Pass sub_state=1 to indicate this is a complete key candidate
         AK_MUST_TAIL return state_attr_key_chars(session, 1, head, end, json_size, string_size);
@@ -1036,17 +1030,16 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
 
 // Unified event notification function
 static Void notify_event(JSONParseSession *session, JSONEvent event_type, const JSONEventData *data = nullptr) noexcept {
-    if (session->handlers.on_event != nullptr) {
-        session->handlers.on_event(session, event_type, data);
+    if (session->on_event) {
+        session->on_event(session, event_type, data);
     }
 }
 
 // Parser state changed
 static Void notify_state_changed(JSONParseSession *session) noexcept {
     JSONEventData data = {};
-    data.type = JSONEvent::PARSE_STATE_CHANGED;
-    data.data.state_data.state = session->state;
-    data.data.state_data.err_msg = session->err_msg;
+    data.state_data.state = session->state;
+    data.state_data.err_msg = session->err_msg;
     notify_event(session, JSONEvent::PARSE_STATE_CHANGED, &data);
 }
 
@@ -1059,10 +1052,6 @@ static Void notify_object_end(JSONParseSession *session) noexcept {
     notify_event(session, JSONEvent::OBJECT_END);
 }
 
-static Void notify_attr_begin(JSONParseSession *session) noexcept {
-    notify_event(session, JSONEvent::ATTR_BEGIN);
-}
-
 static Void notify_attr_key_begin(JSONParseSession *session) noexcept {
     notify_event(session, JSONEvent::ATTR_KEY_BEGIN);
 }
@@ -1073,23 +1062,18 @@ static Void notify_attr_key_end(JSONParseSession *session) noexcept {
 
 static Void notify_attr_key_chars(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
     JSONEventData data = {};
-    data.type = JSONEvent::ATTR_KEY_CHARS;
-    data.data.string_data.str = text_buffer;
-    data.data.string_data.len = text_buffer_length;
+    data.string_data.str = text_buffer;
+    data.string_data.len = text_buffer_length;
     notify_event(session, JSONEvent::ATTR_KEY_CHARS, &data);
 }
 
 static Void notify_key(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
     JSONEventData data = {};
-    data.type = JSONEvent::KEY;
-    data.data.string_data.str = text_buffer;
-    data.data.string_data.len = text_buffer_length;
+    data.string_data.str = text_buffer;
+    data.string_data.len = text_buffer_length;
     notify_event(session, JSONEvent::KEY, &data);
 }
 
-static Void notify_attr_end(JSONParseSession *session) noexcept {
-    notify_event(session, JSONEvent::ATTR_END);
-}
 
 // Literal Values
 static Void notify_null_value(JSONParseSession *session) noexcept {
@@ -1098,22 +1082,19 @@ static Void notify_null_value(JSONParseSession *session) noexcept {
 
 static Void notify_bool_value(JSONParseSession *session, Bool value) noexcept {
     JSONEventData data = {};
-    data.type = JSONEvent::BOOL_VALUE;
-    data.data.bool_value = value;
+    data.bool_value = value;
     notify_event(session, JSONEvent::BOOL_VALUE, &data);
 }
 
 static Void notify_int_value(JSONParseSession *session, I64 value) noexcept {
     JSONEventData data = {};
-    data.type = JSONEvent::INT_VALUE;
-    data.data.int_value = value;
+    data.int_value = value;
     notify_event(session, JSONEvent::INT_VALUE, &data);
 }
 
 static Void notify_float_value(JSONParseSession *session, F64 value) noexcept {
     JSONEventData data = {};
-    data.type = JSONEvent::FLOAT_VALUE;
-    data.data.float_value = value;
+    data.float_value = value;
     notify_event(session, JSONEvent::FLOAT_VALUE, &data);
 }
 
@@ -1127,17 +1108,15 @@ static Void notify_string_value_end(JSONParseSession *session) noexcept {
 
 static Void notify_string_value_chars(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
     JSONEventData data = {};
-    data.type = JSONEvent::STRING_VALUE_CHARS;
-    data.data.string_data.str = text_buffer;
-    data.data.string_data.len = text_buffer_length;
+    data.string_data.str = text_buffer;
+    data.string_data.len = text_buffer_length;
     notify_event(session, JSONEvent::STRING_VALUE_CHARS, &data);
 }
 
 static Void notify_string(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
     JSONEventData data = {};
-    data.type = JSONEvent::STRING;
-    data.data.string_data.str = text_buffer;
-    data.data.string_data.len = text_buffer_length;
+    data.string_data.str = text_buffer;
+    data.string_data.len = text_buffer_length;
     notify_event(session, JSONEvent::STRING, &data);
 }
 

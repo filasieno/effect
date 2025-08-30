@@ -36,28 +36,20 @@ namespace ak {
         PARSE_STATE_CHANGED
     };
 
-    struct JSONEventData {
-        JSONEvent type;  // Redundant but helps with type safety
+    union JSONEventData {
+        struct {
+            const Char* str;
+            Size len;
+        } string_data;
 
-        union {
-            struct {
-                const Char* str;
-                Size len;
-            } string_data;
+        Bool bool_value;
+        I64 int_value;
+        F64 float_value;
 
-            Bool bool_value;
-            I64 int_value;
-            F64 float_value;
-
-            struct {
-                JSONParserState state;
-                const Char* err_msg;
-            } state_data;
-        } data;
-    };
-
-    struct ParseHandlers {
-        Void (*on_event)(JSONParseSession* session, JSONEvent event, const JSONEventData* data) = nullptr;
+        struct {
+            JSONParserState state;
+            const Char* err_msg;
+        } state_data;
     };
 
     struct JSONParseContext;    
@@ -65,6 +57,9 @@ namespace ak {
 
     ///\brief Define the Continuation state routine
     using JSONParserStateFn = JSONParserState(JSONParseSession* session, U32 sub_state, Char* head, Char* end, U64 json_size, U64 string_size) noexcept;
+
+    ///\brief Unified event callback function type
+    using JSONParserCallbackFn = Void(JSONParseSession* session, JSONEvent event, const JSONEventData* data) noexcept;
 
     ///\brief The JSON parse context
     struct JSONParseContext {
@@ -86,7 +81,7 @@ namespace ak {
     struct JSONParseSession {
         JSONParseSessionConfig config;              ///< Contains the users configuration parameters
         Void*                  user_data;           ///< User data passed to the handlers
-        ParseHandlers          handlers;            ///< User's installed for this parse session
+        JSONParserCallbackFn*  on_event; ///< Unified event callback
         void*                  parser_buffer;       ///< The buffer that holds the unaligned parser
         U64                    parser_buffer_size;  ///< The size of the buffer that holds the unaligned parser
         
@@ -119,7 +114,7 @@ namespace ak {
     ///\param buffer_size the size of the block of memory that will hold the parser 
     ///\param handlers    the handlers to use
     ///\return The Initialized parse session or nullptr if the session could not be initialized
-    JSONParseSession* init_json_parser(Void* parser_buffer, U64 parser_buffer_size, const JSONParseSessionConfig* cfg, const ParseHandlers* handlers, Void* user_data) noexcept;
+    JSONParseSession* init_json_parser(Void* parser_buffer, U64 parser_buffer_size, const JSONParseSessionConfig* cfg, JSONParserCallbackFn* on_event, Void* user_data) noexcept;
 
     ///\brief Parse the JSON data
     ///\param session The session to parse

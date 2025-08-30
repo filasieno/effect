@@ -29,12 +29,12 @@ struct TestEvent {
     static TestEvent make_object_end() { return {.event_type = ak::JSONEvent::OBJECT_END}; }
     static TestEvent make_array_begin() { return {.event_type = ak::JSONEvent::ARRAY_BEGIN}; }
     static TestEvent make_array_end() { return {.event_type = ak::JSONEvent::ARRAY_END}; }
-    static TestEvent make_attr_begin() { return {.event_type = ak::JSONEvent::ATTR_BEGIN}; }
+    // attr_begin removed
     static TestEvent make_attr_key_begin() { return {.event_type = ak::JSONEvent::ATTR_KEY_BEGIN}; }
     static TestEvent make_attr_key_end() { return {.event_type = ak::JSONEvent::ATTR_KEY_END}; }
     static TestEvent make_attr_key_chars(std::string_view s) { return {.event_type = ak::JSONEvent::ATTR_KEY_CHARS, .text = std::string(s)}; }
     static TestEvent make_key(std::string_view s) { return {.event_type = ak::JSONEvent::KEY, .text = std::string(s)}; }
-    static TestEvent make_attr_end() { return {.event_type = ak::JSONEvent::ATTR_END}; }
+    // attr_end removed
     static TestEvent make_string_begin() { return {.event_type = ak::JSONEvent::STRING_VALUE_BEGIN}; }
     static TestEvent make_string_end() { return {.event_type = ak::JSONEvent::STRING_VALUE_END}; }
     static TestEvent make_string_chars(std::string_view s) { return {.event_type = ak::JSONEvent::STRING_VALUE_CHARS, .text = std::string(s)}; }
@@ -65,10 +65,8 @@ struct TestEvent {
         case ak::JSONEvent::OBJECT_END:
         case ak::JSONEvent::ARRAY_BEGIN:
         case ak::JSONEvent::ARRAY_END:
-        case ak::JSONEvent::ATTR_BEGIN:
         case ak::JSONEvent::ATTR_KEY_BEGIN:
         case ak::JSONEvent::ATTR_KEY_END:
-        case ak::JSONEvent::ATTR_END:
         case ak::JSONEvent::STRING_VALUE_BEGIN:
         case ak::JSONEvent::STRING_VALUE_END:
         case ak::JSONEvent::NULL_VALUE:
@@ -86,7 +84,7 @@ struct EventCollector {
 // decoding helper no longer used
 
 // Unified event handler that pushes events
-void on_json_event(JSONParseSession *session, ak::JSONEvent event, const JSONEventData *data) {
+void on_json_event(JSONParseSession *session, ak::JSONEvent event, const JSONEventData *data) noexcept {
     auto *c = static_cast<EventCollector *>(session->user_data);
     ASSERT_NE(c, nullptr);
 
@@ -104,8 +102,7 @@ void on_json_event(JSONParseSession *session, ak::JSONEvent event, const JSONEve
             c->events.push_back(TestEvent::make_array_end());
             break;
         case ak::JSONEvent::ATTR_BEGIN:
-            c->events.push_back(TestEvent::make_attr_begin());
-            break;
+            break; // removed
         case ak::JSONEvent::ATTR_KEY_BEGIN:
             c->events.push_back(TestEvent::make_attr_key_begin());
             break;
@@ -115,34 +112,33 @@ void on_json_event(JSONParseSession *session, ak::JSONEvent event, const JSONEve
         case ak::JSONEvent::ATTR_KEY_CHARS:
             if (data) {
                 c->events.push_back(TestEvent::make_attr_key_chars(
-                    std::string_view(data->data.string_data.str, data->data.string_data.len)));
+                    std::string_view(data->string_data.str, data->string_data.len)));
             }
             break;
         case ak::JSONEvent::KEY:
             if (data) {
                 c->events.push_back(TestEvent::make_key(
-                    std::string_view(data->data.string_data.str, data->data.string_data.len)));
+                    std::string_view(data->string_data.str, data->string_data.len)));
             }
             break;
         case ak::JSONEvent::ATTR_END:
-            c->events.push_back(TestEvent::make_attr_end());
-            break;
+            break; // removed
         case ak::JSONEvent::NULL_VALUE:
             c->events.push_back(TestEvent::make_null_value());
             break;
         case ak::JSONEvent::BOOL_VALUE:
             if (data) {
-                c->events.push_back(TestEvent::make_bool_value(data->data.bool_value));
+                c->events.push_back(TestEvent::make_bool_value(data->bool_value));
             }
             break;
         case ak::JSONEvent::INT_VALUE:
             if (data) {
-                c->events.push_back(TestEvent::make_integer_value(data->data.int_value));
+                c->events.push_back(TestEvent::make_integer_value(data->int_value));
             }
             break;
         case ak::JSONEvent::FLOAT_VALUE:
             if (data) {
-                c->events.push_back(TestEvent::make_float_value(data->data.float_value));
+                c->events.push_back(TestEvent::make_float_value(data->float_value));
             }
             break;
         case ak::JSONEvent::STRING_VALUE_BEGIN:
@@ -154,29 +150,25 @@ void on_json_event(JSONParseSession *session, ak::JSONEvent event, const JSONEve
         case ak::JSONEvent::STRING_VALUE_CHARS:
             if (data) {
                 c->events.push_back(TestEvent::make_string_chars(
-                    std::string_view(data->data.string_data.str, data->data.string_data.len)));
+                    std::string_view(data->string_data.str, data->string_data.len)));
             }
             break;
         case ak::JSONEvent::STRING:
             if (data) {
                 c->events.push_back(TestEvent::make_string(
-                    std::string_view(data->data.string_data.str, data->data.string_data.len)));
+                    std::string_view(data->string_data.str, data->string_data.len)));
             }
             break;
         case ak::JSONEvent::PARSE_STATE_CHANGED:
             if (data) {
                 c->events.push_back(TestEvent::make_state_changed(
-                    data->data.state_data.state, data->data.state_data.err_msg));
+                    data->state_data.state, data->state_data.err_msg));
             } else {
                 c->events.push_back(TestEvent::make_state_changed(session->state, session->err_msg));
             }
             break;
     }
 }
-
-static ParseHandlers handlers = {
-    .on_event = on_json_event,
-};
 
 static JSONParserState do_parse_run(const char *json_text, U64 json_text_size, EventCollector *collector) {
     static const size_t BUFFER_SIZE = 1024 * 1024;
@@ -192,7 +184,7 @@ static JSONParserState do_parse_run(const char *json_text, U64 json_text_size, E
     if (req_size > BUFFER_SIZE) {
         ADD_FAILURE() << "Insufficient test buffer size";
     }
-    JSONParseSession *session = init_json_parser(BUFFER, BUFFER_SIZE, &cfg, &handlers, (Void *)collector);
+    JSONParseSession *session = init_json_parser(BUFFER, BUFFER_SIZE, &cfg, on_json_event, (Void *)collector);
     EXPECT_NE(session, nullptr);
     return parse_buffer(session, (void *)json_text, json_text_size);
 }
@@ -208,7 +200,7 @@ static JSONParserState do_parse_run_chunks(std::initializer_list<std::string_vie
         .max_string_size = 256,
         .max_depth = 32,
     };
-    JSONParseSession *session = init_json_parser(BUFFER, BUFFER_SIZE, &cfg, &handlers, (Void *)collector);
+    JSONParseSession *session = init_json_parser(BUFFER, BUFFER_SIZE, &cfg, on_json_event, (Void *)collector);
     EXPECT_NE(session, nullptr);
     JSONParserState st = JSONParserState::INVALID;
     for (auto chunk : chunks) {
@@ -234,7 +226,7 @@ TEST(JSONParser, Initialization) {
 
     EventCollector collector;
 
-    JSONParseSession *session = init_json_parser(buffer, BUF_SIZE, &cfg, &handlers, (Void *)&collector);
+    JSONParseSession *session = init_json_parser(buffer, BUF_SIZE, &cfg, on_json_event, (Void *)&collector);
     ASSERT_NE(session, nullptr);
     EXPECT_EQ(session->state, JSONParserState::INITIALIZED);
 }
@@ -373,7 +365,6 @@ TEST(JSONParser, IncompleteStringInObject) {
     EXPECT_EQ(res, JSONParserState::CONTINUE);
     std::vector<TestEvent> expected = {
         TestEvent::make_object_begin(), 
-        TestEvent::make_attr_begin(), 
         TestEvent::make_key("k"), 
         TestEvent::make_string_begin()
     };
@@ -408,26 +399,16 @@ TEST(JSONParser, ParseSimpleObject) {
     EXPECT_EQ(res, JSONParserState::DONE);
     expected.events = {
         TestEvent::make_object_begin(),
-        TestEvent::make_attr_begin(),
         TestEvent::make_key("a"),
         TestEvent::make_integer_value(1),
-        TestEvent::make_attr_end(),
-        TestEvent::make_attr_begin(),
         TestEvent::make_key("b"),
         TestEvent::make_string("x"),
-        TestEvent::make_attr_end(),
-        TestEvent::make_attr_begin(),
         TestEvent::make_key("c"),
         TestEvent::make_bool_value(true),
-        TestEvent::make_attr_end(),
-        TestEvent::make_attr_begin(),
         TestEvent::make_key("d"),
         TestEvent::make_bool_value(false),
-        TestEvent::make_attr_end(),
-        TestEvent::make_attr_begin(),
         TestEvent::make_key("e"),
         TestEvent::make_null_value(),
-        TestEvent::make_attr_end(),
         TestEvent::make_object_end()};
     EXPECT_EQ(collector.events, expected.events);
 }
@@ -453,8 +434,8 @@ TEST(JSONParser, ParseArrayMixedTypes) {
     const char *json = R"([null, true, false, "x", 1, 2.5])";
     auto res = do_parse_run(json, strlen(json), &collector);
     EXPECT_EQ(res, JSONParserState::DONE);
-    std::vector<TestEvent> expected = {TestEvent::make_array_begin(), TestEvent::make_null_value(),     TestEvent::make_bool_value(true), TestEvent::make_bool_value(false),
-                                       TestEvent::make_string("x"),   TestEvent::make_integer_value(1), TestEvent::make_float_value(2.5), TestEvent::make_array_end()};
+    std::vector<TestEvent> expected = {TestEvent::make_array_begin(), TestEvent::make_null_value(), TestEvent::make_bool_value(true), TestEvent::make_bool_value(false),
+                                       TestEvent::make_string("x"), TestEvent::make_integer_value(1), TestEvent::make_float_value(2.5), TestEvent::make_array_end()};
     EXPECT_EQ(collector.events, expected);
 }
 
@@ -484,16 +465,12 @@ TEST(JSONParser, ParseArrayOfObjects) {
     std::vector<TestEvent> expected = {
         TestEvent::make_array_begin(),
         TestEvent::make_object_begin(),
-        TestEvent::make_attr_begin(),
         TestEvent::make_key("a"),
         TestEvent::make_integer_value(1),
-        TestEvent::make_attr_end(),
         TestEvent::make_object_end(),
         TestEvent::make_object_begin(),
-        TestEvent::make_attr_begin(),
         TestEvent::make_key("b"),
         TestEvent::make_string("x"),
-        TestEvent::make_attr_end(),
         TestEvent::make_object_end(),
         TestEvent::make_array_end()
     };
@@ -788,7 +765,7 @@ TEST(JSONParser, UnicodeEscape) {
     auto res = do_parse_run(json, strlen(json), &collector);
     EXPECT_EQ(res, JSONParserState::DONE);
     // We no longer decode; we emit raw validated escapes
-    std::vector<TestEvent> expected = {TestEvent::make_object_begin(), TestEvent::make_attr_begin(), TestEvent::make_key("u"), TestEvent::make_string("\\u0041"), TestEvent::make_attr_end(), TestEvent::make_object_end()};
+    std::vector<TestEvent> expected = {TestEvent::make_object_begin(), TestEvent::make_key("u"), TestEvent::make_string("\\u0041"), TestEvent::make_object_end()};
     EXPECT_EQ(collector.events, expected);
 }
 
