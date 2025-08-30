@@ -71,7 +71,12 @@ static Bool is_digit(Char c) noexcept;
 static JSONParserState raise_error(JSONParseSession *session, const Char *msg) noexcept;
 
 // Shared escape/Unicode helpers
-static inline Bool parse_hex4(Char **phead, Char *end, U64 *pjson_size, U32 *pout) noexcept {
+///\brief Parse exactly 4 hexadecimal digits from a JSON \uXXXX sequence.
+///\details
+/// - Advances head and json_size on success
+/// - Returns false when buffer ends (caller should suspend)
+/// - Signals an error via raise_error(session, ...) on invalid hex digit and returns false
+static inline Bool parse_hex4(JSONParseSession *session, Char **phead, Char *end, U64 *pjson_size, U32 *pout) noexcept {
     Char *head = *phead;
     U64 json_size = *pjson_size;
     U32 out = 0;
@@ -85,7 +90,10 @@ static inline Bool parse_hex4(Char **phead, Char *end, U64 *pjson_size, U32 *pou
         if (h >= '0' && h <= '9') d = (U32)(h - '0');
         else if (h >= 'a' && h <= 'f') d = 10u + (U32)(h - 'a');
         else if (h >= 'A' && h <= 'F') d = 10u + (U32)(h - 'A');
-        else return false;
+        else {
+            (void)raise_error(session, "invalid hex digit in unicode escape");
+            return false;
+        }
         out = (out << 4) | d;
     }
     *phead = head;
@@ -94,18 +102,27 @@ static inline Bool parse_hex4(Char **phead, Char *end, U64 *pjson_size, U32 *pou
     return true;
 }
 
+///\brief Callback type for streaming emission of validated/decoded bytes.
 using EmitFn = Void(JSONParseSession *session, const Char *buf, U64 len);
+
+// UTF-8 encoding constants
+static constexpr U32 UTF8_1_MAX = 0x80U;
+static constexpr U32 UTF8_2_MAX = 0x800U;
+static constexpr U32 SURROGATE_HIGH_START = 0xD800U;
+static constexpr U32 SURROGATE_HIGH_END   = 0xDBFFU;
+static constexpr U32 SURROGATE_LOW_START  = 0xDC00U;
+static constexpr U32 SURROGATE_LOW_END    = 0xDFFFU;
 
 static inline Void emit_utf8_bytes(JSONParseSession *session, U32 cp, EmitFn *emit) {
     char bytes[4];
     U32 n = 0;
-    if (cp < 0x80) {
+    if (cp < UTF8_1_MAX) {
         bytes[0] = (char)cp; n = 1;
-    } else if (cp < 0x800) {
+    } else if (cp < UTF8_2_MAX) {
         bytes[0] = (char)(0xC0 | (cp >> 6));
         bytes[1] = (char)(0x80 | (cp & 0x3F));
         n = 2;
-    } else if (cp < 0x10000) {
+    } else if (cp < 0x10000U) {
         bytes[0] = (char)(0xE0 | (cp >> 12));
         bytes[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
         bytes[2] = (char)(0x80 | (cp & 0x3F));
@@ -569,12 +586,12 @@ static JSONParserState state_attr_key_chars(JSONParseSession *session, U32 sub_s
                 break;
             case 'u': {
                 U32 code1;
-                if (!parse_hex4(&head, end, &json_size, &code1)) {
+                if (!parse_hex4(session, &head, end, &json_size, &code1)) {
                     if (session->state == JSONParserState::ERROR)
                         return JSONParserState::ERROR;
                     return suspend_parser(session, state_attr_key_chars, 0, json_size, string_size);
                 }
-                if (code1 >= 0xD800 && code1 <= 0xDBFF) {
+                if (code1 >= SURROGATE_HIGH_START && code1 <= SURROGATE_HIGH_END) {
                     if (head == end || *head != '\\') {
                         return raise_error(session, "invalid surrogate pair");
                     }
@@ -586,17 +603,17 @@ static JSONParserState state_attr_key_chars(JSONParseSession *session, U32 sub_s
                     ++head;
                     ++json_size;
                     U32 code2;
-                    if (!parse_hex4(&head, end, &json_size, &code2)) {
+                    if (!parse_hex4(session, &head, end, &json_size, &code2)) {
                         if (session->state == JSONParserState::ERROR)
                             return JSONParserState::ERROR;
                         return suspend_parser(session, state_attr_key_chars, 0, json_size, string_size);
                     }
-                    if (!(code2 >= 0xDC00 && code2 <= 0xDFFF)) {
+                    if (!(code2 >= SURROGATE_LOW_START && code2 <= SURROGATE_LOW_END)) {
                         return raise_error(session, "invalid surrogate pair");
                     }
                     U32 cp = 0x10000 + (((code1 - 0xD800) & 0x3FF) << 10) + ((code2 - 0xDC00) & 0x3FF);
                     emit_utf8_bytes(session, cp, notify_attr_key_chars);
-                } else if (code1 >= 0xDC00 && code1 <= 0xDFFF) {
+                } else if (code1 >= SURROGATE_LOW_START && code1 <= SURROGATE_LOW_END) {
                     return raise_error(session, "invalid surrogate pair");
                 } else {
                     emit_utf8_bytes(session, code1, notify_attr_key_chars);
@@ -969,29 +986,23 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
                 case '"': case '\\': case '/': case 'b': case 'f': case 'n': case 'r': case 't':
                     break; // valid
                 case 'u': {
-                    auto parse_hex4 = [&](U32 &out)->Bool{
-                        out = 0;
-                        for (int i = 0; i < 4; ++i) {
-                            if (head == end) return false;
-                            Char h = *head; ++head; ++json_size;
-                            U32 d;
-                            if (h >= '0' && h <= '9') d = (U32)(h - '0');
-                            else if (h >= 'a' && h <= 'f') d = 10u + (U32)(h - 'a');
-                            else if (h >= 'A' && h <= 'F') d = 10u + (U32)(h - 'A');
-                            else { raise_error(session, "invalid hex digit in unicode escape"); return false; }
-                            out = (out << 4) | d;
-                        }
-                        return true;
-                    };
-                    U32 code1; if (!parse_hex4(code1)) { if (session->state == JSONParserState::ERROR) return JSONParserState::ERROR; return suspend_parser(session, state_string_head, 0, json_size, string_size); }
-                    if (code1 >= 0xD800 && code1 <= 0xDBFF) {
+                    U32 code1;
+                    if (!parse_hex4(session, &head, end, &json_size, &code1)) {
+                        if (session->state == JSONParserState::ERROR) return JSONParserState::ERROR;
+                        return suspend_parser(session, state_string_head, 0, json_size, string_size);
+                    }
+                    if (code1 >= SURROGATE_HIGH_START && code1 <= SURROGATE_HIGH_END) {
                         if (head == end || *head != '\\') return raise_error(session, "invalid surrogate pair");
                         ++head; ++json_size;
                         if (head == end || *head != 'u') return raise_error(session, "invalid surrogate pair");
                         ++head; ++json_size;
-                        U32 code2; if (!parse_hex4(code2)) { if (session->state == JSONParserState::ERROR) return JSONParserState::ERROR; return suspend_parser(session, state_string_head, 0, json_size, string_size); }
-                        if (!(code2 >= 0xDC00 && code2 <= 0xDFFF)) return raise_error(session, "invalid surrogate pair");
-                    } else if (code1 >= 0xDC00 && code1 <= 0xDFFF) {
+                        U32 code2;
+                        if (!parse_hex4(session, &head, end, &json_size, &code2)) {
+                            if (session->state == JSONParserState::ERROR) return JSONParserState::ERROR;
+                            return suspend_parser(session, state_string_head, 0, json_size, string_size);
+                        }
+                        if (!(code2 >= SURROGATE_LOW_START && code2 <= SURROGATE_LOW_END)) return raise_error(session, "invalid surrogate pair");
+                    } else if (code1 >= SURROGATE_LOW_START && code1 <= SURROGATE_LOW_END) {
                         return raise_error(session, "invalid surrogate pair");
                     }
                     break;
