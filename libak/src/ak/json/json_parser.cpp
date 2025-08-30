@@ -70,6 +70,56 @@ namespace ak {
 static Bool is_digit(Char c) noexcept;
 static JSONParserState raise_error(JSONParseSession *session, const Char *msg) noexcept;
 
+// Shared escape/Unicode helpers
+static inline Bool parse_hex4(Char **phead, Char *end, U64 *pjson_size, U32 *pout) noexcept {
+    Char *head = *phead;
+    U64 json_size = *pjson_size;
+    U32 out = 0;
+    for (int i = 0; i < 4; ++i) {
+        if (head == end)
+            return false;
+        Char h = *head;
+        ++head;
+        ++json_size;
+        U32 d;
+        if (h >= '0' && h <= '9') d = (U32)(h - '0');
+        else if (h >= 'a' && h <= 'f') d = 10u + (U32)(h - 'a');
+        else if (h >= 'A' && h <= 'F') d = 10u + (U32)(h - 'A');
+        else return false;
+        out = (out << 4) | d;
+    }
+    *phead = head;
+    *pjson_size = json_size;
+    *pout = out;
+    return true;
+}
+
+using EmitFn = Void(JSONParseSession *session, const Char *buf, U64 len);
+
+static inline Void emit_utf8_bytes(JSONParseSession *session, U32 cp, EmitFn *emit) {
+    char bytes[4];
+    U32 n = 0;
+    if (cp < 0x80) {
+        bytes[0] = (char)cp; n = 1;
+    } else if (cp < 0x800) {
+        bytes[0] = (char)(0xC0 | (cp >> 6));
+        bytes[1] = (char)(0x80 | (cp & 0x3F));
+        n = 2;
+    } else if (cp < 0x10000) {
+        bytes[0] = (char)(0xE0 | (cp >> 12));
+        bytes[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        bytes[2] = (char)(0x80 | (cp & 0x3F));
+        n = 3;
+    } else {
+        bytes[0] = (char)(0xF0 | (cp >> 18));
+        bytes[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+        bytes[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        bytes[3] = (char)(0x80 | (cp & 0x3F));
+        n = 4;
+    }
+    (*emit)(session, bytes, n);
+}
+
 // Internal stack helpers (push/pop) no longer needed
 
 // Parse Context manipulation
@@ -518,56 +568,8 @@ static JSONParserState state_attr_key_chars(JSONParseSession *session, U32 sub_s
                 rc = '\t';
                 break;
             case 'u': {
-                auto parse_hex4 = [&](U32 &out) -> Bool {
-                    out = 0;
-                    for (int i = 0; i < 4; ++i) {
-                        if (head == end)
-                            return false;
-                        Char h = *head;
-                        ++head;
-                        ++json_size;
-                        U32 d;
-                        if (h >= '0' && h <= '9')
-                            d = (U32)(h - '0');
-                        else if (h >= 'a' && h <= 'f')
-                            d = 10u + (U32)(h - 'a');
-                        else if (h >= 'A' && h <= 'F')
-                            d = 10u + (U32)(h - 'A');
-                        else {
-                            raise_error(session, "invalid hex digit in unicode escape");
-                            return false;
-                        }
-                        out = (out << 4) | d;
-                    }
-                    return true;
-                };
-                auto emit_utf8 = [&](U32 cp) {
-                    char bytes[4];
-                    U32 n = 0;
-                    if (cp < 0x80) {
-                        bytes[0] = (char)cp;
-                        n = 1;
-                    } else if (cp < 0x800) {
-                        bytes[0] = (char)(0xC0 | (cp >> 6));
-                        bytes[1] = (char)(0x80 | (cp & 0x3F));
-                        n = 2;
-                    } else if (cp < 0x10000) {
-                        bytes[0] = (char)(0xE0 | (cp >> 12));
-                        bytes[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-                        bytes[2] = (char)(0x80 | (cp & 0x3F));
-                        n = 3;
-                    } else {
-                        bytes[0] = (char)(0xF0 | (cp >> 18));
-                        bytes[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
-                        bytes[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
-                        bytes[3] = (char)(0x80 | (cp & 0x3F));
-                        n = 4;
-                    }
-                    notify_attr_key_chars(session, bytes, n);
-                    string_size += n;
-                };
                 U32 code1;
-                if (!parse_hex4(code1)) {
+                if (!parse_hex4(&head, end, &json_size, &code1)) {
                     if (session->state == JSONParserState::ERROR)
                         return JSONParserState::ERROR;
                     return suspend_parser(session, state_attr_key_chars, 0, json_size, string_size);
@@ -584,7 +586,7 @@ static JSONParserState state_attr_key_chars(JSONParseSession *session, U32 sub_s
                     ++head;
                     ++json_size;
                     U32 code2;
-                    if (!parse_hex4(code2)) {
+                    if (!parse_hex4(&head, end, &json_size, &code2)) {
                         if (session->state == JSONParserState::ERROR)
                             return JSONParserState::ERROR;
                         return suspend_parser(session, state_attr_key_chars, 0, json_size, string_size);
@@ -593,11 +595,11 @@ static JSONParserState state_attr_key_chars(JSONParseSession *session, U32 sub_s
                         return raise_error(session, "invalid surrogate pair");
                     }
                     U32 cp = 0x10000 + (((code1 - 0xD800) & 0x3FF) << 10) + ((code2 - 0xDC00) & 0x3FF);
-                    emit_utf8(cp);
+                    emit_utf8_bytes(session, cp, notify_attr_key_chars);
                 } else if (code1 >= 0xDC00 && code1 <= 0xDFFF) {
                     return raise_error(session, "invalid surrogate pair");
                 } else {
-                    emit_utf8(code1);
+                    emit_utf8_bytes(session, code1, notify_attr_key_chars);
                 }
                 chunk_start = head;
                 continue;
