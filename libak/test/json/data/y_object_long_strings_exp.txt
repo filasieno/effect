@@ -1,3 +1,16 @@
 result=DONE
 ---
 EVENT
+STATE_INITIALIZED
+BEGIN_OBJECT
+KEY "x"
+BEGIN_ARRAY
+BEGIN_OBJECT
+KEY "id"
+STRING "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+END_OBJECT
+END_ARRAY
+KEY "id"
+STRING "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+END_OBJECT
+STATE_DONE

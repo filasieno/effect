@@ -1,4 +1,5 @@
 result=ERROR
+value=264
 ---
 EVENT
 STATE_INITIALIZED

@@ -1,5 +1,6 @@
 result=ERROR
-value=0
+value=212
 ---
 EVENT
-ERROR 0
+STATE_INITIALIZED
+STATE_ERROR 212

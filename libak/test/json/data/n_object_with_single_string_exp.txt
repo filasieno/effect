@@ -1,5 +1,10 @@
 result=ERROR
-value=0
+value=224
 ---
 EVENT
-ERROR 0
+STATE_INITIALIZED
+BEGIN_OBJECT
+KEY "foo"
+STRING "bar"
+KEY "a"
+STATE_ERROR 224

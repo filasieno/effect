@@ -9,3 +9,5 @@ STRING "asd"
 result=DONE
 ---
 EVENT
+PARSER_STOPPED
+STATE_DONE
