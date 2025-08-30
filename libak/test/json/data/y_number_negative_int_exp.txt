@@ -1,3 +1,6 @@
 result=DONE
 ---
 EVENT
+BEGIN_ARRAY
+INT -123
+END_ARRAY

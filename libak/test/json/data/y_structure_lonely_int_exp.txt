@@ -1,3 +1,4 @@
 result=DONE
 ---
 EVENT
+INT 42

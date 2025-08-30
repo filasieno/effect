@@ -1,5 +1,6 @@
 result=ERROR
-value=0
+value=225
 ---
 EVENT
-ERROR 0
+BEGIN_ARRAY
+ERROR 225

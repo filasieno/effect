@@ -65,18 +65,33 @@ static void on_json_event(JSONParseSession *session, ak::JSONEvent event, const 
     }
 }
 
-static JSONParserState parse_json_chunks(const std::vector<std::string> &chunks, SerializedSink &sink, U32 &out_err_code) {
+static JSONParserState parse_json_chunks(const std::vector<std::string> &chunks, SerializedSink &sink, U32 &out_err_code, std::ostream &log_stream) {
     static constexpr size_t BUFFER_SIZE = 1024 * 1024;
     static char BUFFER[BUFFER_SIZE];
     std::memset(BUFFER, 0, BUFFER_SIZE);
     JSONParseSessionConfig cfg = { .max_json_size = BUFFER_SIZE, .max_string_size = 256, .max_depth = 32 };
     JSONParseSession *session = init_json_parser(BUFFER, BUFFER_SIZE, &cfg, on_json_event, (Void *)&sink);
-    EXPECT_NE(session, nullptr);
+    if (!session) {
+        log_stream << "ERROR: Failed to initialize JSON parser session\n";
+        return JSONParserState::ERROR;
+    }
+    log_stream << "INFO: JSON parser session initialized successfully\n";
     JSONParserState st = JSONParserState::INVALID;
-    for (const auto &chunk : chunks) {
-        st = parse_buffer(session, (void *)chunk.data(), (U64)chunk.size());
+    for (size_t i = 0; i < chunks.size(); ++i) {
+        log_stream << "INFO: Processing chunk " << (i + 1) << "/" << chunks.size() << " (size: " << chunks[i].size() << " bytes)\n";
+        st = parse_buffer(session, (void *)chunks[i].data(), (U64)chunks[i].size());
+        log_stream << "INFO: Chunk " << (i + 1) << " processing result: " << (st == JSONParserState::DONE ? "DONE" :
+                                                                               st == JSONParserState::CONTINUE ? "CONTINUE" :
+                                                                               st == JSONParserState::ERROR ? "ERROR" : "INVALID") << "\n";
+        if (st == JSONParserState::ERROR) break;
     }
     out_err_code = (st == JSONParserState::ERROR) ? sink.last_err_code : 0;
+    log_stream << "INFO: Final parsing state: " << (st == JSONParserState::DONE ? "DONE" :
+                                                     st == JSONParserState::CONTINUE ? "CONTINUE" :
+                                                     st == JSONParserState::ERROR ? "ERROR" : "INVALID") << "\n";
+    if (st == JSONParserState::ERROR) {
+        log_stream << "ERROR: Parsing failed with error code: " << out_err_code << "\n";
+    }
     return st;
 }
 
@@ -150,25 +165,50 @@ TEST_P(JSONParser, Case) {
     std::vector<std::pair<std::string,std::string>> kv; std::vector<std::string> chunks;
     ASSERT_TRUE(read_input_case(param.input, kv, chunks));
 
-    SerializedSink sink; 
-    U32 err_code = 0; 
-    JSONParserState st = parse_json_chunks(chunks, sink, err_code);
-    std::string actual = serialize_out(st, sink, err_code);
-
     const char *env_out = std::getenv("AK_TEST_OUTPUT_DIR");
     fs::path out_dir = env_out ? fs::path(env_out) : fs::path("build/test_output/json");
     fs::create_directories(out_dir / param.name);
+
+    // Create log file for this test case
+    fs::path log_file = out_dir / param.name / "test.log";
+    std::ofstream log_stream(log_file);
+    log_stream << "=== Test Case: " << param.name << " ===\n";
+    log_stream << "Input file: " << param.input << "\n";
+    log_stream << "Expected file: " << param.expected << "\n";
+    log_stream << "Output directory: " << (out_dir / param.name) << "\n\n";
+
+    SerializedSink sink;
+    U32 err_code = 0;
+    JSONParserState st = parse_json_chunks(chunks, sink, err_code, log_stream);
+
+    log_stream << "\n=== Parser Events ===\n";
+    for (const auto &event : sink.lines) {
+        log_stream << event << "\n";
+    }
+    log_stream << "\n=== End of Events ===\n";
+
+    std::string actual = serialize_out(st, sink, err_code);
+
+    // Write the actual output to output.txt
     fs::path out_file = out_dir / param.name / "output.txt";
-    std::ofstream ofs(out_file); 
-    ofs << actual; 
+    std::ofstream ofs(out_file);
+    ofs << actual;
     ofs.close();
 
-    std::ifstream exp_f(param.expected); 
+    log_stream << "\n=== Serialized Output ===\n";
+    log_stream << actual;
+    log_stream << "=== End of Test ===\n";
+    log_stream.close();
+
+    std::ifstream exp_f(param.expected);
     ASSERT_TRUE(exp_f.is_open());
-    std::ostringstream exp_ss; 
-    exp_ss << exp_f.rdbuf(); 
+    std::ostringstream exp_ss;
+    exp_ss << exp_f.rdbuf();
     std::string expected = exp_ss.str();
-    EXPECT_EQ(actual, expected) << "Case '" << param.name << "' mismatched. See " << out_file.string();
+
+    // Only show test result, not detailed logs
+    bool test_passed = (actual == expected);
+    EXPECT_TRUE(test_passed) << "Case '" << param.name << "' mismatched. See " << out_file.string() << " and " << log_file.string();
 }
 
 static std::vector<JSONCaseParam> load_params() {

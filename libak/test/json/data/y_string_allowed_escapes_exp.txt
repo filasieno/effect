@@ -1,3 +1,6 @@
 result=DONE
 ---
 EVENT
+BEGIN_ARRAY
+STRING \"\\/\b\f\n\r\t
+END_ARRAY

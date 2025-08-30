@@ -1,3 +1,6 @@
 result=DONE
 ---
 EVENT
+BEGIN_ARRAY
+STRING 
+END_ARRAY
