@@ -14,26 +14,50 @@ namespace ak {
     
     struct JSONParseSession;
 
+    enum class JSONEvent {
+        OBJECT_BEGIN,
+        OBJECT_END,
+        ARRAY_BEGIN,
+        ARRAY_END,
+        ATTR_BEGIN,
+        ATTR_KEY_BEGIN,
+        ATTR_KEY_END,
+        ATTR_KEY_CHARS,
+        KEY,
+        ATTR_END,
+        NULL_VALUE,
+        BOOL_VALUE,
+        INT_VALUE,
+        FLOAT_VALUE,
+        STRING_VALUE_BEGIN,
+        STRING_VALUE_END,
+        STRING_VALUE_CHARS,
+        STRING,
+        PARSE_STATE_CHANGED
+    };
+
+    struct JSONEventData {
+        JSONEvent type;  // Redundant but helps with type safety
+
+        union {
+            struct {
+                const Char* str;
+                Size len;
+            } string_data;
+
+            Bool bool_value;
+            I64 int_value;
+            F64 float_value;
+
+            struct {
+                JSONParserState state;
+                const Char* err_msg;
+            } state_data;
+        } data;
+    };
+
     struct ParseHandlers {
-        Void (*object_begin)(JSONParseSession* session) = nullptr;
-        Void (*object_end)(JSONParseSession* session) = nullptr;
-        Void (*array_begin)(JSONParseSession* session) = nullptr;
-        Void (*array_end)(JSONParseSession* session) = nullptr;
-        Void (*attr_begin)(JSONParseSession* session) = nullptr;
-        Void (*attr_key_begin)(JSONParseSession* session) = nullptr;
-        Void (*attr_key_end)(JSONParseSession* session) = nullptr;
-        Void (*attr_key_chars)(JSONParseSession* session, const Char* str, Size len) = nullptr;
-        Void (*key)(JSONParseSession* session, const Char* str, Size len) = nullptr;
-        Void (*attr_end)(JSONParseSession* session) = nullptr;
-        Void (*null_value)(JSONParseSession* session) = nullptr;
-        Void (*bool_value)(JSONParseSession* session, Bool value) = nullptr;
-        Void (*int_value)(JSONParseSession* session, I64 value) = nullptr;
-        Void (*float_value)(JSONParseSession* session, F64 value) = nullptr;
-        Void (*string_value_begin)(JSONParseSession* session) = nullptr;
-        Void (*string_value_end)(JSONParseSession* session) = nullptr;
-        Void (*string_value_chars)(JSONParseSession* session, const Char* str, Size len) = nullptr;
-        Void (*string)(JSONParseSession* session, const Char* str, Size len) = nullptr;
-        Void (*parse_state_changed)(JSONParseSession* session) = nullptr;
+        Void (*on_event)(JSONParseSession* session, JSONEvent event, const JSONEventData* data) = nullptr;
     };
 
     struct JSONParseContext;    

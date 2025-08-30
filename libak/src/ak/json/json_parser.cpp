@@ -275,6 +275,7 @@ static JSONParserState return_state(JSONParseSession *session, U32 sub_state, Ch
 
     // If we reached the base return state, parsing is complete
     session->state = JSONParserState::DONE;
+    // Don't notify state changed for successful completion - only for errors
     return session->state;
 }
 
@@ -927,14 +928,7 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
     while (true) {
         if (head == end) {
             if (is_single_buffer) {
-                // If at top-level (next continuation is return_state), signal error
-                if (session->stack_top > session->stack_begin) {
-                    JSONParseContext *top_ctx = session->stack_top - 1;
-                    if (top_ctx->continuation == return_state) {
-                        return raise_error(session, "unexpected end of input");
-                    }
-                }
-                // Switch to streaming, emit current chunk, then suspend
+                // For streaming strings, switch to streaming mode instead of error
                 notify_string_value_begin(session);
                 if (chunk_start != head) {
                     notify_string_value_chars(session, chunk_start, (U64)(head - chunk_start));
@@ -951,7 +945,29 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
         Char c = *head;
         if (c == '\\') {
             ++head; ++json_size;
-            if (head == end) { return suspend_parser(session, state_string_head, 0, json_size, string_size); }
+            if (head == end) {
+                // Escape splits across buffers. If we were still in single-buffer mode,
+                // we need to switch to streaming and flush any pending chunk.
+                if (is_single_buffer) {
+                    notify_string_value_begin(session);
+                    if (chunk_start != (head - 1)) {
+                        notify_string_value_chars(session, chunk_start, (U64)((head - 1) - chunk_start));
+                        string_size += (U64)((head - 1) - chunk_start);
+                    }
+                    is_single_buffer = false;
+                } else {
+                    if (chunk_start != (head - 1)) {
+                        notify_string_value_chars(session, chunk_start, (U64)((head - 1) - chunk_start));
+                        string_size += (U64)((head - 1) - chunk_start);
+                    }
+                }
+                // Emit the backslash as raw when escape spans buffers
+                notify_string_value_chars(session, "\\", 1);
+                ++string_size;
+                chunk_start = head; // next chunk resumes after the backslash
+                // No more chars in this buffer; suspend and continue in next buffer
+                return suspend_parser(session, state_string_head, 0, json_size, string_size);
+            }
             Char e = *head; ++head; ++json_size;
             switch (e) {
                 case '"': case '\\': case '/': case 'b': case 'f': case 'n': case 'r': case 't':
@@ -1000,6 +1016,13 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
                 notify_string_value_end(session);
             }
             ++head; ++json_size;
+            // If we came here resuming from a suspend (streaming mode), the top
+            // of the stack still holds the suspend frame for this string.
+            // Drop it so that the following resume goes to the previous continuation
+            // (e.g., return_state or list/object state).
+            if (!is_single_buffer && session->stack_top > session->stack_begin) {
+                session->stack_top--; // discard suspend frame for this string
+            }
             AK_MUST_TAIL return resume_parse_context(session, 0, head, end, json_size, string_size);
         } else {
             ++head; ++json_size; continue;
@@ -1008,125 +1031,123 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Notification Utilities
+// Notification Utilities - Unified Event System
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+// Unified event notification function
+static Void notify_event(JSONParseSession *session, JSONEvent event_type, const JSONEventData *data = nullptr) noexcept {
+    if (session->handlers.on_event != nullptr) {
+        session->handlers.on_event(session, event_type, data);
+    }
+}
 
 // Parser state changed
 static Void notify_state_changed(JSONParseSession *session) noexcept {
-    if (session->handlers.parse_state_changed != nullptr) {
-        session->handlers.parse_state_changed(session);
-    }
+    JSONEventData data = {};
+    data.type = JSONEvent::PARSE_STATE_CHANGED;
+    data.data.state_data.state = session->state;
+    data.data.state_data.err_msg = session->err_msg;
+    notify_event(session, JSONEvent::PARSE_STATE_CHANGED, &data);
 }
 
 // Object Notification
 static Void notify_object_begin(JSONParseSession *session) noexcept {
-    if (session->handlers.object_begin != nullptr) {
-        session->handlers.object_begin(session);
-    }
+    notify_event(session, JSONEvent::OBJECT_BEGIN);
 }
 
 static Void notify_object_end(JSONParseSession *session) noexcept {
-    if (session->handlers.object_end != nullptr) {
-        session->handlers.object_end(session);
-    }
+    notify_event(session, JSONEvent::OBJECT_END);
 }
 
 static Void notify_attr_begin(JSONParseSession *session) noexcept {
-    if (session->handlers.attr_begin != nullptr) {
-        session->handlers.attr_begin(session);
-    }
+    notify_event(session, JSONEvent::ATTR_BEGIN);
 }
 
 static Void notify_attr_key_begin(JSONParseSession *session) noexcept {
-    if (session->handlers.attr_key_begin != nullptr) {
-        session->handlers.attr_key_begin(session);
-    }
+    notify_event(session, JSONEvent::ATTR_KEY_BEGIN);
 }
 
 static Void notify_attr_key_end(JSONParseSession *session) noexcept {
-    if (session->handlers.attr_key_end != nullptr) {
-        session->handlers.attr_key_end(session);
-    }
+    notify_event(session, JSONEvent::ATTR_KEY_END);
 }
 
 static Void notify_attr_key_chars(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
-    if (session->handlers.attr_key_chars != nullptr) {
-        session->handlers.attr_key_chars(session, text_buffer, text_buffer_length);
-    }
+    JSONEventData data = {};
+    data.type = JSONEvent::ATTR_KEY_CHARS;
+    data.data.string_data.str = text_buffer;
+    data.data.string_data.len = text_buffer_length;
+    notify_event(session, JSONEvent::ATTR_KEY_CHARS, &data);
 }
 
 static Void notify_key(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
-    if (session->handlers.key != nullptr) {
-        session->handlers.key(session, text_buffer, text_buffer_length);
-    }
+    JSONEventData data = {};
+    data.type = JSONEvent::KEY;
+    data.data.string_data.str = text_buffer;
+    data.data.string_data.len = text_buffer_length;
+    notify_event(session, JSONEvent::KEY, &data);
 }
 
 static Void notify_attr_end(JSONParseSession *session) noexcept {
-    if (session->handlers.attr_end != nullptr) {
-        session->handlers.attr_end(session);
-    }
+    notify_event(session, JSONEvent::ATTR_END);
 }
 
 // Literal Values
 static Void notify_null_value(JSONParseSession *session) noexcept {
-    if (session->handlers.null_value != nullptr) {
-        session->handlers.null_value(session);
-    }
+    notify_event(session, JSONEvent::NULL_VALUE);
 }
 
 static Void notify_bool_value(JSONParseSession *session, Bool value) noexcept {
-    if (session->handlers.bool_value != nullptr) {
-        session->handlers.bool_value(session, value);
-    }
+    JSONEventData data = {};
+    data.type = JSONEvent::BOOL_VALUE;
+    data.data.bool_value = value;
+    notify_event(session, JSONEvent::BOOL_VALUE, &data);
 }
 
 static Void notify_int_value(JSONParseSession *session, I64 value) noexcept {
-    if (session->handlers.int_value != nullptr) {
-        session->handlers.int_value(session, value);
-    }
+    JSONEventData data = {};
+    data.type = JSONEvent::INT_VALUE;
+    data.data.int_value = value;
+    notify_event(session, JSONEvent::INT_VALUE, &data);
 }
 
 static Void notify_float_value(JSONParseSession *session, F64 value) noexcept {
-    if (session->handlers.float_value != nullptr) {
-        session->handlers.float_value(session, value);
-    }
+    JSONEventData data = {};
+    data.type = JSONEvent::FLOAT_VALUE;
+    data.data.float_value = value;
+    notify_event(session, JSONEvent::FLOAT_VALUE, &data);
 }
 
 static Void notify_string_value_begin(JSONParseSession *session) noexcept {
-    if (session->handlers.string_value_begin != nullptr) {
-        session->handlers.string_value_begin(session);
-    }
+    notify_event(session, JSONEvent::STRING_VALUE_BEGIN);
 }
 
 static Void notify_string_value_end(JSONParseSession *session) noexcept {
-    if (session->handlers.string_value_end != nullptr) {
-        session->handlers.string_value_end(session);
-    }
+    notify_event(session, JSONEvent::STRING_VALUE_END);
 }
 
 static Void notify_string_value_chars(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
-    if (session->handlers.string_value_chars != nullptr) {
-        session->handlers.string_value_chars(session, text_buffer, text_buffer_length);
-    }
+    JSONEventData data = {};
+    data.type = JSONEvent::STRING_VALUE_CHARS;
+    data.data.string_data.str = text_buffer;
+    data.data.string_data.len = text_buffer_length;
+    notify_event(session, JSONEvent::STRING_VALUE_CHARS, &data);
 }
 
 static Void notify_string(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
-    if (session->handlers.string != nullptr) {
-        session->handlers.string(session, text_buffer, text_buffer_length);
-    }
+    JSONEventData data = {};
+    data.type = JSONEvent::STRING;
+    data.data.string_data.str = text_buffer;
+    data.data.string_data.len = text_buffer_length;
+    notify_event(session, JSONEvent::STRING, &data);
 }
 
 // Array  Notification
 static Void notify_array_begin(JSONParseSession *session) noexcept {
-    if (session->handlers.array_begin != nullptr) {
-        session->handlers.array_begin(session);
-    }
+    notify_event(session, JSONEvent::ARRAY_BEGIN);
 }
 
 static Void notify_array_end(JSONParseSession *session) noexcept {
-    if (session->handlers.array_end != nullptr) {
-        session->handlers.array_end(session);
-    }
+    notify_event(session, JSONEvent::ARRAY_END);
 }
 
 // ------------------------------------------
