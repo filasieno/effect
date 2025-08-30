@@ -86,14 +86,39 @@ static void on_json_event(JSONParseSession *session, ak::JSONEvent event, const 
     }
 }
 
-static JSONParserState parse_json_chunks(const std::vector<std::string> &chunks, SerializedSink &sink, U32 &out_err_code, std::ostream &log_stream) {
-    static constexpr size_t BUFFER_SIZE = 1024 * 1024;
-    static char BUFFER[BUFFER_SIZE];
-    std::memset(BUFFER, 0, BUFFER_SIZE);
-    JSONParseSessionConfig cfg = { .max_json_size = BUFFER_SIZE, .max_string_size = 256, .max_depth = 32 };
-    JSONParseSession *session = init_json_parser(BUFFER, BUFFER_SIZE, &cfg, on_json_event, (Void *)&sink);
+static JSONParserState parse_json_chunks(const std::vector<std::pair<std::string,std::string>> &kv,
+                                         const std::vector<std::string> &chunks,
+                                         SerializedSink &sink, U32 &out_err_code, std::ostream &log_stream) {
+    // Defaults; may be overridden by key/values in the test input header
+    JSONParseSessionConfig cfg = { };
+    // Apply key/value configuration
+    for (const auto &p : kv) {
+        if (p.first == "max_depth") {
+            unsigned long long v = std::strtoull(p.second.c_str(), nullptr, 10);
+            if (v > 0 && v <= std::numeric_limits<U32>::max()) cfg.max_depth = (U32)v;
+        } else if (p.first == "max_string_size") {
+            unsigned long long v = std::strtoull(p.second.c_str(), nullptr, 10);
+            if (v > 0) cfg.max_string_size = (U64)v;
+        } else if (p.first == "max_json_size") {
+            unsigned long long v = std::strtoull(p.second.c_str(), nullptr, 10);
+            if (v > 0) cfg.max_json_size = (U64)v;
+        }
+    }
+
+    // Determine required parser buffer size and allocate dynamically
+    U64 required_size = get_required_parse_session_buffer_size(&cfg);
+    log_stream << "INFO: Required parser buffer size: " << required_size << " bytes\n";
+    void *parser_mem = std::malloc((size_t)required_size);
+    if (!parser_mem) {
+        log_stream << "ERROR: Failed to allocate parser buffer of size " << required_size << "\n";
+        out_err_code = (U32)JSONErrorCode::FATAL_STACK_OOB; // generic internal error for OOM in tests
+        return JSONParserState::ERROR;
+    }
+    std::memset(parser_mem, 0, (size_t)required_size);
+    JSONParseSession *session = init_json_parser(parser_mem, required_size, &cfg, on_json_event, (Void *)&sink);
     if (!session) {
         log_stream << "ERROR: Failed to initialize JSON parser session\n";
+        std::free(parser_mem);
         return JSONParserState::ERROR;
     }
     log_stream << "INFO: JSON parser session initialized successfully\n";
@@ -155,6 +180,8 @@ static JSONParserState parse_json_chunks(const std::vector<std::string> &chunks,
     if (st == JSONParserState::ERROR) {
         log_stream << "ERROR: Parsing failed with error code: " << out_err_code << "\n";
     }
+    // Free allocated parser buffer
+    std::free(parser_mem);
     return st;
 }
 
@@ -274,7 +301,7 @@ TEST_P(JSONParser, Case) {
 
     SerializedSink sink;
     U32 err_code = 0;
-    JSONParserState st = parse_json_chunks(chunks, sink, err_code, log_stream);
+    JSONParserState st = parse_json_chunks(kv, chunks, sink, err_code, log_stream);
 
     log_stream << "\n=== Parser Events ===\n";
     for (const auto &event : sink.lines) {

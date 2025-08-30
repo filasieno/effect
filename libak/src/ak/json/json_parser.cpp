@@ -7,144 +7,207 @@ namespace ak {
 
 #define AK_MUST_TAIL __attribute__((musttail))
 
-/*
- * JSON parsing strategy (tail-recursive, streaming, suspendable)
- *
- * Overview
- * - Tail-recursive state machine: each state consumes input and tail-calls the
- *   next state. Continuations are stored explicitly in JSONParseContext frames
- *   inside the session to avoid using the C++ call stack.
- * - Push/streaming: parse_buffer() is called with successive buffers. The
- *   parser never takes ownership of the input; it only keeps offsets and a
- *   small suspend buffer used exclusively for numbers.
- * - One-character lookahead: the code inspects at most one character at a time
- *   to choose the next transition.
- *
- * Suspension and resumption
- * - suspend_parser() records the continuation and offsets (json_offset,
- *   string_offset). A subsequent parse_buffer() resumes exactly where it
- *   stopped by tail-calling the stored continuation.
- * - Only numbers use the fixed-size suspend_buffer to span buffers. All other
- *   tokens are streamed directly from the caller-provided buffer.
- *
- * Events (SAX-like)
- * - Emitted via function pointers in JSONParseSession::handlers. Objects/
- *   arrays emit begin/end. Keys and strings use either optimized single-callback
- *   (key/session, string/session) when fully contained in one buffer, or the
- *   streaming triplets (attr_key_begin/chars/end, string_value_begin/chars/end)
- *   when they span buffers.
- *
- * Keys and strings
- * - Validation only: escape sequences (\", \\, \/, \b, \f, \n, \r, \t) and
- *   \uXXXX (including surrogate pairs) are validated but never decoded. Raw
- *   slices are delivered as-is to callbacks.
- * - Buffer boundary inside a string triggers streaming: we emit
- *   string_value_begin (once) and raw chunks via string_value_chars, then
- *   suspend. Next buffer resumes streaming until the closing quote.
- * - Optimized execution paths: if a single buffer stores the full key or string
- *   we use the optimized callback path ie. a single key/string callback is used; 
- *   if instead a key or string is split across buffers we use the streaming callback 
- *   path ie. string_value_begin/chars/end is used.
- *
- * Numbers
- * - Numbers accumulate into suspend_buffer across buffers, are validated, then
- *   emitted as int_value or float_value. This is the only token type that uses
- *   suspend_buffer.
- * - Note that accumulation does not copy bytes untill we discover (at the end of the buffer)
- *   that we cannot emit a number as the buffer has been interrupted.
- * - If we know that a number is completly inside a buffer than we simply emit the notification.
- *
- * Errors
- * - raise_error() sets ERROR state and err_msg, emits parse_state_changed, and
- *   stops parsing.
- *
- * Reentrancy/allocations
- * - Reentrant and allocation-free. All state is in JSONParseSession; no
- *   globals and no dynamic allocations are used.
- */
+/// \internal
+///
+/// \brief JSON parser: tail-recursive, streaming, suspendable
+/// Architecture
+/// - Tail-recursive state machine: each state consumes input and tail-calls the next.
+///   Continuations are stored explicitly on an internal stack (JSONParseContext[]);
+///   the C++ call stack is never used for parsing recursion.
+/// - Streaming: run_json_parser() can be called repeatedly with successive buffers.
+///   The parser keeps offsets and a tiny suspend buffer (numbers only).
+/// - One-character lookahead with fast character-class tables to reduce branches.
+///
+/// Callbacks and events (SAX-like):
+///
+/// - Emitted through unified JSONEvent callbacks stored in the session.
+/// - Objects/arrays emit begin/end; keys/strings use fast-path single callback when
+///   contained in one buffer, or streaming triplets (begin/chars/end) otherwise.
+///
+/// Strings:
+///
+/// - Validate escapes (\", \\, \/, \b, \f, \n, \r, \t) and \uXXXX (including surrogate pairs).
+/// - Do not decode; validated UTF-8 is forwarded as-is to callbacks.
+/// - Spanning across buffers switches to streaming callbacks.
+///
+/// UTF-8 emission (why a callback):
+///
+/// - A small UTF-8 encoder emits bytes via a callback so one encoder targets
+///   multiple sinks (key/value) without code duplication or hot-path branching.
+///   The indirection is negligible vs I/O and keeps state code concise.
+///
+/// Numbers:
+///
+///- Only token using suspend_buffer to span buffers; format validated per RFC 8259.
+///
+/// Errors and contracts:
+///
+/// - Public API validates arguments at runtime and returns error/null on invalid input.
+/// - Programmer errors are guarded by AK_ASSERT in debug builds.
+/// - raise_error() sets ERROR state and err_code, emits PARSE_STATE_CHANGED, and stops.
+///
+/// Design choices:
+///
+/// - Character-class tables: reduce branches and enable compact, cache-friendly classification.
+/// - Explicit continuation stack: enables suspend/resume with precise state capture; depth checks
+///   raise runtime errors for user misconfiguration.
+/// - Public API checks vs assertions: user errors -> errors; programmer errors -> asserts.
+///
+/// TODO:
+///
+/// - SIMD/SWAR whitespace skipping and first-byte classification (AVX2/NEON).
+/// - Table-driven separators in object/array states to reduce switches.
+/// - Batching small string/number callbacks to amortize call overhead under streaming.
+/// - Cache/layout tuning (align session/stack; separate hot/cold fields).
+/// - Optional templated emit path to enable full inlining where beneficial.
+///
+/// File layout:
+///
+/// - Utilities (tables, helpers, notify wrappers)
+/// - Public API
+/// - State routine declarations
+/// - State routine implementations
 
 // ==========================================
-// Utility function declarations
+// Utilities - forward declarations
 // ==========================================
 
-static Bool is_digit(Char c) noexcept;
+enum CharClass : U8 {
+    CHAR_OTHER = 0,
+    CHAR_WHITESPACE = 1,
+    CHAR_QUOTE = 2,
+    CHAR_COMMA = 3,
+    CHAR_MINUS = 4,
+    CHAR_DIGIT = 5,
+    CHAR_COLON = 6,
+    CHAR_LBRACKET = 7,
+    CHAR_RBRACKET = 8,
+    CHAR_F = 9,
+    CHAR_N = 10,
+    CHAR_T = 11,
+    CHAR_LBRACE = 12,
+    CHAR_RBRACE = 13
+};
+
+/// \brief Callback type for streaming emission of validated/decoded bytes.
+/// \details
+/// Rationale: abstract the destination (key/value sinks) to avoid branching
+///  in the encoder and code duplication across call sites.
+/// \internal
+using EmitFn = Void(JSONParseSession *session, const Char *buf, U64 len);
+
 static JSONParserState raise_error(JSONParseSession *session, JSONErrorCode code) noexcept;
+static JSONParserState suspend_parser(JSONParseSession *session, JSONParserStateFn *fn, U32 sub_state, U64 json_size, U64 string_size) noexcept;
 
-// Shared escape/Unicode helpers
+/// \internal Fast char classification utility
+static inline CharClass classify_char(Char c) noexcept;
+
+/// \brief Encode codepoint to UTF-8 and emit via callback.
+/// \details
+///  Rationale: reuse one encoder for multiple sinks (key/value) while keeping
+///  hot paths simple; function-pointer cost is minimal and localized.
+static inline Void emit_utf8_bytes(JSONParseSession *session, U32 cp, EmitFn *emit);
+
+/// \brief Return true if character belongs to number token class.
+static inline Bool is_number_char(Char c) noexcept;
+
+/// \brief Prefetch static classification tables to warm caches.
+static inline void prefetch_classification_tables() noexcept;
+
+/// \brief Skip whitespace and advance json_size accordingly.
+static inline Char* skip_whitespace(Char* head, Char* end, U64* json_size) noexcept;
+
+/// Shared escape/Unicode helpers
+
 ///\brief Parse exactly 4 hexadecimal digits from a JSON \uXXXX sequence.
 ///\details
 /// - Advances head and json_size on success
 /// - Returns false when buffer ends (caller should suspend)
 /// - Signals an error via raise_error(session, ...) on invalid hex digit and returns false
-static inline Bool parse_hex4(JSONParseSession *session, Char **phead, Char *end, U64 *pjson_size, U32 *pout) noexcept {
-    Char *head = *phead;
-    U64 json_size = *pjson_size;
-    U32 out = 0;
-    for (int i = 0; i < 4; ++i) {
-        if (head == end)
-            return false;
-        Char h = *head;
-        ++head;
-        ++json_size;
-        U32 d;
-        if (h >= '0' && h <= '9') d = (U32)(h - '0');
-        else if (h >= 'a' && h <= 'f') d = 10u + (U32)(h - 'a');
-        else if (h >= 'A' && h <= 'F') d = 10u + (U32)(h - 'A');
-        else {
-            (void)raise_error(session, JSONErrorCode::INVALID_UNICODE_HEX_DIGIT);
-            return false;
-        }
-        out = (out << 4) | d;
-    }
-    *phead = head;
-    *pjson_size = json_size;
-    *pout = out;
-    return true;
-}
+static inline Bool parse_hex4(JSONParseSession *session, Char **phead, Char *end, U64 *pjson_size, U32 *pout) noexcept;
 
-///\brief Callback type for streaming emission of validated/decoded bytes.
-using EmitFn = Void(JSONParseSession *session, const Char *buf, U64 len);
+/// \brief Unified event notification
+/// \internal
+static Void notify_event(JSONParseSession *session, JSONEvent event_type, const JSONEventData *data = nullptr) noexcept;
+
+// ==========================================
+// Constants and Tables
+// ==========================================
 
 // UTF-8 encoding constants
-static constexpr U32 UTF8_1_MAX = 0x80U;
-static constexpr U32 UTF8_2_MAX = 0x800U;
+static constexpr U32 UTF8_1_MAX           = 0x80U;
+static constexpr U32 UTF8_2_MAX           = 0x800U;
 static constexpr U32 SURROGATE_HIGH_START = 0xD800U;
 static constexpr U32 SURROGATE_HIGH_END   = 0xDBFFU;
 static constexpr U32 SURROGATE_LOW_START  = 0xDC00U;
 static constexpr U32 SURROGATE_LOW_END    = 0xDFFFU;
 
-static inline Void emit_utf8_bytes(JSONParseSession *session, U32 cp, EmitFn *emit) {
-    char bytes[4];
-    U32 n = 0;
-    if (cp < UTF8_1_MAX) {
-        bytes[0] = (char)cp; n = 1;
-    } else if (cp < UTF8_2_MAX) {
-        bytes[0] = (char)(0xC0 | (cp >> 6));
-        bytes[1] = (char)(0x80 | (cp & 0x3F));
-        n = 2;
-    } else if (cp < 0x10000U) {
-        bytes[0] = (char)(0xE0 | (cp >> 12));
-        bytes[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-        bytes[2] = (char)(0x80 | (cp & 0x3F));
-        n = 3;
-    } else {
-        bytes[0] = (char)(0xF0 | (cp >> 18));
-        bytes[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
-        bytes[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
-        bytes[3] = (char)(0x80 | (cp & 0x3F));
-        n = 4;
-    }
-    (*emit)(session, bytes, n);
-}
+// Character classification lookup table for fast dispatch
+static constexpr U8 char_class_table[256] = {
+    // 0x00-0x0F: control
+    0,0,0,0,0,0,0,0,0,1,1,0,0,1,0,0,
+    // 0x10-0x1F: control
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    // 0x20-0x2F: space, punctuation
+    1,0,2,0,0,0,0,0,0,0,0,0,3,4,0,0,
+    // 0x30-0x3F: digits, colon
+    5,5,5,5,5,5,5,5,5,5,6,0,0,0,0,0,
+    // 0x40-0x4F
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    // 0x50-0x5F (include '[' and ']')
+    0,0,0,0,0,0,0,0,0,0,0,7,0,8,0,0,
+    // 0x60-0x6F (include 'f'=0x66, 'n'=0x6E)
+    0,0,0,0,0,0,9,0,0,0,0,0,0,0,10,0,
+    // 0x70-0x7F (include 't'=0x74, '{'=0x7B, '}'=0x7D)
+    0,0,0,0,11,0,0,0,0,0,0,12,0,13,0,0,
+    // 0x80-0x8F
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    // 0x90-0x9F
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    // 0xA0-0xAF
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    // 0xB0-0xBF
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    // 0xC0-0xCF
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    // 0xD0-0xDF
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    // 0xE0-0xEF
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    // 0xF0-0xFF
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+};
 
-// Internal stack helpers (push/pop) no longer needed
+// Number character classification (for numbers: '-', '+', '.', 'e', 'E', '0'-'9')
+static constexpr U8 number_char_table[256] = {
+    // 0x00-0x2F
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,1,0,1,1,0, // '+' (0x2B)=1, ',' (0x2C)=0, '-' (0x2D)=1, '.' (0x2E)=1, '/' (0x2F)=0
+    // 0x30-0x3F
+    1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0, // '0'-'9'
+    // 0x40-0x4F
+    0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0, // 'E' (0x45)=1
+    // 0x50-0x5F
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    // 0x60-0x6F
+    0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0, // 'e' (0x65)=1
+    // 0x70-0x7F
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    // 0x80-0xFF (unused for number syntax)
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+};
 
-// Parse Context manipulation
-static JSONParserState suspend_parser(JSONParseSession *session, JSONParserStateFn *fn, U32 sub_state, U64 json_size, U64 string_size) noexcept;
-// static JSONParserState resume_parser(JSONParseSession *session, JSONParserStateFn *fn, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept;
 
 // ==========================================
-// State function declarations
+// State routines - forward declarations
 // ==========================================
 
 // Parser state changed
@@ -160,14 +223,14 @@ static Void notify_attr_key_chars(JSONParseSession *session, const Char *text_bu
 static Void notify_attr_key(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
 
 // Literal Values
-static Void notify_null_value(JSONParseSession *session) noexcept;
-static Void notify_bool_value(JSONParseSession *session, Bool value) noexcept;
-static Void notify_int_value(JSONParseSession *session, I64 value) noexcept;
-static Void notify_float_value(JSONParseSession *session, F64 value) noexcept;
-static Void notify_string_value_begin(JSONParseSession *session) noexcept;
-static Void notify_string_value_end(JSONParseSession *session) noexcept;
-static Void notify_string_value_chars(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
-static Void notify_string_value(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
+static Void notify_value_null(JSONParseSession *session) noexcept;
+static Void notify_value_bool(JSONParseSession *session, Bool value) noexcept;
+static Void notify_value_number_int(JSONParseSession *session, I64 value) noexcept;
+static Void notify_value_number_float(JSONParseSession *session, F64 value) noexcept;
+static Void notify_value_string_begin(JSONParseSession *session) noexcept;
+static Void notify_value_string_end(JSONParseSession *session) noexcept;
+static Void notify_value_string_chars(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
+static Void notify_value_string(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
 
 // Arrray  Notification
 static Void notify_array_begin(JSONParseSession *session) noexcept;
@@ -178,7 +241,7 @@ static Void notify_array_end(JSONParseSession *session) noexcept;
 // ==========================================
 
 static JSONParserState sentinel(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept;
-static JSONParserState return_state(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept;
+static JSONParserState state_return_result(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept;
 static JSONParserState state_root_dispatch(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept;
 
 static JSONParserState state_object_first_attr(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept;
@@ -190,7 +253,7 @@ static JSONParserState state_array_value_required(JSONParseSession *session, U32
 
 static JSONParserState state_attr_begin_key(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept;
 static JSONParserState state_attr_key_chars(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept;
-static JSONParserState state_attr_semi(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept;
+static JSONParserState state_attr_separator(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept;
 
 static JSONParserState state_value_dispatch(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept;
 static JSONParserState state_null_head(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept;
@@ -204,9 +267,12 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
 // ==========================================
 
 JSONParseSession *init_json_parse_session(void *buffer, U64 buffer_size, JSONParseSessionConfig *cfg, JSONParserCallbackFn* on_event, Void *user_data) noexcept {
-    AK_ASSERT(buffer_size >= sizeof(JSONParseSession));
-    AK_ASSERT(cfg != nullptr);
-    AK_ASSERT(on_event != nullptr);
+    if (buffer == nullptr || cfg == nullptr || on_event == nullptr) {
+        return nullptr;
+    }
+    if (buffer_size < sizeof(JSONParseSession)) {
+        return nullptr;
+    }
 
     if constexpr (priv::IS_DEBUG_MODE) {
         std::memset(buffer, 0, buffer_size);
@@ -238,7 +304,8 @@ JSONParseSession *init_json_parse_session(void *buffer, U64 buffer_size, JSONPar
     session->user_data = user_data;
     session->suspend_buffer_size = 0;
 
-    // Notify that the parser has been initialized
+    // Prefetch tables and notify that the parser has been initialized
+    prefetch_classification_tables();
     notify_state_changed(session);
 
     return session;
@@ -246,6 +313,9 @@ JSONParseSession *init_json_parse_session(void *buffer, U64 buffer_size, JSONPar
 
 Void reset_json_parse_session(JSONParseSession *session) noexcept {
     AK_ASSERT(session != nullptr);
+    if (session == nullptr) {
+        return;
+    }
 
     session->stack_top = session->stack_begin;
     session->buffer = nullptr;
@@ -255,14 +325,20 @@ Void reset_json_parse_session(JSONParseSession *session) noexcept {
     session->string_offset = 0;
 }
 
-static inline Void push_parse_context(JSONParseSession *session, JSONParserStateFn *fn, U32 sub_state = 0) noexcept {
+static inline Bool push_parse_context_checked(JSONParseSession *session, JSONParserStateFn *fn, U32 sub_state = 0) noexcept {
+    if (!(session->stack_top < session->stack_end)) {
+        (void)raise_error(session, JSONErrorCode::MAX_DEPTH_EXCEEDED);
+        return false;
+    }
     JSONParseContext *ctx = session->stack_top;
     ctx->continuation = fn;
     ctx->sub_state = sub_state;
     ctx->user_data = nullptr;
     session->stack_top++;
+    return true;
 }
 
+/// \internal Use push_parse_context_checked directly when pushing continuation frames
 static JSONParserState resume_parse_context(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept {
     AK_ASSERT(session != nullptr);
     (void)sub_state;
@@ -274,7 +350,7 @@ static JSONParserState resume_parse_context(JSONParseSession *session, U32 sub_s
     AK_MUST_TAIL return continuation(session, ret_sub, head, end, json_size, string_size);
 }
 
-// Public API wrappers to match json_api.hpp
+
 JSONParseSession *init_json_parser(Void *parser_buffer, U64 parser_buffer_size, const JSONParseSessionConfig *cfg, JSONParserCallbackFn* on_event, Void *user_data) noexcept {
     AK_ASSERT(parser_buffer != nullptr);
     AK_ASSERT(cfg != nullptr);
@@ -287,7 +363,12 @@ JSONParseSession *init_json_parser(Void *parser_buffer, U64 parser_buffer_size, 
 JSONParserState run_json_parser(JSONParseSession *session, Void *buffer, U64 buffer_size) noexcept {
     AK_ASSERT(session != nullptr);
     AK_ASSERT(buffer != nullptr);
-    AK_ASSERT(session->state != JSONParserState::INVALID);
+    if (session == nullptr || buffer == nullptr) {
+        return JSONParserState::ERROR;
+    }
+    if (session->state == JSONParserState::INVALID) {
+        return JSONParserState::ERROR;
+    }
 
     // Always set the current buffer for this invocation
     session->buffer = (Char *)buffer;
@@ -308,8 +389,8 @@ JSONParserState run_json_parser(JSONParseSession *session, Void *buffer, U64 buf
         session->string_offset = 0;
         session->suspend_buffer_size = 0;
 
-        push_parse_context(session, sentinel, 0);
-        push_parse_context(session, return_state, 0);
+        if (!push_parse_context_checked(session, sentinel, 0)) return JSONParserState::ERROR;
+        if (!push_parse_context_checked(session, state_return_result, 0)) return JSONParserState::ERROR;
 
         return state_root_dispatch(session, 0, session->buffer, session->buffer + session->buffer_len, session->json_offset, session->string_offset);
     }
@@ -318,12 +399,15 @@ JSONParserState run_json_parser(JSONParseSession *session, Void *buffer, U64 buf
     return session->state;
 }
 
-// Forward declaration for notify_event
-static Void notify_event(JSONParseSession *session, JSONEvent event_type, const JSONEventData *data) noexcept;
 
 JSONParserState stop_json_parser(JSONParseSession *session) noexcept {
     AK_ASSERT(session != nullptr);
-    AK_ASSERT(session->state != JSONParserState::INVALID);
+    if (session == nullptr) {
+        return JSONParserState::ERROR;
+    }
+    if (session->state == JSONParserState::INVALID) {
+        return JSONParserState::ERROR;
+    }
 
     // Always notify that the parser is being stopped
     notify_event(session, JSONEvent::PARSER_STOPPED, nullptr);
@@ -355,7 +439,7 @@ JSONParserState stop_json_parser(JSONParseSession *session) noexcept {
                 // We have a regular continuation frame
                 // This means parsing reached a natural completion point
                 // Try to complete by calling the return_state function
-                return return_state(session, 0, nullptr, nullptr, session->json_offset, 0);
+                return state_return_result(session, 0, nullptr, nullptr, session->json_offset, 0);
             }
         } else {
             // No frames on stack, but state is CONTINUE - this shouldn't happen
@@ -382,7 +466,7 @@ static JSONParserState sentinel(JSONParseSession *session, U32 sub_state, Char *
     return JSONParserState::ERROR;
 }
 
-static JSONParserState return_state(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept {
+static JSONParserState state_return_result(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept {
     (void)(sub_state);
     (void)(head);
     (void)(end);
@@ -397,180 +481,111 @@ static JSONParserState return_state(JSONParseSession *session, U32 sub_state, Ch
 
 // Initial and root states
 static JSONParserState state_root_dispatch(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept {
+    head = skip_whitespace(head, end, &json_size);
     if (head == end) {
-        // For initial empty/whitespace-only inputs, treat as error (tests expect ERROR)
-        if (json_size == 0)
-            return raise_error(session, JSONErrorCode::EMPTY_INPUT);
+        if (json_size == 0) return raise_error(session, JSONErrorCode::EMPTY_INPUT);
         return raise_error(session, JSONErrorCode::UNEXPECTED_EOF);
     }
-    Char c = *head;
-    switch (c) {
-    case '{': {
-        ++head;
-        ++json_size;
+    CharClass cls = classify_char(*head);
+    switch (cls) {
+    case CHAR_LBRACE: {
+        ++head; ++json_size;
         notify_object_begin(session);
-        // no need to push any parse context; using the bottom return value
         AK_MUST_TAIL return state_object_first_attr(session, sub_state, head, end, json_size, string_size);
     }
-    case '[': {
+    case CHAR_LBRACKET: {
         notify_array_begin(session);
-        ++head;
-        ++json_size;
+        ++head; ++json_size;
         AK_MUST_TAIL return state_array_first_value(session, sub_state, head, end, json_size, string_size);
     }
-    case ' ':
-    case '\t':
-    case '\n':
-    case '\r': {
-        ++head;
-        ++json_size;
-        AK_MUST_TAIL return state_root_dispatch(session, sub_state, head, end, json_size, string_size);
+    case CHAR_QUOTE:
+    case CHAR_T:
+    case CHAR_F:
+    case CHAR_N:
+    case CHAR_MINUS:
+    case CHAR_DIGIT: {
+        if (!push_parse_context_checked(session, state_return_result, 0)) return JSONParserState::ERROR;
+        AK_MUST_TAIL return state_value_dispatch(session, sub_state, head, end, json_size, string_size);
     }
-    default: {
-        // Allow top-level primitives per RFC 8259
-        if (c == '"' || c == 't' || c == 'f' || c == 'n' || c == '-' || is_digit(c)) {
-            push_parse_context(session, return_state, 0);
-            AK_MUST_TAIL return state_value_dispatch(session, sub_state, head, end, json_size, string_size);
-        }
+    default:
         return raise_error(session, JSONErrorCode::EXPECTED_OBJECT_OR_ARRAY);
-    }
     }
 }
 
 static JSONParserState state_object_first_attr(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept {
+    head = skip_whitespace(head, end, &json_size);
     if (head == end)
         return suspend_parser(session, state_object_first_attr, sub_state, json_size, string_size);
-    Char c = *head;
-    switch (c) {
-    case '}': {
-        ++head;
-        ++json_size;
+    CharClass cls = classify_char(*head);
+    if (cls == CHAR_RBRACE) {
+        ++head; ++json_size;
         notify_object_end(session);
         AK_MUST_TAIL return resume_parse_context(session, sub_state, head, end, json_size, string_size);
     }
-    case ' ':
-    case '\t':
-    case '\n':
-    case '\r': {
-        ++head;
-        ++json_size;
-        AK_MUST_TAIL return state_object_first_attr(session, sub_state, head, end, json_size, string_size);
-    }
-    default: {
-        AK_MUST_TAIL return state_attr_begin_key(session, sub_state, head, end, json_size, string_size);
-    }
-    }
+    AK_MUST_TAIL return state_attr_begin_key(session, sub_state, head, end, json_size, string_size);
 }
 
 static JSONParserState state_object_rest_attrs(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept {
+    head = skip_whitespace(head, end, &json_size);
     if (head == end)
         return suspend_parser(session, state_object_rest_attrs, sub_state, json_size, string_size);
-    Char c = *head;
-    switch (c) {
-    case '}': {
-        ++head;
-        ++json_size;
+    CharClass cls = classify_char(*head);
+    if (cls == CHAR_RBRACE) {
+        ++head; ++json_size;
         notify_object_end(session);
         AK_MUST_TAIL return resume_parse_context(session, sub_state, head, end, json_size, string_size);
     }
-    case ',': {
-        ++head;
-        ++json_size;
+    if (cls == CHAR_COMMA) {
+        ++head; ++json_size;
         AK_MUST_TAIL return state_attr_begin_key(session, sub_state, head, end, json_size, string_size);
     }
-    case ' ':
-    case '\t':
-    case '\n':
-    case '\r': {
-        ++head;
-        ++json_size;
-        AK_MUST_TAIL return state_object_rest_attrs(session, sub_state, head, end, json_size, string_size);
-    }
-    default: {
-        return raise_error(session, JSONErrorCode::EXPECTED_COMMA_OR_CLOSING_BRACE);
-    }
-    }
+    return raise_error(session, JSONErrorCode::EXPECTED_COMMA_OR_CLOSING_BRACE);
 }
 
 static JSONParserState state_array_first_value(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept {
     while (true) {
+        head = skip_whitespace(head, end, &json_size);
         if (head == end)
             return suspend_parser(session, state_array_first_value, sub_state, json_size, string_size);
-        Char c = *head;
-        switch (c) {
-        case ']': {
-            ++head;
-            ++json_size;
+        CharClass cls = classify_char(*head);
+        if (cls == CHAR_RBRACKET) {
+            ++head; ++json_size;
             notify_array_end(session);
             AK_MUST_TAIL return resume_parse_context(session, sub_state, head, end, json_size, string_size);
         }
-        case ' ':
-        case '\t':
-        case '\n':
-        case '\r':
-            ++head;
-            ++json_size;
-            continue;
-        default: {
-            push_parse_context(session, state_list_rest_values, 0);
-            AK_MUST_TAIL return state_value_dispatch(session, 0, head, end, json_size, string_size);
-        }
-        }
+        if (!push_parse_context_checked(session, state_list_rest_values, 0)) return JSONParserState::ERROR;
+        AK_MUST_TAIL return state_value_dispatch(session, 0, head, end, json_size, string_size);
     }
 }
 
 static JSONParserState state_list_rest_values(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept {
+    head = skip_whitespace(head, end, &json_size);
     if (head == end)
         return suspend_parser(session, state_list_rest_values, sub_state, json_size, string_size);
-    Char c = *head;
-    switch (c) {
-    case ',': {
-        ++head;
-        ++json_size;
-        // Next value
-        push_parse_context(session, state_list_rest_values, 0);
+    CharClass cls = classify_char(*head);
+    if (cls == CHAR_COMMA) {
+        ++head; ++json_size;
+        if (!push_parse_context_checked(session, state_list_rest_values, 0)) return JSONParserState::ERROR;
         AK_MUST_TAIL return state_array_value_required(session, 0, head, end, json_size, string_size);
     }
-    case ']': {
-        ++head;
-        ++json_size;
+    if (cls == CHAR_RBRACKET) {
+        ++head; ++json_size;
         notify_array_end(session);
         AK_MUST_TAIL return resume_parse_context(session, sub_state, head, end, json_size, string_size);
     }
-    case ' ':
-    case '\t':
-    case '\n':
-    case '\r': {
-        ++head;
-        ++json_size;
-        AK_MUST_TAIL return state_list_rest_values(session, sub_state, head, end, json_size, string_size);
-    }
-    default:
-        return raise_error(session, JSONErrorCode::EXPECTED_COMMA_OR_CLOSING_BRACKET);
-    }
+    return raise_error(session, JSONErrorCode::EXPECTED_COMMA_OR_CLOSING_BRACKET);
 }
 
 // After a comma inside arrays, a value must follow; ']' is not allowed (catches trailing comma)
 static JSONParserState state_array_value_required(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept {
     while (true) {
+        head = skip_whitespace(head, end, &json_size);
         if (head == end)
             return suspend_parser(session, state_array_value_required, sub_state, json_size, string_size);
-        Char c = *head;
-        switch (c) {
-        case ' ':
-        case '\t':
-        case '\n':
-        case '\r': {
-            ++head;
-            ++json_size;
-            continue;
-        }
-        case ']':
+        CharClass cls = classify_char(*head);
+        if (cls == CHAR_RBRACKET)
             return raise_error(session, JSONErrorCode::EXPECTED_VALUE_AFTER_COMMA);
-        default:
-            // Delegate to value dispatch, keeping rest-values on stack
-            AK_MUST_TAIL return state_value_dispatch(session, sub_state, head, end, json_size, string_size);
-        }
+        AK_MUST_TAIL return state_value_dispatch(session, sub_state, head, end, json_size, string_size);
     }
 }
 
@@ -697,7 +712,7 @@ static JSONParserState state_attr_key_chars(JSONParseSession *session, U32 sub_s
                 // Use streaming end callback
                 notify_attr_key_end(session);
             }
-            AK_MUST_TAIL return state_attr_semi(session, 0, head, end, json_size, string_size);
+            AK_MUST_TAIL return state_attr_separator(session, 0, head, end, json_size, string_size);
         } else {
             ++head;
             ++json_size;
@@ -707,113 +722,76 @@ static JSONParserState state_attr_key_chars(JSONParseSession *session, U32 sub_s
 }
 
 static JSONParserState state_attr_begin_key(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept {
-    if (head == end)
+    head = skip_whitespace(head, end, &json_size);
+    if (head == end) {
         return suspend_parser(session, state_attr_begin_key, sub_state, json_size, string_size);
-    Char c = *head;
-    switch (c) {
-    case '"': {
-        ++head;
-        ++json_size;
-        push_parse_context(session, state_object_rest_attrs, 0);
-        // Pass sub_state=1 to indicate this is a complete key candidate
-        AK_MUST_TAIL return state_attr_key_chars(session, 1, head, end, json_size, string_size);
     }
-    case ' ':
-    case '\t':
-    case '\n':
-    case '\r': {
-        ++head;
-        ++json_size;
-        AK_MUST_TAIL return state_attr_begin_key(session, sub_state, head, end, json_size, string_size);
-    }
-    default: {
+    if (classify_char(*head) != CHAR_QUOTE) {
         return raise_error(session, JSONErrorCode::EXPECTED_STRING_KEY);
     }
+    ++head; ++json_size;
+    if (!push_parse_context_checked(session, state_object_rest_attrs, 0)) { 
+        return JSONParserState::ERROR;
     }
+    // Pass sub_state=1 to indicate this is a complete key candidate
+    AK_MUST_TAIL return state_attr_key_chars(session, 1, head, end, json_size, string_size);
 }
 
 // state_attr_end_key not used; end-of-key handled in state_attr_key_chars
 
-static JSONParserState state_attr_semi(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept {
+static JSONParserState state_attr_separator(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept {
     (void)sub_state;
     (void)string_size;
     while (true) {
-        if (head == end)
-            return suspend_parser(session, state_attr_semi, 0, json_size, string_size);
-        Char c = *head;
-        switch (c) {
-        case ':': {
-            ++head;
-            ++json_size;
-            // After ':' comes a value
-            AK_MUST_TAIL return state_value_dispatch(session, 0, head, end, json_size, string_size);
-        }
-        case ' ':
-        case '\t':
-        case '\n':
-        case '\r':
-            ++head;
-            ++json_size;
-            continue;
-        default:
+        head = skip_whitespace(head, end, &json_size);
+        if (head == end) {
+            return suspend_parser(session, state_attr_separator, 0, json_size, string_size);
+        }    
+        if (classify_char(*head) != CHAR_COLON) {
             return raise_error(session, JSONErrorCode::EXPECTED_COLON_AFTER_KEY);
         }
+        ++head; 
+        ++json_size;
+        AK_MUST_TAIL return state_value_dispatch(session, 0, head, end, json_size, string_size);
     }
 }
 
-// Value parsing and primitives
+// Optimized value dispatch using character classes (definition)
 static JSONParserState state_value_dispatch(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept {
     (void)sub_state;
     (void)string_size;
-    while (true) {
-        if (head == end)
-            return suspend_parser(session, state_value_dispatch, 0, json_size, string_size);
-        Char c = *head;
-        switch (c) {
-        case ' ':
-        case '\t':
-        case '\n':
-        case '\r':
-            ++head;
-            ++json_size;
-            continue;
-        case 'n':
-            ++head;
-            ++json_size;
-            AK_MUST_TAIL return state_null_head(session, 0, head, end, json_size, 0);
-        case 't':
-            ++head;
-            ++json_size;
-            AK_MUST_TAIL return state_true_head(session, 0, head, end, json_size, 0);
-        case 'f':
-            ++head;
-            ++json_size;
-            AK_MUST_TAIL return state_false_head(session, 0, head, end, json_size, 0);
-        case '"':
-            ++head;
-            ++json_size;
-            // Don't emit begin yet - we'll emit it only if we need to fall back to streaming
-            // Pass sub_state=1 to indicate this is a complete string candidate
-            AK_MUST_TAIL return state_string_head(session, 1, head, end, json_size, 0);
-        case '{':
-            ++head;
-            ++json_size;
-            notify_object_begin(session);
-            AK_MUST_TAIL return state_object_first_attr(session, 0, head, end, json_size, 0);
-        case '[':
-            ++head;
-            ++json_size;
-            notify_array_begin(session);
-            AK_MUST_TAIL return state_array_first_value(session, 0, head, end, json_size, 0);
-        default:
-            if (c == '-' || is_digit(c)) {
-                // Start number; include current char into suspend buffer and continue
-                session->suspend_buffer_size = 0;
-                // Fallthrough to number state by not consuming here; number state will read from current char
-                AK_MUST_TAIL return state_number_head(session, 0, head, end, json_size, 0);
-            }
-            return raise_error(session, JSONErrorCode::UNEXPECTED_CHAR_IN_VALUE);
-        }
+    head = skip_whitespace(head, end, &json_size);
+    if (head >= end)
+        return suspend_parser(session, state_value_dispatch, 0, json_size, 0);
+
+    CharClass cls = classify_char(*head);
+    switch (cls) {
+    case CHAR_N:
+        ++head; ++json_size;
+        AK_MUST_TAIL return state_null_head(session, 0, head, end, json_size, 0);
+    case CHAR_T:
+        ++head; ++json_size;
+        AK_MUST_TAIL return state_true_head(session, 0, head, end, json_size, 0);
+    case CHAR_F:
+        ++head; ++json_size;
+        AK_MUST_TAIL return state_false_head(session, 0, head, end, json_size, 0);
+    case CHAR_QUOTE:
+        ++head; ++json_size;
+        AK_MUST_TAIL return state_string_head(session, 1, head, end, json_size, 0);
+    case CHAR_LBRACE:
+        ++head; ++json_size;
+        notify_object_begin(session);
+        AK_MUST_TAIL return state_object_first_attr(session, 0, head, end, json_size, 0);
+    case CHAR_LBRACKET:
+        ++head; ++json_size;
+        notify_array_begin(session);
+        AK_MUST_TAIL return state_array_first_value(session, 0, head, end, json_size, 0);
+    case CHAR_MINUS:
+    case CHAR_DIGIT:
+        session->suspend_buffer_size = 0;
+        AK_MUST_TAIL return state_number_head(session, 0, head, end, json_size, 0);
+    default:
+        return raise_error(session, JSONErrorCode::UNEXPECTED_CHAR_IN_VALUE);
     }
 }
 
@@ -832,7 +810,7 @@ static JSONParserState state_null_head(JSONParseSession *session, U32 sub_state,
         ++json_size;
         ++idx;
     }
-    notify_null_value(session);
+    notify_value_null(session);
     AK_MUST_TAIL return resume_parse_context(session, 0, head, end, json_size, 0);
 }
 
@@ -850,7 +828,7 @@ static JSONParserState state_true_head(JSONParseSession *session, U32 sub_state,
         ++json_size;
         ++idx;
     }
-    notify_bool_value(session, true);
+    notify_value_bool(session, true);
     AK_MUST_TAIL return resume_parse_context(session, 0, head, end, json_size, 0);
 }
 
@@ -868,11 +846,12 @@ static JSONParserState state_false_head(JSONParseSession *session, U32 sub_state
         ++json_size;
         ++idx;
     }
-    notify_bool_value(session, false);
+    notify_value_bool(session, false);
     AK_MUST_TAIL return resume_parse_context(session, 0, head, end, json_size, 0);
 }
 
-static Bool is_num_char(Char c) noexcept { return (c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E' || (c >= '0' && c <= '9')); }
+// Deprecated: replaced by is_number_char(Char)
+// static Bool is_num_char(Char c) noexcept { return (c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E' || (c >= '0' && c <= '9')); }
 
 static JSONParserState state_number_head(JSONParseSession *session, U32 sub_state, Char *head, Char *end, U64 json_size, U64 string_size) noexcept {
     (void)sub_state;
@@ -883,8 +862,9 @@ static JSONParserState state_number_head(JSONParseSession *session, U32 sub_stat
             break; // finalize number at buffer end
         }
         Char c = *head;
-        if (!is_num_char(c))
+        if (!is_number_char(c)) {
             break;
+        }
         if (session->suspend_buffer_size + 1 < sizeof(session->suspend_buffer)) {
             session->suspend_buffer[session->suspend_buffer_size++] = c;
         } else {
@@ -972,7 +952,7 @@ static JSONParserState state_number_head(JSONParseSession *session, U32 sub_stat
         }
         if (neg)
             val = -val;
-        notify_int_value(session, val);
+        notify_value_number_int(session, val);
     } else {
         // parse float using simple strtod from C standard library
         char *endp = nullptr;
@@ -980,7 +960,7 @@ static JSONParserState state_number_head(JSONParseSession *session, U32 sub_stat
         if ((U64)(endp - session->suspend_buffer) != session->suspend_buffer_size) {
             return raise_error(session, JSONErrorCode::INVALID_FLOAT_FORMAT);
         }
-        notify_float_value(session, v);
+        notify_value_number_float(session, v);
     }
     session->suspend_buffer_size = 0;
     AK_MUST_TAIL return resume_parse_context(session, 0, head, end, json_size, 0);
@@ -994,14 +974,14 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
         if (head == end) {
             if (is_single_buffer) {
                 // For streaming strings, switch to streaming mode instead of error
-                notify_string_value_begin(session);
+                notify_value_string_begin(session);
                 if (chunk_start != head) {
-                    notify_string_value_chars(session, chunk_start, (U64)(head - chunk_start));
+                    notify_value_string_chars(session, chunk_start, (U64)(head - chunk_start));
                     string_size += (U64)(head - chunk_start);
                 }
             } else {
                 if (chunk_start != head) {
-                    notify_string_value_chars(session, chunk_start, (U64)(head - chunk_start));
+                    notify_value_string_chars(session, chunk_start, (U64)(head - chunk_start));
                     string_size += (U64)(head - chunk_start);
                 }
             }
@@ -1014,20 +994,20 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
                 // Escape splits across buffers. If we were still in single-buffer mode,
                 // we need to switch to streaming and flush any pending chunk.
                 if (is_single_buffer) {
-                    notify_string_value_begin(session);
+                    notify_value_string_begin(session);
                     if (chunk_start != (head - 1)) {
-                        notify_string_value_chars(session, chunk_start, (U64)((head - 1) - chunk_start));
+                        notify_value_string_chars(session, chunk_start, (U64)((head - 1) - chunk_start));
                         string_size += (U64)((head - 1) - chunk_start);
                     }
                     is_single_buffer = false;
                 } else {
                     if (chunk_start != (head - 1)) {
-                        notify_string_value_chars(session, chunk_start, (U64)((head - 1) - chunk_start));
+                        notify_value_string_chars(session, chunk_start, (U64)((head - 1) - chunk_start));
                         string_size += (U64)((head - 1) - chunk_start);
                     }
                 }
                 // Emit the backslash as raw when escape spans buffers
-                notify_string_value_chars(session, "\\", 1);
+                notify_value_string_chars(session, "\\", 1);
                 ++string_size;
                 chunk_start = head; // next chunk resumes after the backslash
                 // No more chars in this buffer; suspend and continue in next buffer
@@ -1035,7 +1015,14 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
             }
             Char e = *head; ++head; ++json_size;
             switch (e) {
-                case '"': case '\\': case '/': case 'b': case 'f': case 'n': case 'r': case 't':
+                case '"': 
+                case '\\': 
+                case '/': 
+                case 'b': 
+                case 'f': 
+                case 'n': 
+                case 'r': 
+                case 't':
                     break; // valid
                 case 'u': {
                     U32 code1;
@@ -1066,13 +1053,13 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
         } else if (c == '"') {
             // end of string
             if (is_single_buffer) {
-                notify_string_value(session, chunk_start, (U64)(head - chunk_start));
+                notify_value_string(session, chunk_start, (U64)(head - chunk_start));
             } else {
                 if (chunk_start != head) {
-                    notify_string_value_chars(session, chunk_start, (U64)(head - chunk_start));
+                    notify_value_string_chars(session, chunk_start, (U64)(head - chunk_start));
                     string_size += (U64)(head - chunk_start);
                 }
-                notify_string_value_end(session);
+                notify_value_string_end(session);
             }
             ++head; ++json_size;
             // If we came here resuming from a suspend (streaming mode), the top
@@ -1094,10 +1081,10 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // Unified event notification function
-static Void notify_event(JSONParseSession *session, JSONEvent event_type, const JSONEventData *data = nullptr) noexcept {
-    if (session->on_event) {
-        session->on_event(session, event_type, data);
-    }
+static Void notify_event(JSONParseSession *session, JSONEvent event_type, const JSONEventData *data) noexcept {
+    AK_ASSERT(session != nullptr);
+    AK_ASSERT(session->on_event != nullptr);
+    session->on_event(session, event_type, data);
 }
 
 // Parser state changed
@@ -1141,44 +1128,44 @@ static Void notify_attr_key(JSONParseSession *session, const Char *text_buffer, 
 
 
 // Literal Values
-static Void notify_null_value(JSONParseSession *session) noexcept {
+static Void notify_value_null(JSONParseSession *session) noexcept {
     notify_event(session, JSONEvent::NULL_VALUE);
 }
 
-static Void notify_bool_value(JSONParseSession *session, Bool value) noexcept {
+static Void notify_value_bool(JSONParseSession *session, Bool value) noexcept {
     JSONEventData data = {};
     data.bool_value = value;
     notify_event(session, JSONEvent::BOOL_VALUE, &data);
 }
 
-static Void notify_int_value(JSONParseSession *session, I64 value) noexcept {
+static Void notify_value_number_int(JSONParseSession *session, I64 value) noexcept {
     JSONEventData data = {};
     data.int_value = value;
     notify_event(session, JSONEvent::INT_VALUE, &data);
 }
 
-static Void notify_float_value(JSONParseSession *session, F64 value) noexcept {
+static Void notify_value_number_float(JSONParseSession *session, F64 value) noexcept {
     JSONEventData data = {};
     data.float_value = value;
     notify_event(session, JSONEvent::FLOAT_VALUE, &data);
 }
 
-static Void notify_string_value_begin(JSONParseSession *session) noexcept {
+static Void notify_value_string_begin(JSONParseSession *session) noexcept {
     notify_event(session, JSONEvent::STRING_VALUE_BEGIN);
 }
 
-static Void notify_string_value_end(JSONParseSession *session) noexcept {
+static Void notify_value_string_end(JSONParseSession *session) noexcept {
     notify_event(session, JSONEvent::STRING_VALUE_END);
 }
 
-static Void notify_string_value_chars(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
+static Void notify_value_string_chars(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
     JSONEventData data = {};
     data.string_data.str = text_buffer;
     data.string_data.len = text_buffer_length;
     notify_event(session, JSONEvent::STRING_VALUE_CHARS, &data);
 }
 
-static Void notify_string_value(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
+static Void notify_value_string(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
     JSONEventData data = {};
     data.string_data.str = text_buffer;
     data.string_data.len = text_buffer_length;
@@ -1197,13 +1184,93 @@ static Void notify_array_end(JSONParseSession *session) noexcept {
 // ------------------------------------------
 // Utility implementations
 // ------------------------------------------
-static Bool is_digit(Char c) noexcept { return (c >= '0' && c <= '9'); }
+// Removed: is_digit unused (digit checks are inlined or via tables)
 
 static JSONParserState raise_error(JSONParseSession *session, JSONErrorCode code) noexcept {
     session->state = JSONParserState::ERROR;
     session->err_code = (U32)code;
     notify_state_changed(session);
     return JSONParserState::ERROR;
+}
+
+// Utilities - implementations
+static inline Void emit_utf8_bytes(JSONParseSession *session, U32 cp, EmitFn *emit) {
+    char bytes[4];
+    U32 n = 0;
+    if (cp < UTF8_1_MAX) {
+        bytes[0] = (char)cp;
+        n = 1;
+    } else if (cp < UTF8_2_MAX) {
+        bytes[0] = (char)(0xC0 | (cp >> 6));
+        bytes[1] = (char)(0x80 | (cp & 0x3F));
+        n = 2;
+    } else if (cp < 0x10000U) {
+        bytes[0] = (char)(0xE0 | (cp >> 12));
+        bytes[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        bytes[2] = (char)(0x80 | (cp & 0x3F));
+        n = 3;
+    } else {
+        bytes[0] = (char)(0xF0 | (cp >> 18));
+        bytes[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+        bytes[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        bytes[3] = (char)(0x80 | (cp & 0x3F));
+        n = 4;
+    }
+    (*emit)(session, bytes, n);
+}
+
+static inline CharClass classify_char(Char c) noexcept {
+    return static_cast<CharClass>(char_class_table[(U8)c]);
+}
+
+static inline Bool is_number_char(Char c) noexcept {
+    return number_char_table[(U8)c] != 0;
+}
+
+static inline void prefetch_classification_tables() noexcept {
+    __builtin_prefetch(&char_class_table[0], 0, 3);
+    __builtin_prefetch(&number_char_table[0], 0, 3);
+}
+
+static inline Char* skip_whitespace(Char* head, Char* end, U64* json_size) noexcept {
+    while (head < end) {
+        CharClass cls = classify_char(*head);
+        if (cls != CHAR_WHITESPACE) {
+            break;
+        }
+        ++head;
+        ++(*json_size);
+    }
+    return head;
+}
+static inline Bool parse_hex4(JSONParseSession *session, Char **phead, Char *end, U64 *pjson_size, U32 *pout) noexcept {
+    Char *head = *phead;
+    U64 json_size = *pjson_size;
+    U32 out = 0;
+    for (int i = 0; i < 4; ++i) {
+        if (head == end) {
+            return false;
+        }
+        Char h = *head;
+        ++head;
+        ++json_size;
+        U32 d;
+        if (h >= '0' && h <= '9') {
+            d = (U32)(h - '0');
+        } else if (h >= 'a' && h <= 'f') {
+            d = 10u + (U32)(h - 'a');
+        } else if (h >= 'A' && h <= 'F') {
+            d = 10u + (U32)(h - 'A');
+        } else {
+            (void)raise_error(session, JSONErrorCode::INVALID_UNICODE_HEX_DIGIT);
+            return false;
+        }
+        out = (out << 4) | d;
+    }
+    *phead = head;
+    *pjson_size = json_size;
+    *pout = out;
+    return true;
 }
 
 static JSONParserState suspend_parser(JSONParseSession *session, JSONParserStateFn *fn, U32 sub_state, U64 json_size, U64 string_size) noexcept {

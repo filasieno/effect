@@ -25,6 +25,8 @@ namespace ak {
         NONE                                 = 0,
         FATAL_STACK_OOB                      = 200,
         STACK_OVERFLOW_ON_SUSPEND            = 201,
+        INVALID_ARGUMENT                     = 202,
+        MISSING_CALLBACK                     = 203,
 
         EMPTY_INPUT                          = 210,
         UNEXPECTED_EOF                       = 211,
@@ -52,6 +54,9 @@ namespace ak {
         INVALID_TOKEN_EXPECTED_NULL          = 270,
         INVALID_TOKEN_EXPECTED_TRUE          = 271,
         INVALID_TOKEN_EXPECTED_FALSE         = 272,
+        
+        // Limits / overflow
+        MAX_DEPTH_EXCEEDED                   = 290,
     };
     
     struct JSONParseSession;
@@ -123,13 +128,13 @@ namespace ak {
     ///\brief The JSON parse session
     struct JSONParseSession {
         JSONParseSessionConfig config;              ///< Contains the users configuration parameters
-        Void*                  user_data;           ///< User data passed to the handlers
+        Void*                  user_data;           ///< Original user data passed to the handlers
         JSONParserCallbackFn*  on_event;            ///< Unified event callback
         void*                  parser_buffer;       ///< The buffer that holds the unaligned parser
         U64                    parser_buffer_size;  ///< The size of the buffer that holds the unaligned parser
         
         Char*                  buffer;              ///< Current input buffer
-        Size                   buffer_len;          ///< Length of the buffer
+        Size                   buffer_len;          ///< Length of the current input buffer
         JSONParserState        state;               ///< The current state of the parser
         U32                    sub_state;           ///< The current sub-state of the parser
         U64                    json_offset;         ///< Number of bytes parsed in the JSON data
