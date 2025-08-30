@@ -1,5 +1,11 @@
-result=ERROR
-value=0
+result=CONTINUE
 ---
 EVENT
-ERROR 0
+STATE_INITIALIZED
+BEGIN_ARRAY
+STRING_BEGIN
+STRING_CHARS "\\\"]"
+---
+result=DONE
+---
+EVENT

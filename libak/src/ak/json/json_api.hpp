@@ -75,7 +75,8 @@ namespace ak {
         STRING_VALUE_END,
         STRING_VALUE_CHARS,
         STRING,
-        PARSE_STATE_CHANGED
+        PARSE_STATE_CHANGED,
+        PARSER_STOPPED
     };
 
     union JSONEventData {
@@ -123,7 +124,7 @@ namespace ak {
     struct JSONParseSession {
         JSONParseSessionConfig config;              ///< Contains the users configuration parameters
         Void*                  user_data;           ///< User data passed to the handlers
-        JSONParserCallbackFn*  on_event; ///< Unified event callback
+        JSONParserCallbackFn*  on_event;            ///< Unified event callback
         void*                  parser_buffer;       ///< The buffer that holds the unaligned parser
         U64                    parser_buffer_size;  ///< The size of the buffer that holds the unaligned parser
         
@@ -161,7 +162,9 @@ namespace ak {
     ///\brief Parse the JSON data
     ///\param session The session to parse
     ///\return The parser state
-    JSONParserState parse_buffer(JSONParseSession* session, Void* buffer, U64 buffer_size) noexcept;
+    JSONParserState run_json_parser(JSONParseSession* session, Void* buffer, U64 buffer_size) noexcept;
+
+    JSONParserState stop_json_parser(JSONParseSession* session) noexcept;
 
     ///\brief Reset the JSON parser
     ///\param session The parser to reset

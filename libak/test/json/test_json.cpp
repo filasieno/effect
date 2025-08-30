@@ -15,6 +15,10 @@ namespace fs = std::filesystem;
 struct SerializedSink {
     std::vector<std::string> lines;
     U32 last_err_code = 0;
+    // For multi-buffer tests, store intermediate results
+    std::vector<std::vector<std::string>> buffer_results;
+    std::vector<JSONParserState> buffer_states;
+    std::vector<U32> buffer_error_codes;
 };
 
 static void on_json_event(JSONParseSession *session, ak::JSONEvent event, const JSONEventData *data) noexcept {
@@ -28,10 +32,10 @@ static void on_json_event(JSONParseSession *session, ak::JSONEvent event, const 
         case ak::JSONEvent::ATTR_KEY_BEGIN: sink->lines.emplace_back("KEY_BEGIN"); break;
         case ak::JSONEvent::ATTR_KEY_END: sink->lines.emplace_back("KEY_END"); break;
         case ak::JSONEvent::ATTR_KEY_CHARS:
-            if (data) sink->lines.emplace_back(std::string("KEY_CHARS ") + std::string(data->string_data.str, data->string_data.len));
+            if (data) sink->lines.emplace_back(std::string("KEY_CHARS \"") + std::string(data->string_data.str, data->string_data.len) + "\"");
             break;
         case ak::JSONEvent::KEY:
-            if (data) sink->lines.emplace_back(std::string("KEY ") + std::string(data->string_data.str, data->string_data.len));
+            if (data) sink->lines.emplace_back(std::string("KEY \"") + std::string(data->string_data.str, data->string_data.len) + "\"");
             break;
         case ak::JSONEvent::NULL_VALUE: sink->lines.emplace_back("NULL"); break;
         case ak::JSONEvent::BOOL_VALUE:
@@ -46,18 +50,35 @@ static void on_json_event(JSONParseSession *session, ak::JSONEvent event, const 
         case ak::JSONEvent::STRING_VALUE_BEGIN: sink->lines.emplace_back("STRING_BEGIN"); break;
         case ak::JSONEvent::STRING_VALUE_END: sink->lines.emplace_back("STRING_END"); break;
         case ak::JSONEvent::STRING_VALUE_CHARS:
-            if (data) sink->lines.emplace_back(std::string("STRING_CHARS ") + std::string(data->string_data.str, data->string_data.len));
+            if (data) sink->lines.emplace_back(std::string("STRING_CHARS \"") + std::string(data->string_data.str, data->string_data.len) + "\"");
             break;
         case ak::JSONEvent::STRING:
-            if (data) sink->lines.emplace_back(std::string("STRING ") + std::string(data->string_data.str, data->string_data.len));
+            if (data) sink->lines.emplace_back(std::string("STRING \"") + std::string(data->string_data.str, data->string_data.len) + "\"");
             break;
         case ak::JSONEvent::PARSE_STATE_CHANGED:
             if (data) {
                 sink->last_err_code = data->state_data.err_code;
-                if (data->state_data.state == JSONParserState::ERROR) {
-                    sink->lines.emplace_back(std::string("ERROR ") + std::to_string((unsigned long long)data->state_data.err_code));
+                switch (data->state_data.state) {
+                    case JSONParserState::INITIALIZED:
+                        sink->lines.emplace_back("STATE_INITIALIZED");
+                        break;
+                    case JSONParserState::CONTINUE:
+                        sink->lines.emplace_back("STATE_CONTINUE");
+                        break;
+                    case JSONParserState::DONE:
+                        sink->lines.emplace_back("STATE_DONE");
+                        break;
+                    case JSONParserState::ERROR:
+                        sink->lines.emplace_back(std::string("STATE_ERROR ") + std::to_string((unsigned long long)data->state_data.err_code));
+                        break;
+                    default:
+                        sink->lines.emplace_back("STATE_INVALID");
+                        break;
                 }
             }
+            break;
+        case ak::JSONEvent::PARSER_STOPPED:
+            sink->lines.emplace_back("PARSER_STOPPED");
             break;
         case ak::JSONEvent::ATTR_BEGIN:
         case ak::JSONEvent::ATTR_END:
@@ -77,14 +98,56 @@ static JSONParserState parse_json_chunks(const std::vector<std::string> &chunks,
     }
     log_stream << "INFO: JSON parser session initialized successfully\n";
     JSONParserState st = JSONParserState::INVALID;
+
     for (size_t i = 0; i < chunks.size(); ++i) {
         log_stream << "INFO: Processing chunk " << (i + 1) << "/" << chunks.size() << " (size: " << chunks[i].size() << " bytes)\n";
-        st = parse_buffer(session, (void *)chunks[i].data(), (U64)chunks[i].size());
+
+        // Capture lines before this chunk for intermediate results
+        size_t chunk_start_lines = sink.lines.size();
+
+        st = run_json_parser(session, (void *)chunks[i].data(), (U64)chunks[i].size());
         log_stream << "INFO: Chunk " << (i + 1) << " processing result: " << (st == JSONParserState::DONE ? "DONE" :
                                                                                st == JSONParserState::CONTINUE ? "CONTINUE" :
                                                                                st == JSONParserState::ERROR ? "ERROR" : "INVALID") << "\n";
+
+        // Store intermediate results for this buffer
+        std::vector<std::string> chunk_lines(sink.lines.begin() + chunk_start_lines, sink.lines.end());
+        sink.buffer_results.push_back(chunk_lines);
+        sink.buffer_states.push_back(st);
+        sink.buffer_error_codes.push_back((st == JSONParserState::ERROR) ? sink.last_err_code : 0);
+
         if (st == JSONParserState::ERROR) break;
     }
+
+    // Always call stop_json_parser to signal end of input
+    if (st == JSONParserState::CONTINUE) {
+        log_stream << "INFO: Calling stop_json_parser to signal end of input\n";
+
+        // Capture lines before stop_json_parser for intermediate results
+        size_t lines_before_stop = sink.lines.size();
+
+        st = stop_json_parser(session);
+        log_stream << "INFO: stop_json_parser result: " << (st == JSONParserState::DONE ? "DONE" :
+                                                             st == JSONParserState::CONTINUE ? "CONTINUE" :
+                                                             st == JSONParserState::ERROR ? "ERROR" : "INVALID") << "\n";
+
+        // Store results from stop_json_parser as a separate "buffer"
+        std::vector<std::string> stop_lines(sink.lines.begin() + lines_before_stop, sink.lines.end());
+        sink.buffer_results.push_back(stop_lines);
+        sink.buffer_states.push_back(st);
+        sink.buffer_error_codes.push_back((st == JSONParserState::ERROR) ? sink.last_err_code : 0);
+    }
+
+    // If we have multiple buffers and the first buffer doesn't have STATE_INITIALIZED,
+    // add it to the first buffer
+    if (!sink.buffer_results.empty() && sink.buffer_results[0].size() > 0) {
+        // Check if the first event in the first buffer is not STATE_INITIALIZED
+        if (sink.buffer_results[0][0].find("STATE_INITIALIZED") == std::string::npos) {
+            // Add STATE_INITIALIZED at the beginning of the first buffer
+            sink.buffer_results[0].insert(sink.buffer_results[0].begin(), "STATE_INITIALIZED");
+        }
+    }
+
     out_err_code = (st == JSONParserState::ERROR) ? sink.last_err_code : 0;
     log_stream << "INFO: Final parsing state: " << (st == JSONParserState::DONE ? "DONE" :
                                                      st == JSONParserState::CONTINUE ? "CONTINUE" :
@@ -97,19 +160,52 @@ static JSONParserState parse_json_chunks(const std::vector<std::string> &chunks,
 
 static std::string serialize_out(JSONParserState st, const SerializedSink &sink, U32 err_code) {
     std::ostringstream os;
-    switch (st) {
-        case JSONParserState::DONE: os << "result=DONE\n"; break;
-        case JSONParserState::CONTINUE: os << "result=CONTINUE\n"; break;
-        case JSONParserState::ERROR: os << "result=ERROR\n"; break;
-        case JSONParserState::INITIALIZED: os << "result=INITIALIZED\n"; break;
-        default: os << "result=INVALID\n"; break;
+
+    // If we have multiple buffers, serialize intermediate results
+    if (!sink.buffer_results.empty()) {
+        for (size_t i = 0; i < sink.buffer_results.size(); ++i) {
+            // Write result for this buffer
+            switch (sink.buffer_states[i]) {
+                case JSONParserState::DONE: os << "result=DONE\n"; break;
+                case JSONParserState::CONTINUE: os << "result=CONTINUE\n"; break;
+                case JSONParserState::ERROR: os << "result=ERROR\n"; break;
+                case JSONParserState::INITIALIZED: os << "result=INITIALIZED\n"; break;
+                default: os << "result=INVALID\n"; break;
+            }
+            if (sink.buffer_states[i] == JSONParserState::ERROR) {
+                os << "value=" << sink.buffer_error_codes[i] << "\n";
+            }
+            os << "---\n";
+            os << "EVENT\n";
+            for (const auto &ln : sink.buffer_results[i]) os << ln << "\n";
+
+            // If this buffer had an error, stop here (don't include subsequent buffers)
+            if (sink.buffer_states[i] == JSONParserState::ERROR) {
+                break;
+            }
+
+            // Add buffer separator if not the last buffer and not an error
+            if (i < sink.buffer_results.size() - 1 && sink.buffer_states[i] != JSONParserState::ERROR) {
+                os << "---\n";
+            }
+        }
+    } else {
+        // Single buffer case (existing behavior)
+        switch (st) {
+            case JSONParserState::DONE: os << "result=DONE\n"; break;
+            case JSONParserState::CONTINUE: os << "result=CONTINUE\n"; break;
+            case JSONParserState::ERROR: os << "result=ERROR\n"; break;
+            case JSONParserState::INITIALIZED: os << "result=INITIALIZED\n"; break;
+            default: os << "result=INVALID\n"; break;
+        }
+        if (st == JSONParserState::ERROR) {
+            os << "value=" << err_code << "\n";
+        }
+        os << "---\n";
+        os << "EVENT\n";
+        for (const auto &ln : sink.lines) os << ln << "\n";
     }
-    if (st == JSONParserState::ERROR) {
-        os << "value=" << err_code << "\n";
-    }
-    os << "---\n";
-    os << "EVENT\n";
-    for (const auto &ln : sink.lines) os << ln << "\n";
+
     return os.str();
 }
 
@@ -208,7 +304,7 @@ TEST_P(JSONParser, Case) {
 
     // Only show test result, not detailed logs
     bool test_passed = (actual == expected);
-    EXPECT_TRUE(test_passed) << "Case '" << param.name << "' mismatched. See " << out_file.string() << " and " << log_file.string();
+    EXPECT_TRUE(test_passed);  // Details are in log files, keep stdout clean
 }
 
 static std::vector<JSONCaseParam> load_params() {

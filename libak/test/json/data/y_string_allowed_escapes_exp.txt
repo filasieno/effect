@@ -1,6 +1,8 @@
 result=DONE
 ---
 EVENT
+STATE_INITIALIZED
 BEGIN_ARRAY
-STRING \"\\/\b\f\n\r\t
+STRING "\"\\\/\b\f\n\r\t"
 END_ARRAY
+STATE_DONE

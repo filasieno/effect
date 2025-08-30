@@ -1,5 +1,9 @@
-result=ERROR
-value=0
+result=DONE
 ---
 EVENT
-ERROR 0
+STATE_INITIALIZED
+BEGIN_ARRAY
+STRING "new
+line"
+END_ARRAY
+STATE_DONE

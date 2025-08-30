@@ -1,4 +1,6 @@
 result=DONE
 ---
 EVENT
-STRING hello
+STATE_INITIALIZED
+STRING "hello"
+STATE_DONE

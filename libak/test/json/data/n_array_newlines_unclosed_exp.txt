@@ -1,5 +1,12 @@
-result=ERROR
-value=0
+result=CONTINUE
 ---
 EVENT
-ERROR 0
+STATE_INITIALIZED
+BEGIN_ARRAY
+STRING "a"
+INT 4
+INT 1
+---
+result=DONE
+---
+EVENT

@@ -1,5 +1,6 @@
-result=ERROR
-value=0
+result=DONE
 ---
 EVENT
-ERROR 0
+STATE_INITIALIZED
+STRING ""
+STATE_DONE

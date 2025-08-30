@@ -238,6 +238,9 @@ JSONParseSession *init_json_parse_session(void *buffer, U64 buffer_size, JSONPar
     session->user_data = user_data;
     session->suspend_buffer_size = 0;
 
+    // Notify that the parser has been initialized
+    notify_state_changed(session);
+
     return session;
 }
 
@@ -281,7 +284,7 @@ JSONParseSession *init_json_parser(Void *parser_buffer, U64 parser_buffer_size, 
     return init_json_parse_session(parser_buffer, parser_buffer_size, &tmp_cfg, on_event, user_data);
 }
 
-JSONParserState parse_buffer(JSONParseSession *session, Void *buffer, U64 buffer_size) noexcept {
+JSONParserState run_json_parser(JSONParseSession *session, Void *buffer, U64 buffer_size) noexcept {
     AK_ASSERT(session != nullptr);
     AK_ASSERT(buffer != nullptr);
     AK_ASSERT(session->state != JSONParserState::INVALID);
@@ -315,6 +318,55 @@ JSONParserState parse_buffer(JSONParseSession *session, Void *buffer, U64 buffer
     return session->state;
 }
 
+// Forward declaration for notify_event
+static Void notify_event(JSONParseSession *session, JSONEvent event_type, const JSONEventData *data) noexcept;
+
+JSONParserState stop_json_parser(JSONParseSession *session) noexcept {
+    AK_ASSERT(session != nullptr);
+    AK_ASSERT(session->state != JSONParserState::INVALID);
+
+    // Always notify that the parser is being stopped
+    notify_event(session, JSONEvent::PARSER_STOPPED, nullptr);
+
+    // If already done or error, return current state
+    if (session->state == JSONParserState::DONE || session->state == JSONParserState::ERROR) {
+        return session->state;
+    }
+
+    // If initialized but never started, this is an error (empty input)
+    if (session->state == JSONParserState::INITIALIZED) {
+        return raise_error(session, JSONErrorCode::EMPTY_INPUT);
+    }
+
+    // If we're in CONTINUE state, it means the parser is waiting for more input
+    // We need to check if the current parsing context can be completed
+    if (session->state == JSONParserState::CONTINUE) {
+        // Check if we have a suspend frame (parser was suspended waiting for more data)
+        if (session->stack_top > session->stack_begin) {
+            JSONParseContext *top_ctx = session->stack_top - 1;
+
+            // Check if this is a suspend frame (tagged with SUSP_TAG)
+            static int SUSP_TAG;
+            if (top_ctx->user_data == &SUSP_TAG) {
+                // Parser was suspended, which means it was expecting more data
+                // Since we're stopping, this is unexpected EOF
+                return raise_error(session, JSONErrorCode::UNEXPECTED_EOF);
+            } else {
+                // We have a regular continuation frame
+                // This means parsing reached a natural completion point
+                // Try to complete by calling the return_state function
+                return return_state(session, 0, nullptr, nullptr, session->json_offset, 0);
+            }
+        } else {
+            // No frames on stack, but state is CONTINUE - this shouldn't happen
+            return raise_error(session, JSONErrorCode::FATAL_STACK_OOB);
+        }
+    }
+
+    // Should not reach here
+    return raise_error(session, JSONErrorCode::FATAL_STACK_OOB);
+}
+
 // ==========================================
 // State function implementations
 // ==========================================
@@ -339,7 +391,7 @@ static JSONParserState return_state(JSONParseSession *session, U32 sub_state, Ch
 
     // If we reached the base return state, parsing is complete
     session->state = JSONParserState::DONE;
-    // Don't notify state changed for successful completion - only for errors
+    notify_state_changed(session);  // Notify state change for successful completion
     return session->state;
 }
 
