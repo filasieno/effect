@@ -23,6 +23,7 @@ namespace ak {
         Void (*attr_key_begin)(JSONParseSession* session) = nullptr;
         Void (*attr_key_end)(JSONParseSession* session) = nullptr;
         Void (*attr_key_chars)(JSONParseSession* session, const Char* str, Size len) = nullptr;
+        Void (*key)(JSONParseSession* session, const Char* str, Size len) = nullptr;
         Void (*attr_end)(JSONParseSession* session) = nullptr;
         Void (*null_value)(JSONParseSession* session) = nullptr;
         Void (*bool_value)(JSONParseSession* session, Bool value) = nullptr;
@@ -31,6 +32,7 @@ namespace ak {
         Void (*string_value_begin)(JSONParseSession* session) = nullptr;
         Void (*string_value_end)(JSONParseSession* session) = nullptr;
         Void (*string_value_chars)(JSONParseSession* session, const Char* str, Size len) = nullptr;
+        Void (*string)(JSONParseSession* session, const Char* str, Size len) = nullptr;
         Void (*parse_state_changed)(JSONParseSession* session) = nullptr;
     };
 
