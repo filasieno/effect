@@ -1,0 +1,3 @@
+name=y_string_unicode_U+10FFFE_nonchar
+----------
+["\uDBFF\uDFFE"]

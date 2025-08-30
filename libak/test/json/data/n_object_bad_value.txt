@@ -1,0 +1,3 @@
+name=n_object_bad_value
+----------
+["x", truth]

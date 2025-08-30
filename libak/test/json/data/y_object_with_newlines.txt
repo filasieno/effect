@@ -1,0 +1,5 @@
+name=y_object_with_newlines
+----------
+{
+"a": "b"
+}

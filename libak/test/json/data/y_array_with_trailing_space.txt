@@ -1,0 +1,3 @@
+name=y_array_with_trailing_space
+----------
+[2] 

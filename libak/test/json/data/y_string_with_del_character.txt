@@ -1,0 +1,3 @@
+name=y_string_with_del_character
+----------
+["aa"]

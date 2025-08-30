@@ -1,0 +1,3 @@
+name=y_object_escaped_null_in_key
+----------
+{"foo\u0000bar": 42}

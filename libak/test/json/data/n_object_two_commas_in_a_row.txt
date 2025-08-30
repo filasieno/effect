@@ -1,0 +1,3 @@
+name=n_object_two_commas_in_a_row
+----------
+{"a":"b",,"c":"d"}

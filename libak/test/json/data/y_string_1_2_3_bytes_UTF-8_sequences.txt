@@ -1,0 +1,3 @@
+name=y_string_1_2_3_bytes_UTF-8_sequences
+----------
+["\u0060\u012a\u12AB"]

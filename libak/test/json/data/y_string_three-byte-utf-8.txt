@@ -1,0 +1,3 @@
+name=y_string_three-byte-utf-8
+----------
+["\u0821"]

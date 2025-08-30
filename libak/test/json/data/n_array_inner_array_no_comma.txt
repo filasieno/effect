@@ -1,0 +1,3 @@
+name=n_array_inner_array_no_comma
+----------
+[3[4]]

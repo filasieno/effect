@@ -1,0 +1,3 @@
+name=y_string_unicode
+----------
+["\uA66D"]

@@ -1,0 +1,3 @@
+name=n_string_with_trailing_garbage
+----------
+""x

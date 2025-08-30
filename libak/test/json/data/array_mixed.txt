@@ -1,0 +1,3 @@
+name=ArrayMixed
+----------
+[null, true, false, "x", 1, 2.5]

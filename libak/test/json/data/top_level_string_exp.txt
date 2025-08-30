@@ -1,0 +1,4 @@
+result=DONE
+---
+EVENT
+STRING hello

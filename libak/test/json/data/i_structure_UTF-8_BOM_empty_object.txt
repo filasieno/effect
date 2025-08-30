@@ -1,0 +1,3 @@
+name=i_structure_UTF-8_BOM_empty_object
+----------
+﻿{}

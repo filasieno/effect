@@ -68,7 +68,7 @@ namespace ak {
 // ==========================================
 
 static Bool is_digit(Char c) noexcept;
-static JSONParserState raise_error(JSONParseSession *session, const Char *msg) noexcept;
+static JSONParserState raise_error(JSONParseSession *session, JSONErrorCode code) noexcept;
 
 // Shared escape/Unicode helpers
 ///\brief Parse exactly 4 hexadecimal digits from a JSON \uXXXX sequence.
@@ -91,7 +91,7 @@ static inline Bool parse_hex4(JSONParseSession *session, Char **phead, Char *end
         else if (h >= 'a' && h <= 'f') d = 10u + (U32)(h - 'a');
         else if (h >= 'A' && h <= 'F') d = 10u + (U32)(h - 'A');
         else {
-            (void)raise_error(session, "invalid hex digit in unicode escape");
+            (void)raise_error(session, JSONErrorCode::INVALID_UNICODE_HEX_DIGIT);
             return false;
         }
         out = (out << 4) | d;
@@ -157,7 +157,7 @@ static Void notify_object_end(JSONParseSession *session) noexcept;
 static Void notify_attr_key_begin(JSONParseSession *session) noexcept;
 static Void notify_attr_key_end(JSONParseSession *session) noexcept;
 static Void notify_attr_key_chars(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
-static Void notify_key(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
+static Void notify_attr_key(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
 
 // Literal Values
 static Void notify_null_value(JSONParseSession *session) noexcept;
@@ -167,7 +167,7 @@ static Void notify_float_value(JSONParseSession *session, F64 value) noexcept;
 static Void notify_string_value_begin(JSONParseSession *session) noexcept;
 static Void notify_string_value_end(JSONParseSession *session) noexcept;
 static Void notify_string_value_chars(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
-static Void notify_string(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
+static Void notify_string_value(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
 
 // Arrray  Notification
 static Void notify_array_begin(JSONParseSession *session) noexcept;
@@ -326,7 +326,7 @@ static JSONParserState sentinel(JSONParseSession *session, U32 sub_state, Char *
     (void)(json_size);
     (void)(string_size);
 
-    session->err_msg = "fatal error: parser context stack out of bounds";
+    session->err_code = (U32)JSONErrorCode::FATAL_STACK_OOB;
     return JSONParserState::ERROR;
 }
 
@@ -348,8 +348,8 @@ static JSONParserState state_root_dispatch(JSONParseSession *session, U32 sub_st
     if (head == end) {
         // For initial empty/whitespace-only inputs, treat as error (tests expect ERROR)
         if (json_size == 0)
-            return raise_error(session, "empty input");
-        return raise_error(session, "unexpected end of input");
+            return raise_error(session, JSONErrorCode::EMPTY_INPUT);
+        return raise_error(session, JSONErrorCode::UNEXPECTED_EOF);
     }
     Char c = *head;
     switch (c) {
@@ -380,7 +380,7 @@ static JSONParserState state_root_dispatch(JSONParseSession *session, U32 sub_st
             push_parse_context(session, return_state, 0);
             AK_MUST_TAIL return state_value_dispatch(session, sub_state, head, end, json_size, string_size);
         }
-        return raise_error(session, "expected an Object '{ ... }' or an Array '[ ... ]'");
+        return raise_error(session, JSONErrorCode::EXPECTED_OBJECT_OR_ARRAY);
     }
     }
 }
@@ -435,7 +435,7 @@ static JSONParserState state_object_rest_attrs(JSONParseSession *session, U32 su
         AK_MUST_TAIL return state_object_rest_attrs(session, sub_state, head, end, json_size, string_size);
     }
     default: {
-        return raise_error(session, "expected a comma or a closing brace");
+        return raise_error(session, JSONErrorCode::EXPECTED_COMMA_OR_CLOSING_BRACE);
     }
     }
 }
@@ -494,7 +494,7 @@ static JSONParserState state_list_rest_values(JSONParseSession *session, U32 sub
         AK_MUST_TAIL return state_list_rest_values(session, sub_state, head, end, json_size, string_size);
     }
     default:
-        return raise_error(session, "expected a comma or a closing bracket");
+        return raise_error(session, JSONErrorCode::EXPECTED_COMMA_OR_CLOSING_BRACKET);
     }
 }
 
@@ -514,7 +514,7 @@ static JSONParserState state_array_value_required(JSONParseSession *session, U32
             continue;
         }
         case ']':
-            return raise_error(session, "expected a value after comma");
+            return raise_error(session, JSONErrorCode::EXPECTED_VALUE_AFTER_COMMA);
         default:
             // Delegate to value dispatch, keeping rest-values on stack
             AK_MUST_TAIL return state_value_dispatch(session, sub_state, head, end, json_size, string_size);
@@ -593,12 +593,12 @@ static JSONParserState state_attr_key_chars(JSONParseSession *session, U32 sub_s
                 }
                 if (code1 >= SURROGATE_HIGH_START && code1 <= SURROGATE_HIGH_END) {
                     if (head == end || *head != '\\') {
-                        return raise_error(session, "invalid surrogate pair");
+                        return raise_error(session, JSONErrorCode::INVALID_SURROGATE_PAIR);
                     }
                     ++head;
                     ++json_size;
                     if (head == end || *head != 'u') {
-                        return raise_error(session, "invalid surrogate pair");
+                        return raise_error(session, JSONErrorCode::INVALID_SURROGATE_PAIR);
                     }
                     ++head;
                     ++json_size;
@@ -609,12 +609,12 @@ static JSONParserState state_attr_key_chars(JSONParseSession *session, U32 sub_s
                         return suspend_parser(session, state_attr_key_chars, 0, json_size, string_size);
                     }
                     if (!(code2 >= SURROGATE_LOW_START && code2 <= SURROGATE_LOW_END)) {
-                        return raise_error(session, "invalid surrogate pair");
+                        return raise_error(session, JSONErrorCode::INVALID_SURROGATE_PAIR);
                     }
                     U32 cp = 0x10000 + (((code1 - 0xD800) & 0x3FF) << 10) + ((code2 - 0xDC00) & 0x3FF);
                     emit_utf8_bytes(session, cp, notify_attr_key_chars);
                 } else if (code1 >= SURROGATE_LOW_START && code1 <= SURROGATE_LOW_END) {
-                    return raise_error(session, "invalid surrogate pair");
+                    return raise_error(session, JSONErrorCode::INVALID_SURROGATE_PAIR);
                 } else {
                     emit_utf8_bytes(session, code1, notify_attr_key_chars);
                 }
@@ -622,7 +622,7 @@ static JSONParserState state_attr_key_chars(JSONParseSession *session, U32 sub_s
                 continue;
             }
             default:
-                return raise_error(session, "invalid escape sequence character");
+                return raise_error(session, JSONErrorCode::INVALID_ESCAPE_CHAR);
             }
             // Handle the escaped character (streaming mode)
             notify_attr_key_chars(session, &rc, 1);
@@ -640,7 +640,7 @@ static JSONParserState state_attr_key_chars(JSONParseSession *session, U32 sub_s
 
             if (is_complete_key) {
                 // Use optimized callback for complete key
-                notify_key(session, key_start, (U64)(head - 1 - key_start));
+                notify_attr_key(session, key_start, (U64)(head - 1 - key_start));
             } else {
                 // Use streaming end callback
                 notify_attr_key_end(session);
@@ -675,7 +675,7 @@ static JSONParserState state_attr_begin_key(JSONParseSession *session, U32 sub_s
         AK_MUST_TAIL return state_attr_begin_key(session, sub_state, head, end, json_size, string_size);
     }
     default: {
-        return raise_error(session, "expected a string key");
+        return raise_error(session, JSONErrorCode::EXPECTED_STRING_KEY);
     }
     }
 }
@@ -704,7 +704,7 @@ static JSONParserState state_attr_semi(JSONParseSession *session, U32 sub_state,
             ++json_size;
             continue;
         default:
-            return raise_error(session, "expected ':' after key");
+            return raise_error(session, JSONErrorCode::EXPECTED_COLON_AFTER_KEY);
         }
     }
 }
@@ -760,7 +760,7 @@ static JSONParserState state_value_dispatch(JSONParseSession *session, U32 sub_s
                 // Fallthrough to number state by not consuming here; number state will read from current char
                 AK_MUST_TAIL return state_number_head(session, 0, head, end, json_size, 0);
             }
-            return raise_error(session, "unexpected character while parsing value");
+            return raise_error(session, JSONErrorCode::UNEXPECTED_CHAR_IN_VALUE);
         }
     }
 }
@@ -775,7 +775,7 @@ static JSONParserState state_null_head(JSONParseSession *session, U32 sub_state,
             return suspend_parser(session, state_null_head, idx, json_size, 0);
         Char c = *head;
         if (c != expected[idx])
-            return raise_error(session, "invalid token, expected 'null'");
+            return raise_error(session, JSONErrorCode::INVALID_TOKEN_EXPECTED_NULL);
         ++head;
         ++json_size;
         ++idx;
@@ -793,7 +793,7 @@ static JSONParserState state_true_head(JSONParseSession *session, U32 sub_state,
             return suspend_parser(session, state_true_head, idx, json_size, 0);
         Char c = *head;
         if (c != expected[idx])
-            return raise_error(session, "invalid token, expected 'true'");
+            return raise_error(session, JSONErrorCode::INVALID_TOKEN_EXPECTED_TRUE);
         ++head;
         ++json_size;
         ++idx;
@@ -811,7 +811,7 @@ static JSONParserState state_false_head(JSONParseSession *session, U32 sub_state
             return suspend_parser(session, state_false_head, idx, json_size, 0);
         Char c = *head;
         if (c != expected[idx])
-            return raise_error(session, "invalid token, expected 'false'");
+            return raise_error(session, JSONErrorCode::INVALID_TOKEN_EXPECTED_FALSE);
         ++head;
         ++json_size;
         ++idx;
@@ -836,7 +836,7 @@ static JSONParserState state_number_head(JSONParseSession *session, U32 sub_stat
         if (session->suspend_buffer_size + 1 < sizeof(session->suspend_buffer)) {
             session->suspend_buffer[session->suspend_buffer_size++] = c;
         } else {
-            return raise_error(session, "number too long");
+            return raise_error(session, JSONErrorCode::NUMBER_TOO_LONG);
         }
         ++head;
         ++json_size;
@@ -847,22 +847,22 @@ static JSONParserState state_number_head(JSONParseSession *session, U32 sub_stat
     const char *num = session->suspend_buffer;
     U64 len = session->suspend_buffer_size;
     if (len == 0)
-        return raise_error(session, "invalid number format");
+        return raise_error(session, JSONErrorCode::INVALID_NUMBER_FORMAT);
     U64 p = 0;
     if (num[p] == '-') {
         ++p;
         if (p == len)
-            return raise_error(session, "invalid number format");
+            return raise_error(session, JSONErrorCode::INVALID_NUMBER_FORMAT);
     }
     if (num[p] == '0') {
         // no leading zeros allowed
         if (p + 1 < len && num[p + 1] >= '0' && num[p + 1] <= '9') {
-            return raise_error(session, "invalid number format: leading zero");
+            return raise_error(session, JSONErrorCode::LEADING_ZERO_NOT_ALLOWED);
         }
         ++p;
     } else {
         if (!(num[p] >= '1' && num[p] <= '9'))
-            return raise_error(session, "invalid number format");
+            return raise_error(session, JSONErrorCode::INVALID_NUMBER_FORMAT);
         while (p < len && (num[p] >= '0' && num[p] <= '9'))
             ++p;
     }
@@ -871,9 +871,9 @@ static JSONParserState state_number_head(JSONParseSession *session, U32 sub_stat
         is_float = true;
         ++p;
         if (p == len)
-            return raise_error(session, "invalid number format: no digits after decimal");
+            return raise_error(session, JSONErrorCode::NO_DIGITS_AFTER_DECIMAL);
         if (!(num[p] >= '0' && num[p] <= '9'))
-            return raise_error(session, "invalid number format: no digits after decimal");
+            return raise_error(session, JSONErrorCode::NO_DIGITS_AFTER_DECIMAL);
         while (p < len && (num[p] >= '0' && num[p] <= '9'))
             ++p;
     }
@@ -881,19 +881,19 @@ static JSONParserState state_number_head(JSONParseSession *session, U32 sub_stat
         is_float = true;
         ++p;
         if (p == len)
-            return raise_error(session, "invalid number format: no digits in exponent");
+            return raise_error(session, JSONErrorCode::NO_DIGITS_IN_EXPONENT);
         if (num[p] == '+' || num[p] == '-') {
             ++p;
             if (p == len)
-                return raise_error(session, "invalid number format: no digits in exponent");
+                return raise_error(session, JSONErrorCode::NO_DIGITS_IN_EXPONENT);
         }
         if (!(num[p] >= '0' && num[p] <= '9'))
-            return raise_error(session, "invalid number format: no digits in exponent");
+            return raise_error(session, JSONErrorCode::NO_DIGITS_IN_EXPONENT);
         while (p < len && (num[p] >= '0' && num[p] <= '9'))
             ++p;
     }
     if (p != len)
-        return raise_error(session, "invalid number format");
+        return raise_error(session, JSONErrorCode::INVALID_NUMBER_FORMAT);
     // decide int vs float
     for (U64 i = 0; i < session->suspend_buffer_size; ++i) {
         Char c = session->suspend_buffer[i];
@@ -915,7 +915,7 @@ static JSONParserState state_number_head(JSONParseSession *session, U32 sub_stat
         for (; pos < session->suspend_buffer_size; ++pos) {
             Char d = session->suspend_buffer[pos];
             if (d < '0' || d > '9')
-                return raise_error(session, "invalid integer format");
+                return raise_error(session, JSONErrorCode::INVALID_INTEGER_FORMAT);
             val = (val * 10) + (d - '0');
         }
         if (neg)
@@ -926,7 +926,7 @@ static JSONParserState state_number_head(JSONParseSession *session, U32 sub_stat
         char *endp = nullptr;
         F64 v = std::strtod(session->suspend_buffer, &endp);
         if ((U64)(endp - session->suspend_buffer) != session->suspend_buffer_size) {
-            return raise_error(session, "invalid float format");
+            return raise_error(session, JSONErrorCode::INVALID_FLOAT_FORMAT);
         }
         notify_float_value(session, v);
     }
@@ -992,29 +992,29 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
                         return suspend_parser(session, state_string_head, 0, json_size, string_size);
                     }
                     if (code1 >= SURROGATE_HIGH_START && code1 <= SURROGATE_HIGH_END) {
-                        if (head == end || *head != '\\') return raise_error(session, "invalid surrogate pair");
+                        if (head == end || *head != '\\') return raise_error(session, JSONErrorCode::INVALID_SURROGATE_PAIR);
                         ++head; ++json_size;
-                        if (head == end || *head != 'u') return raise_error(session, "invalid surrogate pair");
+                        if (head == end || *head != 'u') return raise_error(session, JSONErrorCode::INVALID_SURROGATE_PAIR);
                         ++head; ++json_size;
                         U32 code2;
                         if (!parse_hex4(session, &head, end, &json_size, &code2)) {
                             if (session->state == JSONParserState::ERROR) return JSONParserState::ERROR;
                             return suspend_parser(session, state_string_head, 0, json_size, string_size);
                         }
-                        if (!(code2 >= SURROGATE_LOW_START && code2 <= SURROGATE_LOW_END)) return raise_error(session, "invalid surrogate pair");
+                        if (!(code2 >= SURROGATE_LOW_START && code2 <= SURROGATE_LOW_END)) return raise_error(session, JSONErrorCode::INVALID_SURROGATE_PAIR);
                     } else if (code1 >= SURROGATE_LOW_START && code1 <= SURROGATE_LOW_END) {
-                        return raise_error(session, "invalid surrogate pair");
+                        return raise_error(session, JSONErrorCode::INVALID_SURROGATE_PAIR);
                     }
                     break;
                 }
                 default:
-                    return raise_error(session, "invalid escape sequence character");
+                    return raise_error(session, JSONErrorCode::INVALID_ESCAPE_CHAR);
             }
             continue;
         } else if (c == '"') {
             // end of string
             if (is_single_buffer) {
-                notify_string(session, chunk_start, (U64)(head - chunk_start));
+                notify_string_value(session, chunk_start, (U64)(head - chunk_start));
             } else {
                 if (chunk_start != head) {
                     notify_string_value_chars(session, chunk_start, (U64)(head - chunk_start));
@@ -1052,7 +1052,7 @@ static Void notify_event(JSONParseSession *session, JSONEvent event_type, const 
 static Void notify_state_changed(JSONParseSession *session) noexcept {
     JSONEventData data = {};
     data.state_data.state = session->state;
-    data.state_data.err_msg = session->err_msg;
+    data.state_data.err_code = session->err_code;
     notify_event(session, JSONEvent::PARSE_STATE_CHANGED, &data);
 }
 
@@ -1080,7 +1080,7 @@ static Void notify_attr_key_chars(JSONParseSession *session, const Char *text_bu
     notify_event(session, JSONEvent::ATTR_KEY_CHARS, &data);
 }
 
-static Void notify_key(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
+static Void notify_attr_key(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
     JSONEventData data = {};
     data.string_data.str = text_buffer;
     data.string_data.len = text_buffer_length;
@@ -1126,7 +1126,7 @@ static Void notify_string_value_chars(JSONParseSession *session, const Char *tex
     notify_event(session, JSONEvent::STRING_VALUE_CHARS, &data);
 }
 
-static Void notify_string(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
+static Void notify_string_value(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
     JSONEventData data = {};
     data.string_data.str = text_buffer;
     data.string_data.len = text_buffer_length;
@@ -1147,9 +1147,9 @@ static Void notify_array_end(JSONParseSession *session) noexcept {
 // ------------------------------------------
 static Bool is_digit(Char c) noexcept { return (c >= '0' && c <= '9'); }
 
-static JSONParserState raise_error(JSONParseSession *session, const Char *msg) noexcept {
+static JSONParserState raise_error(JSONParseSession *session, JSONErrorCode code) noexcept {
     session->state = JSONParserState::ERROR;
-    session->err_msg = msg;
+    session->err_code = (U32)code;
     notify_state_changed(session);
     return JSONParserState::ERROR;
 }
@@ -1158,7 +1158,7 @@ static JSONParserState suspend_parser(JSONParseSession *session, JSONParserState
     // Push a suspend frame tagged via user_data to not clobber return continuations
     static int SUSP_TAG;
     if (!(session->stack_top < session->stack_end)) {
-        return raise_error(session, "parser stack overflow on suspend");
+        return raise_error(session, JSONErrorCode::STACK_OVERFLOW_ON_SUSPEND);
     }
     JSONParseContext *ctx = session->stack_top;
     ctx->continuation = fn;

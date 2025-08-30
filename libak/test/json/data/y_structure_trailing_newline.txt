@@ -1,0 +1,3 @@
+name=y_structure_trailing_newline
+----------
+["a"]

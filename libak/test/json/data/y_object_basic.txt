@@ -1,0 +1,3 @@
+name=y_object_basic
+----------
+{"asd":"sdf"}

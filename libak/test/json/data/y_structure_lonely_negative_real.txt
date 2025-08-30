@@ -1,0 +1,3 @@
+name=y_structure_lonely_negative_real
+----------
+-0.1

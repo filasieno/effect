@@ -1,0 +1,3 @@
+name=y_string_backslash_and_u_escaped_zero
+----------
+["\\u0000"]

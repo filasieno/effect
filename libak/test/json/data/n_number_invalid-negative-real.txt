@@ -1,0 +1,3 @@
+name=n_number_invalid-negative-real
+----------
+[-123.123foo]

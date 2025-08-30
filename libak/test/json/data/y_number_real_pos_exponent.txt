@@ -1,0 +1,3 @@
+name=y_number_real_pos_exponent
+----------
+[1e+2]

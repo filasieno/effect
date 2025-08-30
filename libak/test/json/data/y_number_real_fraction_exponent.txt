@@ -1,0 +1,3 @@
+name=y_number_real_fraction_exponent
+----------
+[123.456e78]

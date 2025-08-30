@@ -1,0 +1,3 @@
+name=y_number_simple_real
+----------
+[123.456789]

@@ -1,0 +1,3 @@
+name=n_object_with_single_string
+----------
+{ "foo" : "bar", "a" }

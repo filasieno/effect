@@ -1,0 +1,3 @@
+name=n_number_invalid+-
+----------
+[0e+-1]

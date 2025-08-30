@@ -1,0 +1,3 @@
+name=y_string_in_array_with_leading_space
+----------
+[ "asd"]

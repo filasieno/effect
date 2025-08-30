@@ -1,0 +1,3 @@
+name=n_string_escape_x
+----------
+["\x00"]

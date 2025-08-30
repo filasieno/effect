@@ -1,0 +1,3 @@
+name=n_structure_array_trailing_garbage
+----------
+[1]x

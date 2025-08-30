@@ -1,0 +1,3 @@
+name=i_string_overlong_sequence_6_bytes
+----------
+["üƒ¿¿¿¿"]

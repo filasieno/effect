@@ -1,0 +1,3 @@
+name=n_number_with_alpha_char
+----------
+[1.8011670033376514H-308]

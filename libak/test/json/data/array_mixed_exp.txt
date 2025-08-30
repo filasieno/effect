@@ -1,0 +1,11 @@
+result=DONE
+---
+EVENT
+BEGIN_ARRAY
+NULL
+BOOL true
+BOOL false
+STRING x
+INT 1
+FLOAT 2.5
+END_ARRAY

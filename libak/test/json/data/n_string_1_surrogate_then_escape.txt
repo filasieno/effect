@@ -1,0 +1,3 @@
+name=n_string_1_surrogate_then_escape
+----------
+["\uD800\"]

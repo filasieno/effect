@@ -1,0 +1,5 @@
+result=ERROR
+value=0
+---
+EVENT
+ERROR 0

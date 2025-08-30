@@ -1,0 +1,3 @@
+name=y_string_nbsp_uescaped
+----------
+["new\u00A0line"]

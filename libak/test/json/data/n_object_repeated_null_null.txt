@@ -1,0 +1,3 @@
+name=n_object_repeated_null_null
+----------
+{null:null,null:null}

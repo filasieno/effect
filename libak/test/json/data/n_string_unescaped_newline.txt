@@ -1,0 +1,4 @@
+name=n_string_unescaped_newline
+----------
+["new
+line"]

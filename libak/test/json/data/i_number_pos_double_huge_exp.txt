@@ -1,0 +1,3 @@
+name=i_number_pos_double_huge_exp
+----------
+[1.5e+9999]

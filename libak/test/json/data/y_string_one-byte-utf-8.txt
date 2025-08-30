@@ -1,0 +1,3 @@
+name=y_string_one-byte-utf-8
+----------
+["\u002c"]

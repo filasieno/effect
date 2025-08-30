@@ -1,0 +1,3 @@
+name=n_object_missing_semicolon
+----------
+{"a" "b"}

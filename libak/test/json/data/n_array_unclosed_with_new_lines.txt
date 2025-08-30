@@ -1,0 +1,5 @@
+name=n_array_unclosed_with_new_lines
+----------
+[1,
+1
+,1

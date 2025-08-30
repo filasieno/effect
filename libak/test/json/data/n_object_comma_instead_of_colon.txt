@@ -1,0 +1,3 @@
+name=n_object_comma_instead_of_colon
+----------
+{"x", null}

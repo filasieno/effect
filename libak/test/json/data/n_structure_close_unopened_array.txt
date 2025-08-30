@@ -1,0 +1,3 @@
+name=n_structure_close_unopened_array
+----------
+1]

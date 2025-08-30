@@ -1,0 +1,3 @@
+name=n_number_neg_int_starting_with_zero
+----------
+[-012]

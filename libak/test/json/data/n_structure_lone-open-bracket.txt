@@ -1,0 +1,3 @@
+name=n_structure_lone-open-bracket
+----------
+[

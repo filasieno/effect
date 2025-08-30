@@ -11,6 +11,48 @@ namespace ak {
         DONE,         // Parsing completed successfully
         ERROR         // An error occurred during parsing
     };
+
+    // Numeric error codes for JSON parser (200-series)
+    // Groups:
+    // 200-209: Framework/internal
+    // 210-219: Root/structure expectations
+    // 220-239: Object/array punctuation and structure
+    // 240-259: Strings and escapes
+    // 260-269: Numbers
+    // 270-279: Keywords (true/false/null)
+    // 290-299: Limits and overflow
+    enum class JSONErrorCode : U32 {
+        NONE                                 = 0,
+        FATAL_STACK_OOB                      = 200,
+        STACK_OVERFLOW_ON_SUSPEND            = 201,
+
+        EMPTY_INPUT                          = 210,
+        UNEXPECTED_EOF                       = 211,
+        EXPECTED_OBJECT_OR_ARRAY             = 212,
+
+        EXPECTED_COMMA_OR_CLOSING_BRACE      = 220,
+        EXPECTED_COMMA_OR_CLOSING_BRACKET    = 221,
+        EXPECTED_VALUE_AFTER_COMMA           = 222,
+        EXPECTED_STRING_KEY                  = 223,
+        EXPECTED_COLON_AFTER_KEY             = 224,
+        UNEXPECTED_CHAR_IN_VALUE             = 225,
+
+        INVALID_ESCAPE_CHAR                  = 240,
+        INVALID_UNICODE_HEX_DIGIT            = 241,
+        INVALID_SURROGATE_PAIR               = 242,
+
+        NUMBER_TOO_LONG                      = 260,
+        INVALID_NUMBER_FORMAT                = 261,
+        LEADING_ZERO_NOT_ALLOWED             = 262,
+        NO_DIGITS_AFTER_DECIMAL              = 263,
+        NO_DIGITS_IN_EXPONENT                = 264,
+        INVALID_INTEGER_FORMAT               = 265,
+        INVALID_FLOAT_FORMAT                 = 266,
+
+        INVALID_TOKEN_EXPECTED_NULL          = 270,
+        INVALID_TOKEN_EXPECTED_TRUE          = 271,
+        INVALID_TOKEN_EXPECTED_FALSE         = 272,
+    };
     
     struct JSONParseSession;
 
@@ -48,7 +90,7 @@ namespace ak {
 
         struct {
             JSONParserState state;
-            const Char* err_msg;
+            U32 err_code;
         } state_data;
     };
 
@@ -91,7 +133,7 @@ namespace ak {
         U32                    sub_state;           ///< The current sub-state of the parser
         U64                    json_offset;         ///< Number of bytes parsed in the JSON data
         U64                    string_offset;       ///< Number of bytes parsed in a string
-        const Char*            err_msg;             ///< Static error message
+        U32                    err_code;            ///< Numeric error code when state==ERROR
 
         JSONParseContext*      stack_begin;         ///< Points to the first element of the stack
         JSONParseContext*      stack_end;           ///< Points past the last element of the stack

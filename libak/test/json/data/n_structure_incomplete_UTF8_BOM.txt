@@ -1,0 +1,3 @@
+name=n_structure_incomplete_UTF8_BOM
+----------
+ï»{}

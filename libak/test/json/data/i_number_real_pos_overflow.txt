@@ -1,0 +1,3 @@
+name=i_number_real_pos_overflow
+----------
+[123123e100000]

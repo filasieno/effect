@@ -1,0 +1,3 @@
+name=n_string_leading_uescaped_thinspace
+----------
+[\u0020"asd"]

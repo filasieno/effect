@@ -1,0 +1,3 @@
+name=n_array_star_inside
+----------
+[*]

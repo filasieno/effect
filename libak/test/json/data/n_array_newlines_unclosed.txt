@@ -1,0 +1,5 @@
+name=n_array_newlines_unclosed
+----------
+["a",
+4
+,1,

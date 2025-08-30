@@ -1,0 +1,3 @@
+name=y_string_allowed_escapes
+----------
+["\"\\\/\b\f\n\r\t"]

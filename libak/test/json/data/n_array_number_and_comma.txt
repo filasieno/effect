@@ -1,0 +1,3 @@
+name=n_array_number_and_comma
+----------
+[1,]

@@ -1,0 +1,3 @@
+name=n_array_a_invalid_utf8
+----------
+[aå]

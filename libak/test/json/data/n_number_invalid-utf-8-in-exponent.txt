@@ -1,0 +1,3 @@
+name=n_number_invalid-utf-8-in-exponent
+----------
+[1e1å]

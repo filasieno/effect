@@ -1,0 +1,3 @@
+name=y_string_two-byte-utf-8
+----------
+["\u0123"]

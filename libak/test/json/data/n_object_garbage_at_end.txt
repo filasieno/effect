@@ -1,0 +1,3 @@
+name=n_object_garbage_at_end
+----------
+{"a":"a" 123}

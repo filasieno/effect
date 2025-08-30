@@ -210,8 +210,12 @@ test_runtime: $(build_dir)/test_runtime
 test_sync: $(build_dir)/test_sync
 	$(run_test)
 
-test_json: $(build_dir)/test_json
-	$(run_test)
+test_json: $(build_dir)/test_json | $(build_dir)/test_output/json
+	@echo "Running $@"
+	AK_TEST_DATA_DIR=$(test_dir)/json/data AK_TEST_OUTPUT_DIR=$(build_dir)/test_output/json $(VALGRIND_CMD) ./$<
+
+$(build_dir)/test_output/json:
+	mkdir -p $@
 
 test_storage: $(build_dir)/test_storage
 	$(run_test)

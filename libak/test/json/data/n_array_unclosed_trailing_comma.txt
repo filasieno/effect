@@ -1,0 +1,3 @@
+name=n_array_unclosed_trailing_comma
+----------
+[1,
