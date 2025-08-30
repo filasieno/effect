@@ -1,6 +1,5 @@
 result=DONE
 ---
-EVENT
 STATE_INITIALIZED
 BEGIN_OBJECT
 KEY "x"
@@ -13,4 +12,4 @@ END_ARRAY
 KEY "id"
 STRING "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 END_OBJECT
-STATE_DONE
+STATE_CHANGED_EVENT: STATE_DONE

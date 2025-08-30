@@ -60,25 +60,25 @@ static void on_json_event(JSONParseSession *session, ak::JSONEvent event, const 
                 sink->last_err_code = data->state_data.err_code;
                 switch (data->state_data.state) {
                     case JSONParserState::INITIALIZED:
-                        sink->lines.emplace_back("STATE_INITIALIZED");
+                        sink->lines.emplace_back("STATE_CHANGED_EVENT: STATE_INITIALIZED");
                         break;
                     case JSONParserState::CONTINUE:
-                        sink->lines.emplace_back("STATE_CONTINUE");
+                        sink->lines.emplace_back("STATE_CHANGED_EVENT: STATE_CONTINUE");
                         break;
                     case JSONParserState::DONE:
-                        sink->lines.emplace_back("STATE_DONE");
+                        sink->lines.emplace_back("STATE_CHANGED_EVENT: STATE_DONE");
                         break;
                     case JSONParserState::ERROR:
-                        sink->lines.emplace_back(std::string("STATE_ERROR ") + std::to_string((unsigned long long)data->state_data.err_code));
+                        sink->lines.emplace_back(std::string("STATE_CHANGED_EVENT: STATE_ERROR ") + std::to_string((unsigned long long)data->state_data.err_code));
                         break;
                     default:
-                        sink->lines.emplace_back("STATE_INVALID");
+                        sink->lines.emplace_back("STATE_CHANGED_EVENT: STATE_INVALID");
                         break;
                 }
             }
             break;
         case ak::JSONEvent::PARSER_STOPPED:
-            sink->lines.emplace_back("PARSER_STOPPED");
+            sink->lines.emplace_back("PARSER_STOPPED_EVENT");
             break;
         case ak::JSONEvent::ATTR_BEGIN:
         case ak::JSONEvent::ATTR_END:
@@ -176,7 +176,6 @@ static std::string serialize_out(JSONParserState st, const SerializedSink &sink,
                 os << "value=" << sink.buffer_error_codes[i] << "\n";
             }
             os << "---\n";
-            os << "EVENT\n";
             for (const auto &ln : sink.buffer_results[i]) os << ln << "\n";
 
             // If this buffer had an error, stop here (don't include subsequent buffers)
