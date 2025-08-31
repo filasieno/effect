@@ -173,23 +173,23 @@ namespace ak {
         
         // IOManagement
         io_uring      io_uring_state;
-        AkU32         ioentry_count;
+        AkU32         io_uring_entry_count;
     };
 }
 
 extern ak::Kernel global_kernel_state;
 
+struct AkKernelConfig {
+    AkVoid*    mem_buffer;
+    AkSize     mem_buffer_size;
+    unsigned   io_uring_entry_count;
+};
+
+AkI32  ak_init_kernel(AkKernelConfig* config) noexcept;
+AkVoid ak_fini_kernel() noexcept;
+
 namespace ak {
     
-    // Main Routine
-    struct KernelConfig {
-        AkVoid*    mem;
-        AkSize     memSize;
-        unsigned ioEntryCount;
-    };
-
-    int  init_kernel(KernelConfig* config) noexcept;
-    AkVoid fini_kernel() noexcept;
 
     template <typename... Args>
     int run_main(CThread (*co_main)(Args ...) noexcept, Args... args) noexcept;

@@ -11,11 +11,11 @@ protected:
 	void SetUp() override {
 		buffer = std::malloc(buffer_size);
 		ASSERT_NE(buffer, nullptr);
-		KernelConfig config{ .mem = buffer, .memSize = buffer_size, .ioEntryCount = 256 };
-		ASSERT_EQ(init_kernel(&config), 0);
+		AkKernelConfig config{ .mem_buffer = buffer, .mem_buffer_size = buffer_size, .io_uring_entry_count = 256 };
+		ASSERT_EQ(ak_init_kernel(&config), 0);
 	}
 	void TearDown() override {
-		fini_kernel();
+		ak_fini_kernel();
 		std::free(buffer);
 		buffer = nullptr;
 	}
