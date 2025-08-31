@@ -2,6 +2,6 @@ result=DONE
 ---
 STATE_INITIALIZED
 BEGIN_ARRAY
-STRING "\"\\\/\b\f\n\r\t"
+STRING_VALUE "\"\\\/\b\f\n\r\t" more=0
 END_ARRAY
 STATE_CHANGED_EVENT: STATE_DONE

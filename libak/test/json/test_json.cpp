@@ -21,21 +21,16 @@ struct SerializedSink {
     std::vector<U32> buffer_error_codes;
 };
 
-static void on_json_event(JSONParseSession *session, ak::JSONEvent event, const JSONEventData *data) noexcept {
+static int on_json_event(JSONParseSession *session, ak::JSONEvent event, const JSONEventData *data, U64 more) noexcept {
     auto *sink = static_cast<SerializedSink *>(session->user_data);
-    if (!sink) return;
+    if (!sink) return 0;
     switch (event) {
         case ak::JSONEvent::OBJECT_BEGIN: sink->lines.emplace_back("BEGIN_OBJECT"); break;
         case ak::JSONEvent::OBJECT_END: sink->lines.emplace_back("END_OBJECT"); break;
         case ak::JSONEvent::ARRAY_BEGIN: sink->lines.emplace_back("BEGIN_ARRAY"); break;
         case ak::JSONEvent::ARRAY_END: sink->lines.emplace_back("END_ARRAY"); break;
-        case ak::JSONEvent::ATTR_KEY_BEGIN: sink->lines.emplace_back("KEY_BEGIN"); break;
-        case ak::JSONEvent::ATTR_KEY_END: sink->lines.emplace_back("KEY_END"); break;
-        case ak::JSONEvent::ATTR_KEY_CHARS:
-            if (data) sink->lines.emplace_back(std::string("KEY_CHARS \"") + std::string(data->string_data.str, data->string_data.len) + "\"");
-            break;
-        case ak::JSONEvent::KEY:
-            if (data) sink->lines.emplace_back(std::string("KEY \"") + std::string(data->string_data.str, data->string_data.len) + "\"");
+        case ak::JSONEvent::ATTR_KEY:
+            if (data) sink->lines.emplace_back(std::string("ATTR_KEY \"") + std::string(data->string_data.str, data->string_data.len) + "\" more=" + (more ? "1" : "0"));
             break;
         case ak::JSONEvent::NULL_VALUE: sink->lines.emplace_back("NULL"); break;
         case ak::JSONEvent::BOOL_VALUE:
@@ -47,13 +42,8 @@ static void on_json_event(JSONParseSession *session, ak::JSONEvent event, const 
         case ak::JSONEvent::FLOAT_VALUE: {
             if (data) { std::ostringstream os; os.setf(std::ios::fmtflags(0), std::ios::floatfield); os.precision(17); os << data->float_value; sink->lines.emplace_back(std::string("FLOAT ") + os.str()); }
             break; }
-        case ak::JSONEvent::STRING_VALUE_BEGIN: sink->lines.emplace_back("STRING_BEGIN"); break;
-        case ak::JSONEvent::STRING_VALUE_END: sink->lines.emplace_back("STRING_END"); break;
-        case ak::JSONEvent::STRING_VALUE_CHARS:
-            if (data) sink->lines.emplace_back(std::string("STRING_CHARS \"") + std::string(data->string_data.str, data->string_data.len) + "\"");
-            break;
-        case ak::JSONEvent::STRING:
-            if (data) sink->lines.emplace_back(std::string("STRING \"") + std::string(data->string_data.str, data->string_data.len) + "\"");
+        case ak::JSONEvent::STRING_VALUE:
+            if (data) sink->lines.emplace_back(std::string("STRING_VALUE \"") + std::string(data->string_data.str, data->string_data.len) + "\" more=" + (more ? "1" : "0"));
             break;
         case ak::JSONEvent::PARSE_STATE_CHANGED:
             if (data) {
@@ -77,13 +67,11 @@ static void on_json_event(JSONParseSession *session, ak::JSONEvent event, const 
                 }
             }
             break;
-        case ak::JSONEvent::PARSER_STOPPED:
-            sink->lines.emplace_back("PARSER_STOPPED_EVENT");
-            break;
-        case ak::JSONEvent::ATTR_BEGIN:
-        case ak::JSONEvent::ATTR_END:
+        case ak::JSONEvent::PARSE_EOF:
+            sink->lines.emplace_back("PARSE_EOF_EVENT");
             break;
     }
+    return 0;
 }
 
 static JSONParserState parse_json_chunks(const std::vector<std::pair<std::string,std::string>> &kv,
@@ -151,7 +139,7 @@ static JSONParserState parse_json_chunks(const std::vector<std::pair<std::string
         // Capture lines before stop_json_parser for intermediate results
         size_t lines_before_stop = sink.lines.size();
 
-        st = stop_json_parser(session);
+        st = eof_json_parser(session);
         log_stream << "INFO: stop_json_parser result: " << (st == JSONParserState::DONE ? "DONE" :
                                                              st == JSONParserState::CONTINUE ? "CONTINUE" :
                                                              st == JSONParserState::ERROR ? "ERROR" : "INVALID") << "\n";

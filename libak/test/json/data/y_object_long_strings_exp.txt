@@ -2,14 +2,14 @@ result=DONE
 ---
 STATE_INITIALIZED
 BEGIN_OBJECT
-KEY "x"
+ATTR_KEY "x" more=0
 BEGIN_ARRAY
 BEGIN_OBJECT
-KEY "id"
-STRING "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+ATTR_KEY "id" more=0
+STRING_VALUE "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" more=0
 END_OBJECT
 END_ARRAY
-KEY "id"
-STRING "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+ATTR_KEY "id" more=0
+STRING_VALUE "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" more=0
 END_OBJECT
 STATE_CHANGED_EVENT: STATE_DONE

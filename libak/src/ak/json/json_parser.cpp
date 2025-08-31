@@ -106,15 +106,19 @@ static inline CharClass classify_char(Char c) noexcept;
 /// \details
 ///  Rationale: reuse one encoder for multiple sinks (key/value) while keeping
 ///  hot paths simple; function-pointer cost is minimal and localized.
+/// \internal
 static inline Void emit_utf8_bytes(JSONParseSession *session, U32 cp, EmitFn *emit);
 
 /// \brief Return true if character belongs to number token class.
+/// \internal
 static inline Bool is_number_char(Char c) noexcept;
 
 /// \brief Prefetch static classification tables to warm caches.
+/// \internal
 static inline void prefetch_classification_tables() noexcept;
 
 /// \brief Skip whitespace and advance json_size accordingly.
+/// \internal
 static inline Char* skip_whitespace(Char* head, Char* end, U64* json_size) noexcept;
 
 /// Shared escape/Unicode helpers
@@ -124,11 +128,12 @@ static inline Char* skip_whitespace(Char* head, Char* end, U64* json_size) noexc
 /// - Advances head and json_size on success
 /// - Returns false when buffer ends (caller should suspend)
 /// - Signals an error via raise_error(session, ...) on invalid hex digit and returns false
+/// \internal
 static inline Bool parse_hex4(JSONParseSession *session, Char **phead, Char *end, U64 *pjson_size, U32 *pout) noexcept;
 
 /// \brief Unified event notification
 /// \internal
-static Void notify_event(JSONParseSession *session, JSONEvent event_type, const JSONEventData *data = nullptr) noexcept;
+static Void notify_event(JSONParseSession *session, JSONEvent event_type, const JSONEventData *data = nullptr, U64 more = 0) noexcept;
 
 // ==========================================
 // Constants and Tables
@@ -213,28 +218,29 @@ static constexpr U8 number_char_table[256] = {
 // Parser state changed
 static Void notify_state_changed(JSONParseSession *session) noexcept;
 
-// Object Notification
-static Void notify_object_begin(JSONParseSession *session) noexcept;
-static Void notify_object_end(JSONParseSession *session) noexcept;
-
-static Void notify_attr_key_begin(JSONParseSession *session) noexcept;
-static Void notify_attr_key_end(JSONParseSession *session) noexcept;
-static Void notify_attr_key_chars(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
-static Void notify_attr_key(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
-
 // Literal Values
 static Void notify_value_null(JSONParseSession *session) noexcept;
 static Void notify_value_bool(JSONParseSession *session, Bool value) noexcept;
 static Void notify_value_number_int(JSONParseSession *session, I64 value) noexcept;
 static Void notify_value_number_float(JSONParseSession *session, F64 value) noexcept;
-static Void notify_value_string_begin(JSONParseSession *session) noexcept;
-static Void notify_value_string_end(JSONParseSession *session) noexcept;
-static Void notify_value_string_chars(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
+static Void notify_value_string_chunk(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length, U64 more) noexcept;
 static Void notify_value_string(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
 
-// Arrray  Notification
+// Array  Notification
 static Void notify_array_begin(JSONParseSession *session) noexcept;
 static Void notify_array_end(JSONParseSession *session) noexcept;
+
+// Object  Notification
+static Void notify_object_begin(JSONParseSession *session) noexcept;
+static Void notify_object_end(JSONParseSession *session) noexcept;
+
+// Attribute Notification
+static Void notify_attr_key_chunk(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length, U64 more) noexcept;
+static Void notify_attr_key(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
+static Void emit_attr_key_utf8(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept;
+
+
+
 
 // ==========================================
 // State function declarations
@@ -362,7 +368,6 @@ JSONParseSession *init_json_parser(Void *parser_buffer, U64 parser_buffer_size, 
 
 JSONParserState run_json_parser(JSONParseSession *session, Void *buffer, U64 buffer_size) noexcept {
     AK_ASSERT(session != nullptr);
-    AK_ASSERT(buffer != nullptr);
     if (session == nullptr || buffer == nullptr) {
         return JSONParserState::ERROR;
     }
@@ -400,7 +405,7 @@ JSONParserState run_json_parser(JSONParseSession *session, Void *buffer, U64 buf
 }
 
 
-JSONParserState stop_json_parser(JSONParseSession *session) noexcept {
+JSONParserState eof_json_parser(JSONParseSession *session) noexcept {
     AK_ASSERT(session != nullptr);
     if (session == nullptr) {
         return JSONParserState::ERROR;
@@ -409,8 +414,8 @@ JSONParserState stop_json_parser(JSONParseSession *session) noexcept {
         return JSONParserState::ERROR;
     }
 
-    // Always notify that the parser is being stopped
-    notify_event(session, JSONEvent::PARSER_STOPPED, nullptr);
+    // Always notify end-of-input
+    notify_event(session, JSONEvent::PARSE_EOF, nullptr, 0);
 
     // If already done or error, return current state
     if (session->state == JSONParserState::DONE || session->state == JSONParserState::ERROR) {
@@ -598,7 +603,7 @@ static JSONParserState state_attr_key_chars(JSONParseSession *session, U32 sub_s
     while (true) {
         if (head == end) {
             if (!is_complete_key && chunk_start != head) {
-                notify_attr_key_chars(session, chunk_start, (U64)(head - chunk_start));
+                notify_attr_key_chunk(session, chunk_start, (U64)(head - chunk_start), 1);
                 string_size += (U64)(head - chunk_start);
             }
             return suspend_parser(session, state_attr_key_chars, 0, json_size, string_size);
@@ -607,14 +612,13 @@ static JSONParserState state_attr_key_chars(JSONParseSession *session, U32 sub_s
         if (c == '\\') {
             // On first escape, fall back to streaming mode
             if (is_complete_key) {
-                notify_attr_key_begin(session);
                 if (chunk_start != head) {
-                    notify_attr_key_chars(session, chunk_start, (U64)(head - chunk_start));
+                    notify_attr_key_chunk(session, chunk_start, (U64)(head - chunk_start), 1);
                     string_size += (U64)(head - chunk_start);
                 }
                 is_complete_key = false;
             } else if (chunk_start != head) {
-                notify_attr_key_chars(session, chunk_start, (U64)(head - chunk_start));
+                notify_attr_key_chunk(session, chunk_start, (U64)(head - chunk_start), 1);
                 string_size += (U64)(head - chunk_start);
             }
             ++head;
@@ -679,11 +683,11 @@ static JSONParserState state_attr_key_chars(JSONParseSession *session, U32 sub_s
                         return raise_error(session, JSONErrorCode::INVALID_SURROGATE_PAIR);
                     }
                     U32 cp = 0x10000 + (((code1 - 0xD800) & 0x3FF) << 10) + ((code2 - 0xDC00) & 0x3FF);
-                    emit_utf8_bytes(session, cp, notify_attr_key_chars);
+                    emit_utf8_bytes(session, cp, emit_attr_key_utf8);
                 } else if (code1 >= SURROGATE_LOW_START && code1 <= SURROGATE_LOW_END) {
                     return raise_error(session, JSONErrorCode::INVALID_SURROGATE_PAIR);
                 } else {
-                    emit_utf8_bytes(session, code1, notify_attr_key_chars);
+                    emit_utf8_bytes(session, code1, emit_attr_key_utf8);
                 }
                 chunk_start = head;
                 continue;
@@ -692,14 +696,14 @@ static JSONParserState state_attr_key_chars(JSONParseSession *session, U32 sub_s
                 return raise_error(session, JSONErrorCode::INVALID_ESCAPE_CHAR);
             }
             // Handle the escaped character (streaming mode)
-            notify_attr_key_chars(session, &rc, 1);
+            notify_attr_key_chunk(session, &rc, 1, 1);
             ++string_size;
             chunk_start = head;
             continue;
         } else if (c == '"') {
             // end of key
             if (!is_complete_key && chunk_start != head) {
-                notify_attr_key_chars(session, chunk_start, (U64)(head - chunk_start));
+                notify_attr_key_chunk(session, chunk_start, (U64)(head - chunk_start), 1);
                 string_size += (U64)(head - chunk_start);
             }
             ++head;
@@ -709,8 +713,8 @@ static JSONParserState state_attr_key_chars(JSONParseSession *session, U32 sub_s
                 // Use optimized callback for complete key
                 notify_attr_key(session, key_start, (U64)(head - 1 - key_start));
             } else {
-                // Use streaming end callback
-                notify_attr_key_end(session);
+                // Finalize chunked key
+                notify_attr_key_chunk(session, "", 0, 0);
             }
             AK_MUST_TAIL return state_attr_separator(session, 0, head, end, json_size, string_size);
         } else {
@@ -973,15 +977,14 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
     while (true) {
         if (head == end) {
             if (is_single_buffer) {
-                // For streaming strings, switch to streaming mode instead of error
-                notify_value_string_begin(session);
                 if (chunk_start != head) {
-                    notify_value_string_chars(session, chunk_start, (U64)(head - chunk_start));
+                    notify_value_string_chunk(session, chunk_start, (U64)(head - chunk_start), 1);
                     string_size += (U64)(head - chunk_start);
                 }
+                is_single_buffer = false;
             } else {
                 if (chunk_start != head) {
-                    notify_value_string_chars(session, chunk_start, (U64)(head - chunk_start));
+                    notify_value_string_chunk(session, chunk_start, (U64)(head - chunk_start), 1);
                     string_size += (U64)(head - chunk_start);
                 }
             }
@@ -994,20 +997,19 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
                 // Escape splits across buffers. If we were still in single-buffer mode,
                 // we need to switch to streaming and flush any pending chunk.
                 if (is_single_buffer) {
-                    notify_value_string_begin(session);
                     if (chunk_start != (head - 1)) {
-                        notify_value_string_chars(session, chunk_start, (U64)((head - 1) - chunk_start));
+                        notify_value_string_chunk(session, chunk_start, (U64)((head - 1) - chunk_start), 1);
                         string_size += (U64)((head - 1) - chunk_start);
                     }
                     is_single_buffer = false;
                 } else {
                     if (chunk_start != (head - 1)) {
-                        notify_value_string_chars(session, chunk_start, (U64)((head - 1) - chunk_start));
+                        notify_value_string_chunk(session, chunk_start, (U64)((head - 1) - chunk_start), 1);
                         string_size += (U64)((head - 1) - chunk_start);
                     }
                 }
                 // Emit the backslash as raw when escape spans buffers
-                notify_value_string_chars(session, "\\", 1);
+                notify_value_string_chunk(session, "\\", 1, 1);
                 ++string_size;
                 chunk_start = head; // next chunk resumes after the backslash
                 // No more chars in this buffer; suspend and continue in next buffer
@@ -1056,10 +1058,11 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
                 notify_value_string(session, chunk_start, (U64)(head - chunk_start));
             } else {
                 if (chunk_start != head) {
-                    notify_value_string_chars(session, chunk_start, (U64)(head - chunk_start));
+                    notify_value_string_chunk(session, chunk_start, (U64)(head - chunk_start), 1);
                     string_size += (U64)(head - chunk_start);
                 }
-                notify_value_string_end(session);
+                // Finalize chunked string
+                notify_value_string_chunk(session, "", 0, 0);
             }
             ++head; ++json_size;
             // If we came here resuming from a suspend (streaming mode), the top
@@ -1081,10 +1084,13 @@ static JSONParserState state_string_head(JSONParseSession *session, U32 sub_stat
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // Unified event notification function
-static Void notify_event(JSONParseSession *session, JSONEvent event_type, const JSONEventData *data) noexcept {
+static Void notify_event(JSONParseSession *session, JSONEvent event_type, const JSONEventData *data, U64 more) noexcept {
     AK_ASSERT(session != nullptr);
     AK_ASSERT(session->on_event != nullptr);
-    session->on_event(session, event_type, data);
+    int rc = session->on_event(session, event_type, data, more);
+    if (rc != 0) {
+        (void)raise_error(session, JSONErrorCode::USER_ABORTED);
+    }
 }
 
 // Parser state changed
@@ -1097,88 +1103,72 @@ static Void notify_state_changed(JSONParseSession *session) noexcept {
 
 // Object Notification
 static Void notify_object_begin(JSONParseSession *session) noexcept {
-    notify_event(session, JSONEvent::OBJECT_BEGIN);
+    notify_event(session, JSONEvent::OBJECT_BEGIN, nullptr, 0);
 }
 
 static Void notify_object_end(JSONParseSession *session) noexcept {
-    notify_event(session, JSONEvent::OBJECT_END);
+    notify_event(session, JSONEvent::OBJECT_END, nullptr, 0);
 }
 
-static Void notify_attr_key_begin(JSONParseSession *session) noexcept {
-    notify_event(session, JSONEvent::ATTR_KEY_BEGIN);
-}
-
-static Void notify_attr_key_end(JSONParseSession *session) noexcept {
-    notify_event(session, JSONEvent::ATTR_KEY_END);
-}
-
-static Void notify_attr_key_chars(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
+static Void notify_attr_key_chunk(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length, U64 more) noexcept {
     JSONEventData data = {};
     data.string_data.str = text_buffer;
     data.string_data.len = text_buffer_length;
-    notify_event(session, JSONEvent::ATTR_KEY_CHARS, &data);
+    notify_event(session, JSONEvent::ATTR_KEY, &data, more);
 }
 
 static Void notify_attr_key(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
     JSONEventData data = {};
     data.string_data.str = text_buffer;
     data.string_data.len = text_buffer_length;
-    notify_event(session, JSONEvent::KEY, &data);
+    notify_event(session, JSONEvent::ATTR_KEY, &data, 0);
 }
 
 
 // Literal Values
 static Void notify_value_null(JSONParseSession *session) noexcept {
-    notify_event(session, JSONEvent::NULL_VALUE);
+    notify_event(session, JSONEvent::NULL_VALUE, nullptr, 0);
 }
 
 static Void notify_value_bool(JSONParseSession *session, Bool value) noexcept {
     JSONEventData data = {};
     data.bool_value = value;
-    notify_event(session, JSONEvent::BOOL_VALUE, &data);
+    notify_event(session, JSONEvent::BOOL_VALUE, &data, 0);
 }
 
 static Void notify_value_number_int(JSONParseSession *session, I64 value) noexcept {
     JSONEventData data = {};
     data.int_value = value;
-    notify_event(session, JSONEvent::INT_VALUE, &data);
+    notify_event(session, JSONEvent::INT_VALUE, &data, 0);
 }
 
 static Void notify_value_number_float(JSONParseSession *session, F64 value) noexcept {
     JSONEventData data = {};
     data.float_value = value;
-    notify_event(session, JSONEvent::FLOAT_VALUE, &data);
+    notify_event(session, JSONEvent::FLOAT_VALUE, &data, 0);
 }
 
-static Void notify_value_string_begin(JSONParseSession *session) noexcept {
-    notify_event(session, JSONEvent::STRING_VALUE_BEGIN);
-}
-
-static Void notify_value_string_end(JSONParseSession *session) noexcept {
-    notify_event(session, JSONEvent::STRING_VALUE_END);
-}
-
-static Void notify_value_string_chars(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
+static Void notify_value_string_chunk(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length, U64 more) noexcept {
     JSONEventData data = {};
     data.string_data.str = text_buffer;
     data.string_data.len = text_buffer_length;
-    notify_event(session, JSONEvent::STRING_VALUE_CHARS, &data);
+    notify_event(session, JSONEvent::STRING_VALUE, &data, more);
 }
 
 static Void notify_value_string(JSONParseSession *session, const Char *text_buffer, U64 text_buffer_length) noexcept {
     JSONEventData data = {};
     data.string_data.str = text_buffer;
     data.string_data.len = text_buffer_length;
-    notify_event(session, JSONEvent::STRING, &data);
+    notify_event(session, JSONEvent::STRING_VALUE, &data, 0);
 }
 
 // Array  Notification
 static Void notify_array_begin(JSONParseSession *session) noexcept {
-    notify_event(session, JSONEvent::ARRAY_BEGIN);
+    notify_event(session, JSONEvent::ARRAY_BEGIN, nullptr, 0);
 }
 
 static Void notify_array_end(JSONParseSession *session) noexcept {
-    notify_event(session, JSONEvent::ARRAY_END);
+    notify_event(session, JSONEvent::ARRAY_END, nullptr, 0);
 }
 
 // ------------------------------------------
@@ -1217,6 +1207,10 @@ static inline Void emit_utf8_bytes(JSONParseSession *session, U32 cp, EmitFn *em
         n = 4;
     }
     (*emit)(session, bytes, n);
+}
+
+static Void emit_attr_key_utf8(JSONParseSession *session, const Char *buf, U64 len) noexcept {
+    notify_attr_key_chunk(session, buf, len, 1);
 }
 
 static inline CharClass classify_char(Char c) noexcept {

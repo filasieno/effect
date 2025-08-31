@@ -2,9 +2,9 @@ result=DONE
 ---
 STATE_INITIALIZED
 BEGIN_OBJECT
-KEY "asd"
-STRING "sdf"
-KEY "dfg"
-STRING "fgh"
+ATTR_KEY "asd" more=0
+STRING_VALUE "sdf" more=0
+ATTR_KEY "dfg" more=0
+STRING_VALUE "fgh" more=0
 END_OBJECT
 STATE_CHANGED_EVENT: STATE_DONE

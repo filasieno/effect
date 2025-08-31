@@ -3,6 +3,8 @@
 #include <ak/base/base_api.hpp> // Assuming this includes necessary types like Void, Size, Bool, etc.
 
 namespace ak {
+    struct JSONParseSession;
+    struct JSONParseContext;    
 
     enum class JSONParserState {
         INVALID,      // Invalid state, e.g., after an error
@@ -27,6 +29,7 @@ namespace ak {
         STACK_OVERFLOW_ON_SUSPEND            = 201,
         INVALID_ARGUMENT                     = 202,
         MISSING_CALLBACK                     = 203,
+        USER_ABORTED                         = 204,
 
         EMPTY_INPUT                          = 210,
         UNEXPECTED_EOF                       = 211,
@@ -58,30 +61,20 @@ namespace ak {
         // Limits / overflow
         MAX_DEPTH_EXCEEDED                   = 290,
     };
-    
-    struct JSONParseSession;
 
     enum class JSONEvent {
         OBJECT_BEGIN,
         OBJECT_END,
         ARRAY_BEGIN,
         ARRAY_END,
-        ATTR_BEGIN,
-        ATTR_KEY_BEGIN,
-        ATTR_KEY_END,
-        ATTR_KEY_CHARS,
-        KEY,
-        ATTR_END,
+        ATTR_KEY,
         NULL_VALUE,
         BOOL_VALUE,
         INT_VALUE,
         FLOAT_VALUE,
-        STRING_VALUE_BEGIN,
-        STRING_VALUE_END,
-        STRING_VALUE_CHARS,
-        STRING,
+        STRING_VALUE,
         PARSE_STATE_CHANGED,
-        PARSER_STOPPED
+        PARSE_EOF
     };
 
     union JSONEventData {
@@ -100,14 +93,12 @@ namespace ak {
         } state_data;
     };
 
-    struct JSONParseContext;    
-    struct JSONParseSession;
-
     ///\brief Define the Continuation state routine
     using JSONParserStateFn = JSONParserState(JSONParseSession* session, U32 sub_state, Char* head, Char* end, U64 json_size, U64 string_size) noexcept;
 
     ///\brief Unified event callback function type
-    using JSONParserCallbackFn = Void(JSONParseSession* session, JSONEvent event, const JSONEventData* data) noexcept;
+    ///\details Returns 0 to continue parsing; non-zero to abort with USER_ABORTED error.
+    using JSONParserCallbackFn = int(JSONParseSession* session, JSONEvent event, const JSONEventData* data, U64 more) noexcept;
 
     ///\brief The JSON parse context
     struct JSONParseContext {
@@ -128,7 +119,7 @@ namespace ak {
     ///\brief The JSON parse session
     struct JSONParseSession {
         JSONParseSessionConfig config;              ///< Contains the users configuration parameters
-        Void*                  user_data;           ///< Original user data passed to the handlers
+        Void*                  user_data;           ///< Original user session context
         JSONParserCallbackFn*  on_event;            ///< Unified event callback
         void*                  parser_buffer;       ///< The buffer that holds the unaligned parser
         U64                    parser_buffer_size;  ///< The size of the buffer that holds the unaligned parser
@@ -158,9 +149,11 @@ namespace ak {
     U64 get_required_parse_session_buffer_size(JSONParseSessionConfig* cfg) noexcept;
 
     ///\brief Initialize the JSON parse session
-    ///\param buffer      the block of memory that will hold parser
-    ///\param buffer_size the size of the block of memory that will hold the parser 
-    ///\param handlers    the handlers to use
+    ///\param parser_buffer      the block of memory that will hold parser
+    ///\param parser_buffer_size the size of the block of memory that will hold the parser 
+    ///\param cfg                the configuration for the JSON parse session
+    ///\param on_event           the event callback function
+    ///\param user_data          the initial user data    
     ///\return The Initialized parse session or nullptr if the session could not be initialized
     JSONParseSession* init_json_parser(Void* parser_buffer, U64 parser_buffer_size, const JSONParseSessionConfig* cfg, JSONParserCallbackFn* on_event, Void* user_data) noexcept;
 
@@ -169,7 +162,10 @@ namespace ak {
     ///\return The parser state
     JSONParserState run_json_parser(JSONParseSession* session, Void* buffer, U64 buffer_size) noexcept;
 
-    JSONParserState stop_json_parser(JSONParseSession* session) noexcept;
+    ///\brief Marks the end of file for the JSON data
+    ///\param session the active parse session
+    ///\return The parser state
+    JSONParserState eof_json_parser(JSONParseSession* session) noexcept;
 
     ///\brief Reset the JSON parser
     ///\param session The parser to reset
