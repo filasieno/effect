@@ -903,6 +903,20 @@ static JSONParserState state_number_head(JSONParseSession *session, U32 sub_stat
             ++p;
     }
     bool is_float = false;
+    // Count significant digits to enforce at most 16 significant digits for floats
+    U32 significant_digits = 0;
+    U64 q = 0;
+    // Re-scan to count significant digits (ignore sign, decimal point, exponent sign)
+    while (q < len) {
+        char ch = num[q++];
+        if (ch == '-' || ch == '+' || ch == '.' || ch == 'e' || ch == 'E') continue;
+        if (ch >= '0' && ch <= '9') {
+            if (!(significant_digits == 0 && ch == '0')) {
+                // count all non-leading-zero digits as significant
+                ++significant_digits;
+            }
+        }
+    }
     if (p < len && num[p] == '.') {
         is_float = true;
         ++p;
@@ -958,6 +972,9 @@ static JSONParserState state_number_head(JSONParseSession *session, U32 sub_stat
             val = -val;
         notify_value_number_int(session, val);
     } else {
+        if (significant_digits > 16) {
+            return raise_error(session, JSONErrorCode::FLOAT_TOO_MANY_DIGITS);
+        }
         // parse float using simple strtod from C standard library
         char *endp = nullptr;
         F64 v = std::strtod(session->suspend_buffer, &endp);

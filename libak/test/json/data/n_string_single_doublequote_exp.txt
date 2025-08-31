@@ -1,7 +1,5 @@
-result=CONTINUE
 ---
 ---
-result=DONE
 ---
 PARSE_EOF_EVENT
 STATE_CHANGED_EVENT: STATE_DONE

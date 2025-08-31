@@ -53,6 +53,7 @@ namespace ak {
         NO_DIGITS_IN_EXPONENT                = 264,
         INVALID_INTEGER_FORMAT               = 265,
         INVALID_FLOAT_FORMAT                 = 266,
+        FLOAT_TOO_MANY_DIGITS                = 267,
 
         INVALID_TOKEN_EXPECTED_NULL          = 270,
         INVALID_TOKEN_EXPECTED_TRUE          = 271,

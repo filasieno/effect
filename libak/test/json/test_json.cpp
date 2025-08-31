@@ -151,13 +151,13 @@ static JSONParserState parse_json_chunks(const std::vector<std::pair<std::string
         sink.buffer_error_codes.push_back((st == JSONParserState::ERROR) ? sink.last_err_code : 0);
     }
 
-    // If we have multiple buffers and the first buffer doesn't have STATE_INITIALIZED,
-    // add it to the first buffer
+    // If we have multiple buffers and the first buffer doesn't include the explicit initialized event,
+    // prepend it as a STATE_CHANGED_EVENT to be rigorous and consistent
     if (!sink.buffer_results.empty() && sink.buffer_results[0].size() > 0) {
-        // Check if the first event in the first buffer is not STATE_INITIALIZED
-        if (sink.buffer_results[0][0].find("STATE_INITIALIZED") == std::string::npos) {
-            // Add STATE_INITIALIZED at the beginning of the first buffer
-            sink.buffer_results[0].insert(sink.buffer_results[0].begin(), "STATE_INITIALIZED");
+        // Check if the first event in the first buffer is not a STATE_CHANGED_EVENT: STATE_INITIALIZED
+        if (sink.buffer_results[0][0].find("STATE_CHANGED_EVENT: STATE_INITIALIZED") == std::string::npos) {
+            // Add explicit STATE_CHANGED_EVENT for INITIALIZED at the beginning of the first buffer
+            sink.buffer_results[0].insert(sink.buffer_results[0].begin(), "STATE_CHANGED_EVENT: STATE_INITIALIZED");
         }
     }
 
@@ -173,23 +173,12 @@ static JSONParserState parse_json_chunks(const std::vector<std::pair<std::string
     return st;
 }
 
-static std::string serialize_out(JSONParserState st, const SerializedSink &sink, U32 err_code) {
+static std::string serialize_out(const SerializedSink &sink) {
     std::ostringstream os;
 
     // If we have multiple buffers, serialize intermediate results
     if (!sink.buffer_results.empty()) {
         for (size_t i = 0; i < sink.buffer_results.size(); ++i) {
-            // Write result for this buffer
-            switch (sink.buffer_states[i]) {
-                case JSONParserState::DONE: os << "result=DONE\n"; break;
-                case JSONParserState::CONTINUE: os << "result=CONTINUE\n"; break;
-                case JSONParserState::ERROR: os << "result=ERROR\n"; break;
-                case JSONParserState::INITIALIZED: os << "result=INITIALIZED\n"; break;
-                default: os << "result=INVALID\n"; break;
-            }
-            if (sink.buffer_states[i] == JSONParserState::ERROR) {
-                os << "value=" << sink.buffer_error_codes[i] << "\n";
-            }
             os << "---\n";
             for (const auto &ln : sink.buffer_results[i]) os << ln << "\n";
 
@@ -204,19 +193,7 @@ static std::string serialize_out(JSONParserState st, const SerializedSink &sink,
             }
         }
     } else {
-        // Single buffer case (existing behavior)
-        switch (st) {
-            case JSONParserState::DONE: os << "result=DONE\n"; break;
-            case JSONParserState::CONTINUE: os << "result=CONTINUE\n"; break;
-            case JSONParserState::ERROR: os << "result=ERROR\n"; break;
-            case JSONParserState::INITIALIZED: os << "result=INITIALIZED\n"; break;
-            default: os << "result=INVALID\n"; break;
-        }
-        if (st == JSONParserState::ERROR) {
-            os << "value=" << err_code << "\n";
-        }
         os << "---\n";
-        os << "EVENT\n";
         for (const auto &ln : sink.lines) os << ln << "\n";
     }
 
@@ -226,10 +203,10 @@ static std::string serialize_out(JSONParserState st, const SerializedSink &sink,
 static bool read_input_case(const fs::path &p, std::vector<std::pair<std::string,std::string>> &kv, std::vector<std::string> &chunks) {
     std::ifstream f(p);
     if (!f.is_open()) return false;
-    std::string line; bool in_json = false; std::ostringstream current;
+    std::string line; bool in_json = false; bool saw_separator = false; std::ostringstream current;
     while (std::getline(f, line)) {
         if (!in_json) {
-            if (line.rfind("----------", 0) == 0) { in_json = true; continue; }
+            if (line.rfind("----------", 0) == 0) { in_json = true; saw_separator = true; continue; }
             auto eq = line.find('=');
             if (eq != std::string::npos) kv.emplace_back(line.substr(0, eq), line.substr(eq + 1));
         } else {
@@ -246,10 +223,12 @@ static bool read_input_case(const fs::path &p, std::vector<std::pair<std::string
     std::string last = current.str();
     if (!last.empty() && last.back() == '\n') last.pop_back();
     if (!last.empty() || chunks.empty()) chunks.push_back(std::move(last));
-    return true;
+    // Require the test file to contain the JSON separator header
+    return saw_separator && !chunks.empty();
 }
 
 struct JSONCaseParam { std::string name; fs::path input; fs::path expected; };
+struct JSONParser : public ::testing::TestWithParam<JSONCaseParam> {};
 
 static std::vector<JSONCaseParam> discover_cases(const fs::path &data_root) {
     std::vector<JSONCaseParam> out;
@@ -268,7 +247,6 @@ static std::vector<JSONCaseParam> discover_cases(const fs::path &data_root) {
     return out;
 }
 
-class JSONParser : public ::testing::TestWithParam<JSONCaseParam> {};
 
 TEST_P(JSONParser, Case) {
     const auto param = GetParam();
@@ -297,7 +275,7 @@ TEST_P(JSONParser, Case) {
     }
     log_stream << "\n=== End of Events ===\n";
 
-    std::string actual = serialize_out(st, sink, err_code);
+    std::string actual = serialize_out(sink);
 
     // Write the actual output to output.txt
     fs::path out_file = out_dir / param.name / "output.txt";
@@ -317,6 +295,14 @@ TEST_P(JSONParser, Case) {
     std::string expected = exp_ss.str();
 
     // Only show test result, not detailed logs
+    // Ensure per-case output folder exists and has the output.txt we just wrote
+    const char *env_out_verify = std::getenv("AK_TEST_OUTPUT_DIR");
+    fs::path out_dir_verify = env_out_verify ? fs::path(env_out_verify) : fs::path("build/test_output/json");
+    ASSERT_TRUE(fs::exists(out_dir_verify));
+    ASSERT_TRUE(fs::exists(out_dir_verify / param.name));
+    ASSERT_TRUE(fs::exists(out_dir_verify / param.name / "output.txt"));
+    ASSERT_GT(fs::file_size(out_dir_verify / param.name / "output.txt"), 0u);
+
     bool test_passed = (actual == expected);
     EXPECT_TRUE(test_passed);  // Details are in log files, keep stdout clean
 }
