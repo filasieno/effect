@@ -2,7 +2,7 @@
 
 namespace ak { namespace priv {
 
-    AkVoid check_alloc_table_invariants(AllocTable* at, std::source_location loc) noexcept {
+    AkVoid check_alloc_table_invariants(AkAllocTable* at, std::source_location loc) noexcept {
         if constexpr (AK_IS_DEBUG_MODE && AK_ENABLE_FULL_INVARIANT_CHECKS) {
 
             // Basic table invariants
@@ -16,20 +16,20 @@ namespace ak { namespace priv {
             // Sentinels positioning invariants
             AK_ASSERT_AT(loc, (AkVoid*)at->sentinel_begin == (AkVoid*)at->mem_begin, "sentinal position invariant failed");
             AK_ASSERT_AT(loc, (AkU64)at->sentinel_begin->this_desc.size % 32ull == 0ull, "sentinal position invariant failed");
-            AK_ASSERT_AT(loc, at->sentinel_begin->this_desc.state == (AkU32)AllocBlockState::BEGIN_SENTINEL, "sentinal position invariant failed");
+            AK_ASSERT_AT(loc, at->sentinel_begin->this_desc.state == (AkU32)AkAllocBlockState::BEGIN_SENTINEL, "sentinal position invariant failed");
             AK_ASSERT_AT(loc, at->sentinel_begin->prev_desc.size == 0ull, "sentinal position invariant failed");
 
-            AllocPooledFreeBlockHeader* expected_end = (AllocPooledFreeBlockHeader*)((AkChar*)at->mem_end - sizeof(AllocPooledFreeBlockHeader));
+            AkAllocPooledFreeBlockHeader* expected_end = (AkAllocPooledFreeBlockHeader*)((AkChar*)at->mem_end - sizeof(AkAllocPooledFreeBlockHeader));
             AK_ASSERT_AT(loc, (AkVoid*)at->sentinel_end == (AkVoid*)expected_end, "sentinal position invariant failed");
             AK_ASSERT_AT(loc, (AkU64)at->sentinel_end->this_desc.size % 32ull == 0ull, "sentinal position invariant failed");
-            AK_ASSERT_AT(loc, at->sentinel_end->this_desc.state == (AkU32)AllocBlockState::END_SENTINEL, "sentinal position invariant failed");
+            AK_ASSERT_AT(loc, at->sentinel_end->this_desc.state == (AkU32)AkAllocBlockState::END_SENTINEL, "sentinal position invariant failed");
 
             // Wild block basic invariants
             AK_ASSERT_AT(loc, at->wild_block != nullptr, "wild block invariant failed");
             AK_ASSERT_AT(loc, (AkChar*)at->wild_block >= at->mem_begin, "wild block invariant failed");
             AK_ASSERT_AT(loc, (AkChar*)at->wild_block <  at->mem_end, "wild block invariant failed");
             AK_ASSERT_AT(loc, ((AkU64)at->wild_block & 31ull) == 0ull, "wild block invariant failed");
-            AK_ASSERT_AT(loc, at->wild_block->this_desc.state == (AkU32)AllocBlockState::WILD_BLOCK, "wild block invariant failed");
+            AK_ASSERT_AT(loc, at->wild_block->this_desc.state == (AkU32)AkAllocBlockState::WILD_BLOCK, "wild block invariant failed");
 
             // Scan heap blocks and verify local invariants
             AkU64 counted_free_bytes = 0ull;
@@ -37,15 +37,15 @@ namespace ak { namespace priv {
             AkU64 counted_wild_bytes = 0ull;
             (void)counted_wild_bytes;
 
-            AkU64 small_free_count_bin[AllocTable::ALLOCATOR_BIN_COUNT] = {};
+            AkU64 small_free_count_bin[AkAllocTable::ALLOCATOR_BIN_COUNT] = {};
             AkU64 large_free_block_count = 0ull;
             AkU64 wild_block_instances = 0ull;
 
-            const AllocBlockHeader* begin = (AllocBlockHeader*)at->sentinel_begin;
-            const AllocBlockHeader* end   = (AllocBlockHeader*)((AkChar*)at->sentinel_end + at->sentinel_end->this_desc.size);
+            const AkAllocBlockHeader* begin = (AkAllocBlockHeader*)at->sentinel_begin;
+            const AkAllocBlockHeader* end   = (AkAllocBlockHeader*)((AkChar*)at->sentinel_end + at->sentinel_end->this_desc.size);
 
-            const AllocBlockHeader* prev = nullptr;
-            for (const AllocBlockHeader* h = begin; h != end; h = priv::next((AllocBlockHeader*)h)) {
+            const AkAllocBlockHeader* prev = nullptr;
+            for (const AkAllocBlockHeader* h = begin; h != end; h = priv::next((AkAllocBlockHeader*)h)) {
                 // Address bounds and alignment
                 AK_ASSERT_AT(loc, (AkChar*)h >= at->mem_begin, "heap block invariant failed");
                 AK_ASSERT_AT(loc, (AkChar*)h <  at->mem_end, "heap block invariant failed");
@@ -53,7 +53,7 @@ namespace ak { namespace priv {
 
                 // AkSize constraints
                 AkU64 sz = h->this_desc.size;
-                AK_ASSERT_AT(loc, sz >= sizeof(AllocBlockHeader), "heap block invariant failed");
+                AK_ASSERT_AT(loc, sz >= sizeof(AkAllocBlockHeader), "heap block invariant failed");
                 AK_ASSERT_AT(loc, (sz & 31ull) == 0ull, "heap block invariant failed");
 
                 // Prev descriptor consistency
@@ -61,33 +61,33 @@ namespace ak { namespace priv {
                     AK_ASSERT_AT(loc, h->prev_desc.size  == prev->this_desc.size, "heap block invariant failed");
                     AK_ASSERT_AT(loc, h->prev_desc.state == prev->this_desc.state, "heap block invariant failed");
                     // Bidirectional linkage check
-                    AK_ASSERT_AT(loc, priv::next((AllocBlockHeader*)prev) == h, "heap block invariant failed");
-                    AK_ASSERT_AT(loc, priv::prev((AllocBlockHeader*)h) == prev, "heap block invariant failed");
+                    AK_ASSERT_AT(loc, priv::next((AkAllocBlockHeader*)prev) == h, "heap block invariant failed");
+                    AK_ASSERT_AT(loc, priv::prev((AkAllocBlockHeader*)h) == prev, "heap block invariant failed");
                 } else {
                     // First block is the begin sentinel
                     AK_ASSERT_AT(loc, h == begin, "heap block invariant failed");
-                    AK_ASSERT_AT(loc, h->this_desc.state == (AkU32)AllocBlockState::BEGIN_SENTINEL, "heap block invariant failed");
+                    AK_ASSERT_AT(loc, h->this_desc.state == (AkU32)AkAllocBlockState::BEGIN_SENTINEL, "heap block invariant failed");
                 }
 
                 // State-specific checks and accounting
-                AllocBlockState st = (AllocBlockState)h->this_desc.state;
+                AkAllocBlockState st = (AkAllocBlockState)h->this_desc.state;
                 switch (st) {
-                    case AllocBlockState::BEGIN_SENTINEL:
+                    case AkAllocBlockState::BEGIN_SENTINEL:
                         AK_ASSERT_AT(loc, h == begin, "heap block invariant failed");
                         counted_used_bytes += sz;
                         break;
-                    case AllocBlockState::END_SENTINEL:
-                        AK_ASSERT_AT(loc, h == (AllocBlockHeader*)at->sentinel_end, "heap block invariant failed");
+                    case AkAllocBlockState::END_SENTINEL:
+                        AK_ASSERT_AT(loc, h == (AkAllocBlockHeader*)at->sentinel_end, "heap block invariant failed");
                         counted_used_bytes += sz;
                         break;
-                    case AllocBlockState::WILD_BLOCK:
-                        AK_ASSERT_AT(loc, (AllocBlockHeader*)h == (AllocBlockHeader*)at->wild_block, "heap block invariant failed");
+                    case AkAllocBlockState::WILD_BLOCK:
+                        AK_ASSERT_AT(loc, (AkAllocBlockHeader*)h == (AkAllocBlockHeader*)at->wild_block, "heap block invariant failed");
                         AK_ASSERT_AT(loc, sz >= 32ull, "heap block invariant failed");
                         ++wild_block_instances;
                         counted_wild_bytes += sz;
                         counted_free_bytes += sz;
                         break;
-                    case AllocBlockState::FREE:
+                    case AkAllocBlockState::FREE:
                         AK_ASSERT(sz >= 32ull);
                         if (sz <= 2048ull) {
                             ++small_free_count_bin[priv::get_alloc_freelist_index(h)];
@@ -96,7 +96,7 @@ namespace ak { namespace priv {
                         }
                         counted_free_bytes += sz;
                         break;
-                    case AllocBlockState::USED:
+                    case AkAllocBlockState::USED:
                         counted_used_bytes += sz;
                         break;
                     default:
@@ -115,14 +115,14 @@ namespace ak { namespace priv {
 
             // Validate small freelist structures: mask and counts
             AkU64 observed_mask = 0ull;
-            for (AkU32 bin = 0; bin < AllocTable::ALLOCATOR_BIN_COUNT; ++bin) {
+            for (AkU32 bin = 0; bin < AkAllocTable::ALLOCATOR_BIN_COUNT; ++bin) {
                 AkDLink* head = &at->freelist_head[bin];
                 AkU64 ring_count = 0ull;
                 for (AkDLink* it = head->next; it != head; it = it->next) {
-                    const AkSize link_off = AK_OFFSET(AllocPooledFreeBlockHeader, freelist_link);
-                    AllocBlockHeader* b = (AllocBlockHeader*)((AkChar*)it - link_off);
+                    const AkSize link_off = AK_OFFSET(AkAllocPooledFreeBlockHeader, freelist_link);
+                    AkAllocBlockHeader* b = (AkAllocBlockHeader*)((AkChar*)it - link_off);
                     // Each member must be FREE and in-range
-                    AK_ASSERT_AT(loc, b->this_desc.state == (AkU32)AllocBlockState::FREE, "small freelist invariant failed: {}", to_string((AllocBlockState)(b->this_desc.state)));
+                    AK_ASSERT_AT(loc, b->this_desc.state == (AkU32)AkAllocBlockState::FREE, "small freelist invariant failed: {}", to_string((AkAllocBlockState)(b->this_desc.state)));
                     AK_ASSERT_AT(loc, b->this_desc.size <= 2048ull, "small freelist invariant failed");
                     AK_ASSERT_AT(loc, priv::get_alloc_freelist_index(b) == bin, "small freelist invariant failed");
                     ++ring_count;
@@ -137,12 +137,12 @@ namespace ak { namespace priv {
 
             // Validate large free block AVL tree: states and ordering
             AkU64 observed_large_free_count = 0ull;
-            auto validate_tree = [&](auto&& self, AllocFreeBlockHeader* node, AkU64 min_key, AkU64 max_key) -> AkI32 {
+            auto validate_tree = [&](auto&& self, AkAllocFreeBlockHeader* node, AkU64 min_key, AkU64 max_key) -> AkI32 {
                 if (!node) return 0;
                 AkU64 key = node->this_desc.size;
                 AK_ASSERT_AT(loc, key > 2048ull, "large freelist invariant failed");
                 AK_ASSERT_AT(loc, key > min_key && key < max_key, "large freelist invariant failed");
-                AK_ASSERT_AT(loc, node->this_desc.state == (AkU32)AllocBlockState::FREE, "large freelist invariant failed");
+                AK_ASSERT_AT(loc, node->this_desc.state == (AkU32)AkAllocBlockState::FREE, "large freelist invariant failed");
                 // children parent pointers
                 if (node->left)  AK_ASSERT_AT(loc, node->left->parent  == node, "large freelist invariant failed");
                 if (node->right) AK_ASSERT_AT(loc, node->right->parent == node, "large freelist invariant failed");
@@ -153,9 +153,9 @@ namespace ak { namespace priv {
                 // multimap ring: all nodes must have the same size and FREE state
                 AkU64 list_count = 0ull;
                 for (AkDLink* it = node->multimap_link.next; it != &node->multimap_link; it = it->next) {
-                    AllocFreeBlockHeader* n = (AllocFreeBlockHeader*)((AkChar*)it - AK_OFFSET(AllocFreeBlockHeader, multimap_link));
+                    AkAllocFreeBlockHeader* n = (AkAllocFreeBlockHeader*)((AkChar*)it - AK_OFFSET(AkAllocFreeBlockHeader, multimap_link));
                     AK_ASSERT_AT(loc, n->this_desc.size == key, "large freelist invariant failed");
-                    AK_ASSERT_AT(loc, n->this_desc.state == (AkU32)AllocBlockState::FREE, "large freelist invariant failed");
+                    AK_ASSERT_AT(loc, n->this_desc.state == (AkU32)AkAllocBlockState::FREE, "large freelist invariant failed");
                     ++list_count;
                 }
                 observed_large_free_count += 1ull + list_count;

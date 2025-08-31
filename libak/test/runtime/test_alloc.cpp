@@ -22,16 +22,16 @@ protected:
 };
 
 TEST_F(KernelAllocTest, BasicAllocFree) {
-	AkVoid* buff1 = try_alloc_mem(32);
+	AkVoid* buff1 = ak_malloc(32);
 	ASSERT_NE(buff1, nullptr);
-	AkVoid* buff2 = try_alloc_mem(33);
+	AkVoid* buff2 = ak_malloc(33);
 	ASSERT_NE(buff2, nullptr);
-	AkVoid* buff3 = try_alloc_mem(63);
+	AkVoid* buff3 = ak_malloc(63);
 	ASSERT_NE(buff3, nullptr);
-	AkVoid* buff4 = try_alloc_mem(64 - 16);
+	AkVoid* buff4 = ak_malloc(64 - 16);
 	ASSERT_NE(buff4, nullptr);
-	free_mem(buff4);
-	free_mem(buff3);
-	free_mem(buff2);
-	free_mem(buff1);
+	ak_free(buff4);
+	ak_free(buff3);
+	ak_free(buff2);
+	ak_free(buff1);
 }

@@ -13,14 +13,14 @@ AkPromise::~AkPromise() {
 }
 
 AkVoid* AkPromise::operator new(std::size_t n) noexcept {
-    AkVoid* mem = ak::try_alloc_mem(n);
+    AkVoid* mem = ak_malloc(n);
     if (!mem) return nullptr;
     return mem;
 }
 
 AkVoid AkPromise::operator delete(AkVoid* ptr, std::size_t sz) {
     (AkVoid)sz;
-    ak::free_mem(ptr);
+    ak_free(ptr);
 }
 
 AkVoid AkPromise::unhandled_exception() noexcept 

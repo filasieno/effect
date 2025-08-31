@@ -23,6 +23,7 @@ enum class AkCoroutineState
     ZOMBIE,      ///< Already dead
     DELETING     ///< Currently being deleted
 };
+const char* to_string(AkCoroutineState state) noexcept;
 
 
 struct CThread;
@@ -92,7 +93,7 @@ struct CThread {
 
     AkCoroutineHandle hdl;
 };
-const char* to_string(AkCoroutineState state) noexcept;
+
 
 inline AkCoroutineHandle to_handle(AkPromise* cthread_context) noexcept {
     return AkCoroutineHandle::from_promise(*cthread_context);        
@@ -122,8 +123,8 @@ namespace ak {
             constexpr BootCThread    get_return_object() noexcept { return {Hdl::from_promise(*this)}; }
             constexpr InitialSuspend initial_suspend() noexcept { return {}; }
             constexpr FinalSuspend   final_suspend() noexcept { return {}; }
-            constexpr AkVoid           return_void() noexcept { }
-            constexpr AkVoid           unhandled_exception() noexcept;
+            constexpr AkVoid         return_void() noexcept { }
+            constexpr AkVoid         unhandled_exception() noexcept;
     
             int exit_code;
         };
@@ -144,11 +145,9 @@ namespace ak {
         Hdl hdl;
     };
     
-    struct Kernel {
-        using AkDLink = AkDLink;
-        
+    struct Kernel {        
         // Allocation table
-        AllocTable alloc_table;
+        AkAllocTable alloc_table;
         
         // Task management
         char        boot_cthread_frame_buffer[64];
@@ -373,5 +372,9 @@ namespace ak {
     op::ExecIO io_cancel_fd(int fd, unsigned int flags) noexcept;
 
 }
+
+AkVoid* ak_malloc(AkSize sz) noexcept;
+AkVoid  ak_free(AkVoid* ptr, AkU32 side_coalesching = (AkU32)~0) noexcept;
+AkI32   ak_defragment_mem(AkU64 millis_time_budget = ~0ull) noexcept;
 
 

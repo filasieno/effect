@@ -23,6 +23,13 @@ inline AkPromise::AkPromise() {
     // check_invariants();
 }
 
+inline AkVoid* ak_malloc(AkSize sz) noexcept { return ak::priv::try_alloc_table_malloc(&global_kernel_state.alloc_table, sz); }
+
+inline AkVoid  ak_free(AkVoid* ptr, AkU32 side_coalesching) noexcept { ak::priv::alloc_table_free(&global_kernel_state.alloc_table, ptr, side_coalesching); }
+
+inline AkI32   ak_defragment_mem(AkU64 millis_time_budget) noexcept { return ak::priv::defrag_alloc_table_mem(&global_kernel_state.alloc_table, millis_time_budget); }
+
+
 namespace ak { 
 
     // Inline Context
@@ -71,12 +78,6 @@ namespace ak {
     inline AkBool is_done(CThread ct) noexcept { return ct.hdl.done(); }
 
     inline op::ResumeCThread resume(CThread ct) noexcept { return op::ResumeCThread(ct); }
-
-    inline AkVoid* try_alloc_mem(AkSize sz) noexcept { return priv::try_alloc_table_malloc(&global_kernel_state.alloc_table, sz); }
-
-    inline AkVoid free_mem(AkVoid* ptr, AkU32 side_coalesching) noexcept { priv::alloc_table_free(&global_kernel_state.alloc_table, ptr, side_coalesching); }
-
-    inline AkI32 defragment_mem(AkU64 millis_time_budget) noexcept { return priv::defrag_alloc_table_mem(&global_kernel_state.alloc_table, millis_time_budget); }
 
     // Boot operations
     // ----------------------------------------------------------------------------------------------------------------

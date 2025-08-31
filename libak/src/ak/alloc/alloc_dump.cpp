@@ -14,18 +14,18 @@ namespace ak { namespace priv {
     constexpr const AkChar* DEBUG_ALLOC_COLOR_RED    = "\033[1;31m"; 
     constexpr const AkChar* DEBUG_ALLOC_COLOR_HDR    = "\033[36m"; 
 
-    static inline constexpr const AkChar* StateColor(AllocBlockState s) {
+    static inline constexpr const AkChar* StateColor(AkAllocBlockState s) {
         switch (s) {
-            case AllocBlockState::USED:               
+            case AkAllocBlockState::USED:               
                 return DEBUG_ALLOC_COLOR_CYAN;
-            case AllocBlockState::FREE:   
-            case AllocBlockState::WILD_BLOCK: 
+            case AkAllocBlockState::FREE:   
+            case AkAllocBlockState::WILD_BLOCK: 
                 return DEBUG_ALLOC_COLOR_GREEN;
-            case AllocBlockState::BEGIN_SENTINEL:
-            case AllocBlockState::LARGE_BLOCK_SENTINEL:
-            case AllocBlockState::END_SENTINEL: 
+            case AkAllocBlockState::BEGIN_SENTINEL:
+            case AkAllocBlockState::LARGE_BLOCK_SENTINEL:
+            case AkAllocBlockState::END_SENTINEL: 
                 return DEBUG_ALLOC_COLOR_YELLOW;
-            case AllocBlockState::INVALID: 
+            case AkAllocBlockState::INVALID: 
                 return DEBUG_ALLOC_COLOR_RED;
             default: 
                 return DEBUG_ALLOC_COLOR_RESET;
@@ -117,14 +117,14 @@ namespace ak { namespace priv {
         std::print("{}│{}\n"     , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
 
-    static inline AkVoid PrintRow(const AllocTable* at, const AllocBlockHeader* h) {
+    static inline AkVoid PrintRow(const AkAllocTable* at, const AkAllocBlockHeader* h) {
         
         uintptr_t begin_addr = (uintptr_t)at->sentinel_begin;
         uintptr_t off = (uintptr_t)h - begin_addr;
         uint64_t  sz  = (uint64_t)h->this_desc.size;
         uint64_t  psz = (uint64_t)h->prev_desc.size;
-        AllocBlockState st = (AllocBlockState)h->this_desc.state;
-        AllocBlockState pst = (AllocBlockState)h->prev_desc.state;
+        AkAllocBlockState st = (AkAllocBlockState)h->this_desc.state;
+        AkAllocBlockState pst = (AkAllocBlockState)h->prev_desc.state;
 
         const AkChar* state_text = to_string(st);
         const AkChar* previous_state_text = to_string(pst);
@@ -145,15 +145,15 @@ namespace ak { namespace priv {
         AkSize bin_idx = get_alloc_freelist_index(h->this_desc.size);
 
         // Print FreeListPrev (with AkDLink)
-        if (h->this_desc.state == (AkU32)AllocBlockState::FREE && h->this_desc.size <= 2048) {
-            const AkDLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
+        if (h->this_desc.state == (AkU32)AkAllocBlockState::FREE && h->this_desc.size <= 2048) {
+            const AkDLink* free_list_link = &((AkAllocPooledFreeBlockHeader*)h)->freelist_link;
             const AkDLink* prev = free_list_link->prev;
             const AkDLink* head = &at->freelist_head[bin_idx];
             if (prev == head) {
                 std::print("{} {:<18} ", state_color, "HEAD");
             } else {
-                const AkSize link_off = AK_OFFSET(AllocPooledFreeBlockHeader, freelist_link);
-                AllocBlockHeader* prev_block = (AllocBlockHeader*)((AkChar*)prev - link_off);
+                const AkSize link_off = AK_OFFSET(AkAllocPooledFreeBlockHeader, freelist_link);
+                AkAllocBlockHeader* prev_block = (AkAllocBlockHeader*)((AkChar*)prev - link_off);
                 AkSize offset = (AkSize)((AkChar*)prev_block - (AkChar*)at->sentinel_begin);
                 std::print("{} {:<18} ", state_color, offset);
             }
@@ -164,15 +164,15 @@ namespace ak { namespace priv {
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
 
         // Print FreeList Next (with AkDLink)
-        if (h->this_desc.state == (AkU32)AllocBlockState::FREE && h->this_desc.size <= 2048) {
-            const AkDLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
+        if (h->this_desc.state == (AkU32)AkAllocBlockState::FREE && h->this_desc.size <= 2048) {
+            const AkDLink* free_list_link = &((AkAllocPooledFreeBlockHeader*)h)->freelist_link;
             const AkDLink* next = free_list_link->next;
             const AkDLink* head = &at->freelist_head[bin_idx];
             if (next == head) {
                 std::print("{} {:<18} ", state_color, "HEAD");
             } else {
-                const AkSize link_off = AK_OFFSET(AllocPooledFreeBlockHeader, freelist_link);
-                AllocBlockHeader* next_block = (AllocBlockHeader*)((AkChar*)next - link_off);
+                const AkSize link_off = AK_OFFSET(AkAllocPooledFreeBlockHeader, freelist_link);
+                AkAllocBlockHeader* next_block = (AkAllocBlockHeader*)((AkChar*)next - link_off);
                 AkSize offset = (AkSize)((AkChar*)next_block - (AkChar*)at->sentinel_begin);
                 std::print("{} {:<18} ", state_color, offset);
             }
@@ -183,7 +183,7 @@ namespace ak { namespace priv {
         std::print("{}│{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
 
-    AkVoid dump_alloc_table(const AllocTable* at) noexcept {
+    AkVoid dump_alloc_table(const AkAllocTable* at) noexcept {
         
         // Basic layout and sizes
         std::print("AllocTable: {}\n", (AkVoid*)at);
@@ -221,15 +221,15 @@ namespace ak { namespace priv {
         std::print("\n");
     }
 
-    AkVoid dump_alloc_block(const AllocTable* at) noexcept 
+    AkVoid dump_alloc_block(const AkAllocTable* at) noexcept 
     {
         using namespace priv;
         
         PrintTopBorder();
         PrintHeader();
         PrintHeaderSeparator();
-        AllocBlockHeader* head = (AllocBlockHeader*) at->sentinel_begin;
-        AllocBlockHeader* end  = (AllocBlockHeader*) next((AllocBlockHeader*)at->sentinel_end);
+        AkAllocBlockHeader* head = (AkAllocBlockHeader*) at->sentinel_begin;
+        AkAllocBlockHeader* end  = (AkAllocBlockHeader*) next((AkAllocBlockHeader*)at->sentinel_end);
         
         for (; head != end; head = next(head)) {
             PrintRow(at, head);

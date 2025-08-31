@@ -15,13 +15,13 @@ namespace ak {
         AkU32 capacity = 0;
     };
 
-    Pagecache init_pagecache(AllocTable* at, AkU32 capacity) noexcept;
-    void      fini_pagecache(Pagecache* cache, AllocTable* at) noexcept;
+    Pagecache init_pagecache(AkAllocTable* at, AkU32 capacity) noexcept;
+    void      fini_pagecache(Pagecache* cache, AkAllocTable* at) noexcept;
 
-    AkBool      contains_pagecache_entry(const Pagecache* cache, PageId page_id) noexcept;
+    AkBool    contains_pagecache_entry(const Pagecache* cache, PageId page_id) noexcept;
     FrameId   lookup_pagecahe_entry(const Pagecache* cache, PageId page_id) noexcept;
     
-    AkU32       put_pagecache_entry(Pagecache* cache, PageId page_id, FrameId frame_id) noexcept;
+    AkU32     put_pagecache_entry(Pagecache* cache, PageId page_id, FrameId frame_id) noexcept;
     FrameId   remove_pagecache_entry(Pagecache* cache, PageId page_id) noexcept;
 
 } // namespace ak

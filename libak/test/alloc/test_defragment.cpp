@@ -5,9 +5,9 @@
 
 using namespace ak;
 
-static inline AkU64 sum_freelist_nodes(const AllocTable* at) {
+static inline AkU64 sum_freelist_nodes(const AkAllocTable* at) {
 	AkU64 s = 0;
-	for (int i = 0; i < AllocTable::ALLOCATOR_BIN_COUNT; ++i) s += at->freelist_count[i];
+	for (int i = 0; i < AkAllocTable::ALLOCATOR_BIN_COUNT; ++i) s += at->freelist_count[i];
 	return s;
 }
 
@@ -15,7 +15,7 @@ class AllocDefragTest : public ::testing::Test {
 protected:
 	AkVoid* buffer = nullptr;
 	AkU64 buffer_size = 1024 * 1024;
-	AllocTable table{};
+	AkAllocTable table{};
 
 	void SetUp() override {
 		buffer = std::malloc(buffer_size);
@@ -90,7 +90,7 @@ TEST_F(AllocDefragTest, ManySmallBlocksToWildBlock) {
 	EXPECT_LT(after_nodes, before_nodes);
 	// The final block can be wild; ensure pointer is valid
 	EXPECT_NE(table.wild_block, nullptr);
-	EXPECT_EQ(table.wild_block->this_desc.state, (AkU32)AllocBlockState::WILD_BLOCK);
+	EXPECT_EQ(table.wild_block->this_desc.state, (AkU32)AkAllocBlockState::WILD_BLOCK);
 }
 
 // Scenario 5: stats consistency across defragmentation (no change in free_mem_size)

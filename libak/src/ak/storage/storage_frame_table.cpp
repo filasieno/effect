@@ -22,10 +22,10 @@ inline static FrameEntry *get_entry(FrameTable *ft, FrameId frame_id) noexcept {
     return &ft->entries[frame_id.id];
 }
 
-void init_frame_pool(FramePool *framePool, AkU32 capacity, AllocTable *at) noexcept {
+void init_frame_pool(FramePool *framePool, AkU32 capacity, AkAllocTable *at) noexcept {
     AkU32 aligned_capacity = std::bit_ceil(static_cast<AkU32>(capacity));
     AkSize byte_size = static_cast<AkSize>(aligned_capacity) * sizeof(FrameId);
-    FrameId *e = static_cast<FrameId *>(priv::try_alloc_table_malloc(at, byte_size));
+    FrameId *e = static_cast<FrameId *>(ak::priv::try_alloc_table_malloc(at, byte_size));
     AK_ASSERT(e != nullptr);
     std::fill(e, e + aligned_capacity, FrameId());
     framePool->entries = e;
@@ -33,8 +33,8 @@ void init_frame_pool(FramePool *framePool, AkU32 capacity, AllocTable *at) noexc
     framePool->capacity = aligned_capacity;
 }
 
-void fini_frame_pool(FramePool *pool, AllocTable *at) noexcept {
-    priv::alloc_table_free(at, pool->entries, 0);
+void fini_frame_pool(FramePool *pool, AkAllocTable *at) noexcept {
+    ak::priv::alloc_table_free(at, pool->entries, 0);
     pool->entries = nullptr;
     pool->count = 0;
     pool->capacity = 0;
@@ -42,11 +42,11 @@ void fini_frame_pool(FramePool *pool, AllocTable *at) noexcept {
 
 bool is_frame_pool_full(const FramePool *pool) noexcept { return pool->count == pool->capacity; }
 
-void init_frame_table(FrameTable *ft, AkU32 capacity, AllocTable *at) noexcept {
+void init_frame_table(FrameTable *ft, AkU32 capacity, AkAllocTable *at) noexcept {
 
     AkU32 aligned = std::bit_ceil(static_cast<AkU32>(capacity));
     AkSize byte_size = static_cast<AkSize>(aligned) * sizeof(FrameEntry);
-    FrameEntry *entries = static_cast<FrameEntry *>(priv::try_alloc_table_malloc(at, byte_size));
+    FrameEntry *entries = static_cast<FrameEntry *>(ak::priv::try_alloc_table_malloc(at, byte_size));
     AK_ASSERT(entries != nullptr);
 
     init_frame_pool(&ft->free_pool, aligned, at);
@@ -70,7 +70,7 @@ void init_frame_table(FrameTable *ft, AkU32 capacity, AllocTable *at) noexcept {
     ft->free_pool.count = aligned;
 }
 
-void fini_frame_table(FrameTable *ft, AllocTable *at) noexcept {
+void fini_frame_table(FrameTable *ft, AkAllocTable *at) noexcept {
     fini_frame_pool(&ft->keep_pool, at);
     fini_frame_pool(&ft->recycle_pool, at);
     fini_frame_pool(&ft->default_pool, at);

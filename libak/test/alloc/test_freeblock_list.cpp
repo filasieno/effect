@@ -9,7 +9,7 @@ class KernelFreeListTest : public ::testing::Test {
 protected:
 	AkVoid* buffer = nullptr;
 	AkU64   buffer_size = 1024 * 1024;
-	AllocTable table{};
+	AkAllocTable table{};
 	void SetUp() override {
 		buffer = std::malloc(buffer_size);
 		ASSERT_NE(buffer, nullptr);

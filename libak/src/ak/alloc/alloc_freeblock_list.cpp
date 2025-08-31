@@ -50,16 +50,16 @@ namespace ak { namespace priv {
         *bit_field &= ~(1ull << bin_idx);
     }
 
-    AllocBlockHeader* next(AllocBlockHeader* header) noexcept {
+    AkAllocBlockHeader* next(AkAllocBlockHeader* header) noexcept {
         size_t sz = (size_t)header->this_desc.size;
         if (sz == 0) return header;
-        return (AllocBlockHeader*)((AkChar*)header + sz);
+        return (AkAllocBlockHeader*)((AkChar*)header + sz);
     }
 
-    AllocBlockHeader* prev(AllocBlockHeader* header) noexcept {
+    AkAllocBlockHeader* prev(AkAllocBlockHeader* header) noexcept {
         size_t sz = (size_t)header->prev_desc.size;
         if (sz == 0) return header;
-        return (AllocBlockHeader*)((AkChar*)header - sz);
+        return (AkAllocBlockHeader*)((AkChar*)header - sz);
     }
 
 
@@ -72,11 +72,11 @@ namespace ak { namespace priv {
         return bin;
     }
 
-    AkU32 get_alloc_freelist_index(const AllocBlockHeader* header) noexcept {
-        switch ((AllocBlockState)header->this_desc.state) {
-            case AllocBlockState::WILD_BLOCK:
+    AkU32 get_alloc_freelist_index(const AkAllocBlockHeader* header) noexcept {
+        switch ((AkAllocBlockState)header->this_desc.state) {
+            case AkAllocBlockState::WILD_BLOCK:
                 return 63;
-            case AllocBlockState::FREE: 
+            case AkAllocBlockState::FREE: 
             {
                 const AkU64 sz = header->this_desc.size;
                 AkU64 bin = (AkU64)((sz - 1ull) >> 5);
@@ -84,10 +84,10 @@ namespace ak { namespace priv {
                 bin = (bin & ~mask) | (63u & mask);
                 return bin;
             }
-            case AllocBlockState::INVALID:
-            case AllocBlockState::USED:
-            case AllocBlockState::BEGIN_SENTINEL:
-            case AllocBlockState::END_SENTINEL:
+            case AkAllocBlockState::INVALID:
+            case AkAllocBlockState::USED:
+            case AkAllocBlockState::BEGIN_SENTINEL:
+            case AkAllocBlockState::END_SENTINEL:
             default:
             {
                // Unreachable
