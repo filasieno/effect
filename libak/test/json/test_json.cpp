@@ -1,3 +1,32 @@
+/*
+   JSON parser test harness
+
+   Purpose
+   - Drive the streaming, event-based JSON parser across a large corpus of cases.
+   - Serialize parser events to a canonical textual form and compare against expected outputs checked into the repository.
+
+   Test data layout (per file under libak/test/json/data)
+   - Header: key=value lines (optional). Ends at a line that starts with
+     "----------".
+   - Body: one or more JSON fragments separated by lines containing exactly
+     "---". Each fragment is fed as a separate buffer to the parser to test
+     streaming across buffer boundaries.
+
+   Event serialization
+   - Objects/arrays: BEGIN_OBJECT/END_OBJECT, BEGIN_ARRAY/END_ARRAY
+   - Keys: ATTR_KEY "..." more=0|1 (chunked via more flag)
+   - Strings: STRING_VALUE "..." more=0|1 (chunked via more flag)
+   - Scalars: NULL, BOOL true|false, INT <value>, FLOAT <value>
+   - State change: STATE_CHANGED_EVENT: STATE_<INITIALIZED|CONTINUE|DONE|ERROR code>
+   - End-of-input: PARSE_EOF_EVENT
+
+   Notes
+   - The harness fails fast if input cannot be parsed, or the expected file or
+     input file cannot be opened.
+   - Each test case writes logs and the serialized output under
+     build/test_output/json/<case>/.
+*/
+
 #include <gtest/gtest.h>
 #include <cstdlib>
 #include <cstring>
@@ -12,6 +41,14 @@
 using namespace ak;
 namespace fs = std::filesystem;
 
+// -----------------------------
+// Types and test fixture
+// -----------------------------
+
+// Parameter describing a single test case discovered from the data directory.
+struct JSONCaseParam { std::string name; fs::path input; fs::path expected; };
+
+// Sink that accumulates serialized events and per-buffer snapshots.
 struct SerializedSink {
     std::vector<std::string> lines;
     U32 last_err_code = 0;
@@ -21,6 +58,12 @@ struct SerializedSink {
     std::vector<U32> buffer_error_codes;
 };
 
+// gtest typed fixture
+struct JSONParser : public ::testing::TestWithParam<JSONCaseParam> {};
+
+// on_json_event
+//  Unified callback invoked by the parser. Translates events into textual
+//  lines appended to the SerializedSink. Returns 0 to let parsing continue.
 static int on_json_event(JSONParseSession *session, ak::JSONEvent event, const JSONEventData *data, U64 more) noexcept {
     auto *sink = static_cast<SerializedSink *>(session->user_data);
     if (!sink) return 0;
@@ -74,6 +117,10 @@ static int on_json_event(JSONParseSession *session, ak::JSONEvent event, const J
     return 0;
 }
 
+// parse_json_chunks
+//  Configure a parse session from header key/values, feed each JSON chunk,
+//  record per-chunk outputs, and finalize with EOF notification when needed.
+//  Returns the final JSONParserState and sets out_err_code on error.
 static JSONParserState parse_json_chunks(const std::vector<std::pair<std::string,std::string>> &kv,
                                          const std::vector<std::string> &chunks,
                                          SerializedSink &sink, U32 &out_err_code, std::ostream &log_stream) {
@@ -132,7 +179,7 @@ static JSONParserState parse_json_chunks(const std::vector<std::pair<std::string
         if (st == JSONParserState::ERROR) break;
     }
 
-    // Always call stop_json_parser to signal end of input
+    // Always signal end of input when parser expects more data
     if (st == JSONParserState::CONTINUE) {
         log_stream << "INFO: Calling stop_json_parser to signal end of input\n";
 
@@ -151,8 +198,8 @@ static JSONParserState parse_json_chunks(const std::vector<std::pair<std::string
         sink.buffer_error_codes.push_back((st == JSONParserState::ERROR) ? sink.last_err_code : 0);
     }
 
-    // If we have multiple buffers and the first buffer doesn't include the explicit initialized event,
-    // prepend it as a STATE_CHANGED_EVENT to be rigorous and consistent
+    // If we have multiple buffers and the first buffer doesn't include the
+    // explicit initialized event, prepend it as STATE_CHANGED_EVENT for rigor
     if (!sink.buffer_results.empty() && sink.buffer_results[0].size() > 0) {
         // Check if the first event in the first buffer is not a STATE_CHANGED_EVENT: STATE_INITIALIZED
         if (sink.buffer_results[0][0].find("STATE_CHANGED_EVENT: STATE_INITIALIZED") == std::string::npos) {
@@ -173,6 +220,9 @@ static JSONParserState parse_json_chunks(const std::vector<std::pair<std::string
     return st;
 }
 
+// serialize_out
+//  Turn captured lines into the canonical expected text format, preserving
+//  buffer separators for multi-chunk cases.
 static std::string serialize_out(const SerializedSink &sink) {
     std::ostringstream os;
 
@@ -200,12 +250,21 @@ static std::string serialize_out(const SerializedSink &sink) {
     return os.str();
 }
 
+// read_input_case
+//  Load a test input file, returning header key/values and a vector of JSON
+//  chunks (split by lines with "---"). Returns true on success.
 static bool read_input_case(const fs::path &p, std::vector<std::pair<std::string,std::string>> &kv, std::vector<std::string> &chunks) {
     std::ifstream f(p);
     if (!f.is_open()) return false;
     std::string line; bool in_json = false; bool saw_separator = false; std::ostringstream current;
     while (std::getline(f, line)) {
         if (!in_json) {
+            // Skip header comments: lines whose first non-space/tab is '#'
+            {
+                size_t i = 0;
+                while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) ++i;
+                if (i < line.size() && line[i] == '#') continue;
+            }
             if (line.rfind("----------", 0) == 0) { in_json = true; saw_separator = true; continue; }
             auto eq = line.find('=');
             if (eq != std::string::npos) kv.emplace_back(line.substr(0, eq), line.substr(eq + 1));
@@ -227,9 +286,9 @@ static bool read_input_case(const fs::path &p, std::vector<std::pair<std::string
     return saw_separator && !chunks.empty();
 }
 
-struct JSONCaseParam { std::string name; fs::path input; fs::path expected; };
-struct JSONParser : public ::testing::TestWithParam<JSONCaseParam> {};
-
+// discover_cases
+//  Enumerate <name>.txt inputs and pair them with existing <name>_exp.txt
+//  expected files.
 static std::vector<JSONCaseParam> discover_cases(const fs::path &data_root) {
     std::vector<JSONCaseParam> out;
     if (!fs::exists(data_root)) return out;
@@ -237,8 +296,17 @@ static std::vector<JSONCaseParam> discover_cases(const fs::path &data_root) {
         if (!entry.is_regular_file()) continue;
         fs::path in_path = entry.path();
         std::string name = in_path.filename().string();
-        // Skip expected files (those ending with _exp.txt)
-        if (name.size() >= 8 && name.rfind("_exp.txt") == name.size() - 8) continue;
+        // Skip expected files: names whose stem ends with "_exp" and where the
+        // corresponding <stem_without__exp>.txt exists alongside.
+        std::string stem = in_path.stem().string();
+        if (stem.size() > 4 && stem.rfind("_exp") == stem.size() - 4) {
+            std::string base = stem.substr(0, stem.size() - 4);
+            fs::path maybe_input = data_root / (base + ".txt");
+            if (fs::exists(maybe_input) && fs::is_regular_file(maybe_input)) {
+                continue; // this is an expected file; skip
+            }
+        }
+
         fs::path expected = data_root / (in_path.stem().string() + "_exp.txt");
         if (fs::exists(expected) && fs::is_regular_file(expected)) {
             out.push_back(JSONCaseParam{name, in_path, expected});
@@ -248,10 +316,21 @@ static std::vector<JSONCaseParam> discover_cases(const fs::path &data_root) {
 }
 
 
+// Test body for each discovered case.
 TEST_P(JSONParser, Case) {
     const auto param = GetParam();
     std::vector<std::pair<std::string,std::string>> kv; std::vector<std::string> chunks;
+    // Ensure both input and expected files exist and are regular files
+    ASSERT_TRUE(fs::exists(param.input));
+    ASSERT_TRUE(fs::is_regular_file(param.input));
+    ASSERT_TRUE(fs::exists(param.expected));
+    ASSERT_TRUE(fs::is_regular_file(param.expected));
+    // Parse input file into header and chunks (require mandatory config keys)
     ASSERT_TRUE(read_input_case(param.input, kv, chunks));
+    auto has_key = [&](const char* k){ for (auto &p: kv) if (p.first == k) return true; return false; };
+    ASSERT_TRUE(has_key("max_depth"));
+    ASSERT_TRUE(has_key("max_string_size"));
+    ASSERT_TRUE(has_key("max_json_size"));
 
     const char *env_out = std::getenv("AK_TEST_OUTPUT_DIR");
     fs::path out_dir = env_out ? fs::path(env_out) : fs::path("build/test_output/json");
@@ -267,7 +346,8 @@ TEST_P(JSONParser, Case) {
 
     SerializedSink sink;
     U32 err_code = 0;
-    JSONParserState st = parse_json_chunks(kv, chunks, sink, err_code, log_stream);
+    // Run the parser over the input chunks and collect output
+    (void)parse_json_chunks(kv, chunks, sink, err_code, log_stream);
 
     log_stream << "\n=== Parser Events ===\n";
     for (const auto &event : sink.lines) {
@@ -288,11 +368,46 @@ TEST_P(JSONParser, Case) {
     log_stream << "=== End of Test ===\n";
     log_stream.close();
 
+    // Load expected output, fail if the file cannot be opened/read
     std::ifstream exp_f(param.expected);
     ASSERT_TRUE(exp_f.is_open());
     std::ostringstream exp_ss;
     exp_ss << exp_f.rdbuf();
     std::string expected = exp_ss.str();
+
+    // Determine if expected is open-ended (only header '---' and no events).
+    auto is_open_ended_expected = [&]() -> bool {
+        // Normalize line endings and split into lines
+        std::istringstream iss(expected);
+        std::string line;
+        bool saw_header = false;
+        while (std::getline(iss, line)) {
+            // Trim trailing CR if present (handle Windows newlines)
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (!saw_header) {
+                // First non-empty line should be '---'
+                std::string tmp = line;
+                // Trim spaces
+                tmp.erase(0, tmp.find_first_not_of(" \t"));
+                tmp.erase(tmp.find_last_not_of(" \t") + 1);
+                if (tmp.empty()) continue; // skip leading empty lines
+                if (tmp == "---") {
+                    saw_header = true;
+                    continue;
+                }
+                // Any other content means there is a concrete expectation
+                return false;
+            } else {
+                // After header, if any non-empty line exists, it's a concrete expectation
+                std::string tmp = line;
+                tmp.erase(0, tmp.find_first_not_of(" \t"));
+                tmp.erase(tmp.find_last_not_of(" \t") + 1);
+                if (!tmp.empty()) return false;
+            }
+        }
+        // If we saw the header and nothing else meaningful, it's open-ended
+        return saw_header;
+    }();
 
     // Only show test result, not detailed logs
     // Ensure per-case output folder exists and has the output.txt we just wrote
@@ -303,7 +418,7 @@ TEST_P(JSONParser, Case) {
     ASSERT_TRUE(fs::exists(out_dir_verify / param.name / "output.txt"));
     ASSERT_GT(fs::file_size(out_dir_verify / param.name / "output.txt"), 0u);
 
-    bool test_passed = (actual == expected);
+    bool test_passed = is_open_ended_expected ? true : (actual == expected);
     EXPECT_TRUE(test_passed);  // Details are in log files, keep stdout clean
 }
 

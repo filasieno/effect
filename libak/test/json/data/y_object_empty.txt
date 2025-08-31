@@ -1,3 +1,6 @@
 name=y_object_empty
+max_depth=32
+max_string_size=2048
+max_json_size=1048576
 ----------
 {}

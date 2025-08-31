@@ -1,3 +1,6 @@
 name=n_string_escaped_ctrl_char_tab
+max_depth=32
+max_string_size=2048
+max_json_size=1048576
 ----------
 ["\	"]

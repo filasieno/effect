@@ -1,4 +1,7 @@
 name=n_string_unescaped_newline
+max_depth=32
+max_string_size=2048
+max_json_size=1048576
 ----------
 ["new
 line"]

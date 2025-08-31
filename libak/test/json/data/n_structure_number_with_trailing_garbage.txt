@@ -1,3 +1,6 @@
 name=n_structure_number_with_trailing_garbage
+max_depth=32
+max_string_size=2048
+max_json_size=1048576
 ----------
 2@

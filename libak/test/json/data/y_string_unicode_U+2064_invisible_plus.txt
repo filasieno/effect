@@ -1,3 +1,6 @@
 name=y_string_unicode_U+2064_invisible_plus
+max_depth=32
+max_string_size=2048
+max_json_size=1048576
 ----------
 ["\u2064"]

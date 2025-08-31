@@ -1,3 +1,6 @@
 name=n_object_non_string_key_but_huge_number_instead
+max_depth=32
+max_string_size=2048
+max_json_size=1048576
 ----------
 {9999E9999:1}
