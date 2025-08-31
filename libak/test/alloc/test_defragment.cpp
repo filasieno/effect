@@ -20,7 +20,7 @@ protected:
 	void SetUp() override {
 		buffer = std::malloc(buffer_size);
 		ASSERT_NE(buffer, nullptr);
-		ASSERT_EQ(ak::priv::init_alloc_table(&table, buffer, buffer_size), 0);
+		ASSERT_EQ(ak::priv::alloc_table_init(&table, buffer, buffer_size), 0);
 	}
 
 	void TearDown() override {
@@ -31,14 +31,14 @@ protected:
 
 // Scenario 1: small block into small block (defragment merges two neighbors into one freelist node)
 TEST_F(AllocDefragTest, SmallBlockIntoSmallBlock) {
-	AkVoid* p1 = ak::priv::try_alloc_table_malloc(&table, 32);
-	AkVoid* p2 = ak::priv::try_alloc_table_malloc(&table, 32);
+	AkVoid* p1 = ak::priv::alloc_table_try_malloc(&table, 32);
+	AkVoid* p2 = ak::priv::alloc_table_try_malloc(&table, 32);
 	ASSERT_TRUE(p1 != nullptr && p2 != nullptr);
 	ak::priv::alloc_table_free(&table, p1, 0);
 	ak::priv::alloc_table_free(&table, p2, 0);
 
 	AkU64 before_nodes = sum_freelist_nodes(&table);
-	AkI32 defrag = ak::priv::defrag_alloc_table_mem(&table, /*millis_budget*/0);
+	AkI32 defrag = ak::priv::alloc_table_defrag(&table, /*millis_budget*/0);
 	AkU64 after_nodes = sum_freelist_nodes(&table);
 	EXPECT_GE(defrag, 1);
 	EXPECT_EQ(after_nodes + 1, before_nodes);
@@ -47,14 +47,14 @@ TEST_F(AllocDefragTest, SmallBlockIntoSmallBlock) {
 // Scenario 2: small block into wild block (free path already merges; defrag should do nothing)
 TEST_F(AllocDefragTest, SmallBlockIntoWildBlock) {
 	AkU64 nodes_before = sum_freelist_nodes(&table);
-	AkVoid* p = ak::priv::try_alloc_table_malloc(&table, 64);
+	AkVoid* p = ak::priv::alloc_table_try_malloc(&table, 64);
 	ASSERT_NE(p, nullptr);
 	ak::priv::alloc_table_free(&table, p, 0);
 
 	AkU64 nodes_after_free = sum_freelist_nodes(&table);
 	EXPECT_GE(nodes_after_free, nodes_before);
 
-	AkI32 defrag = ak::priv::defrag_alloc_table_mem(&table, 0);
+	AkI32 defrag = ak::priv::alloc_table_defrag(&table, 0);
 	EXPECT_GE(defrag, 1);
 	AkU64 nodes_after_defrag = sum_freelist_nodes(&table);
 	EXPECT_LE(nodes_after_defrag, nodes_after_free);
@@ -64,12 +64,12 @@ TEST_F(AllocDefragTest, SmallBlockIntoWildBlock) {
 TEST_F(AllocDefragTest, ManySmallBlocksToTreeBlock) {
 	constexpr int kBlocks = 128; // enough to exceed 2048 total
 	for (int i = 0; i < kBlocks; ++i) {
-		AkVoid* p = ak::priv::try_alloc_table_malloc(&table, 32);
+		AkVoid* p = ak::priv::alloc_table_try_malloc(&table, 32);
 		ASSERT_NE(p, nullptr);
 		ak::priv::alloc_table_free(&table, p, 0);
 	}
 	AkU64 before_nodes = sum_freelist_nodes(&table);
-	AkI32 defrag = ak::priv::defrag_alloc_table_mem(&table, 0);
+	AkI32 defrag = ak::priv::alloc_table_defrag(&table, 0);
 	EXPECT_GE(defrag, 1);
 	AkU64 after_nodes = sum_freelist_nodes(&table);
 	EXPECT_LT(after_nodes, before_nodes);
@@ -79,12 +79,12 @@ TEST_F(AllocDefragTest, ManySmallBlocksToTreeBlock) {
 TEST_F(AllocDefragTest, ManySmallBlocksToWildBlock) {
 	constexpr int kBlocks = 64;
 	for (int i = 0; i < kBlocks; ++i) {
-		AkVoid* p = ak::priv::try_alloc_table_malloc(&table, 64);
+		AkVoid* p = ak::priv::alloc_table_try_malloc(&table, 64);
 		ASSERT_NE(p, nullptr);
 		ak::priv::alloc_table_free(&table, p, 0);
 	}
 	AkU64 before_nodes = sum_freelist_nodes(&table);
-	AkI32 defrag = ak::priv::defrag_alloc_table_mem(&table, 0);
+	AkI32 defrag = ak::priv::alloc_table_defrag(&table, 0);
 	EXPECT_GE(defrag, 1);
 	AkU64 after_nodes = sum_freelist_nodes(&table);
 	EXPECT_LT(after_nodes, before_nodes);
@@ -97,11 +97,11 @@ TEST_F(AllocDefragTest, ManySmallBlocksToWildBlock) {
 TEST_F(AllocDefragTest, StatsConsistency) {
 	AkU64 free_mem_before = table.free_mem_size;
 	for (int i = 0; i < 16; ++i) {
-		AkVoid* p = ak::priv::try_alloc_table_malloc(&table, 128);
+		AkVoid* p = ak::priv::alloc_table_try_malloc(&table, 128);
 		ASSERT_NE(p, nullptr);
 		ak::priv::alloc_table_free(&table, p, 0);
 	}
-	AkI32 defrag = ak::priv::defrag_alloc_table_mem(&table, 0);
+	AkI32 defrag = ak::priv::alloc_table_defrag(&table, 0);
 	(void)defrag;
 	AkU64 free_mem_after = table.free_mem_size;
 	EXPECT_EQ(free_mem_after, free_mem_before);

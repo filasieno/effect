@@ -142,7 +142,7 @@ namespace ak { namespace priv {
         std::print("{} {:<10} ", state_color, previous_state_text);
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         
-        AkSize bin_idx = get_alloc_freelist_index(h->this_desc.size);
+        AkSize bin_idx = alloc_get_freelist_index(h->this_desc.size);
 
         // Print FreeListPrev (with AkDLink)
         if (h->this_desc.state == (AkU32)AkAllocBlockState::FREE && h->this_desc.size <= 2048) {
@@ -229,9 +229,9 @@ namespace ak { namespace priv {
         PrintHeader();
         PrintHeaderSeparator();
         AkAllocBlockHeader* head = (AkAllocBlockHeader*) at->sentinel_begin;
-        AkAllocBlockHeader* end  = (AkAllocBlockHeader*) next((AkAllocBlockHeader*)at->sentinel_end);
+        AkAllocBlockHeader* end  = (AkAllocBlockHeader*) alloc_next_block((AkAllocBlockHeader*)at->sentinel_end);
         
-        for (; head != end; head = next(head)) {
+        for (; head != end; head = alloc_next_block(head)) {
             PrintRow(at, head);
         }
 

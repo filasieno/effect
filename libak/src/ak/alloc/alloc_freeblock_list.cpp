@@ -14,7 +14,7 @@ namespace ak { namespace priv {
     /// \pre AVX2 is available
     /// \pre bitField is 64 byte aligned
     /// \internal
-    AkI32 find_alloc_freelist_index(const AkU64* bit_field, AkSize alloc_size) noexcept {
+    AkI32 alloc_find_freelist_index(const AkU64* bit_field, AkSize alloc_size) noexcept {
         AK_ASSERT(bit_field != nullptr);
         // If no bins are populated, signal not found
         const AkU64 word = *bit_field;
@@ -32,38 +32,38 @@ namespace ak { namespace priv {
     }
 
 
-    AkVoid set_alloc_freelist_mask(AkU64* bit_field, AkU64 bin_idx) noexcept {
+    AkVoid alloc_set_freelist_mask(AkU64* bit_field, AkU64 bin_idx) noexcept {
         AK_ASSERT(bit_field != nullptr);
         AK_ASSERT(bin_idx < 64);
         *bit_field |= (1ull << bin_idx);
     }
 
-    AkBool get_alloc_freelist_mask(const AkU64* bit_field, AkU64 bin_idx) noexcept {
+    AkBool alloc_get_freelist_mask(const AkU64* bit_field, AkU64 bin_idx) noexcept {
         AK_ASSERT(bit_field != nullptr);
         AK_ASSERT(bin_idx < 64);
         return ((*bit_field >> bin_idx) & 1ull) != 0ull;
     }
 
-    AkVoid clear_alloc_freelist_mask(AkU64* bit_field, AkU64 bin_idx) noexcept {
+    AkVoid alloc_clear_freelist_mask(AkU64* bit_field, AkU64 bin_idx) noexcept {
         AK_ASSERT(bit_field != nullptr);
         AK_ASSERT(bin_idx < 64);
         *bit_field &= ~(1ull << bin_idx);
     }
 
-    AkAllocBlockHeader* next(AkAllocBlockHeader* header) noexcept {
+    AkAllocBlockHeader* alloc_next_block(AkAllocBlockHeader* header) noexcept {
         size_t sz = (size_t)header->this_desc.size;
         if (sz == 0) return header;
         return (AkAllocBlockHeader*)((AkChar*)header + sz);
     }
 
-    AkAllocBlockHeader* prev(AkAllocBlockHeader* header) noexcept {
+    AkAllocBlockHeader* alloc_prev_block(AkAllocBlockHeader* header) noexcept {
         size_t sz = (size_t)header->prev_desc.size;
         if (sz == 0) return header;
         return (AkAllocBlockHeader*)((AkChar*)header - sz);
     }
 
 
-    AkU64 get_alloc_freelist_index(AkU64 sz) noexcept {
+    AkU64 alloc_get_freelist_index(AkU64 sz) noexcept {
         // New mapping: 0..32 -> 0, 33..64 -> 1, ..., up to 2048 -> 63
         AK_ASSERT(sz > 0);
         AkU64 bin = (AkU64)((sz - 1ull) >> 5);
@@ -72,7 +72,7 @@ namespace ak { namespace priv {
         return bin;
     }
 
-    AkU32 get_alloc_freelist_index(const AkAllocBlockHeader* header) noexcept {
+    AkU32 alloc_get_freelist_index(const AkAllocBlockHeader* header) noexcept {
         switch ((AkAllocBlockState)header->this_desc.state) {
             case AkAllocBlockState::WILD_BLOCK:
                 return 63;

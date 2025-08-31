@@ -16,36 +16,36 @@ TEST(AllocFreelistMaskTest, IndexingAndMaskOps) {
     EXPECT_EQ(bin_of(2048u), 63u);
 
     reset_mask(&m);
-    EXPECT_EQ(find_alloc_freelist_index(&m, 1u), -1);
-    EXPECT_EQ(find_alloc_freelist_index(&m, 2048u), -1);
+    EXPECT_EQ(alloc_find_freelist_index(&m, 1u), -1);
+    EXPECT_EQ(alloc_find_freelist_index(&m, 2048u), -1);
 
-    reset_mask(&m); set_alloc_freelist_mask(&m, 0u);  EXPECT_EQ(find_alloc_freelist_index(&m, 32u), 0);
-    reset_mask(&m); set_alloc_freelist_mask(&m, 1u);  EXPECT_EQ(find_alloc_freelist_index(&m, 33u), 1);
-    reset_mask(&m); set_alloc_freelist_mask(&m, 10u); EXPECT_EQ(find_alloc_freelist_index(&m, 321u), 10);
-    reset_mask(&m); set_alloc_freelist_mask(&m, 62u); EXPECT_EQ(find_alloc_freelist_index(&m, 2016u), 62);
-    reset_mask(&m); set_alloc_freelist_mask(&m, 63u); EXPECT_EQ(find_alloc_freelist_index(&m, 2000u), 63);
+    reset_mask(&m); alloc_set_freelist_mask(&m, 0u);  EXPECT_EQ(alloc_find_freelist_index(&m, 32u), 0);
+    reset_mask(&m); alloc_set_freelist_mask(&m, 1u);  EXPECT_EQ(alloc_find_freelist_index(&m, 33u), 1);
+    reset_mask(&m); alloc_set_freelist_mask(&m, 10u); EXPECT_EQ(alloc_find_freelist_index(&m, 321u), 10);
+    reset_mask(&m); alloc_set_freelist_mask(&m, 62u); EXPECT_EQ(alloc_find_freelist_index(&m, 2016u), 62);
+    reset_mask(&m); alloc_set_freelist_mask(&m, 63u); EXPECT_EQ(alloc_find_freelist_index(&m, 2000u), 63);
 
-    reset_mask(&m); set_alloc_freelist_mask(&m, 5u); set_alloc_freelist_mask(&m, 7u);
-    EXPECT_EQ(find_alloc_freelist_index(&m, (5u*32u)+1u), 5);
-    EXPECT_EQ(find_alloc_freelist_index(&m, (6u*32u)+1u), 7);
+    reset_mask(&m); alloc_set_freelist_mask(&m, 5u); alloc_set_freelist_mask(&m, 7u);
+    EXPECT_EQ(alloc_find_freelist_index(&m, (5u*32u)+1u), 5);
+    EXPECT_EQ(alloc_find_freelist_index(&m, (6u*32u)+1u), 7);
 
-    reset_mask(&m); set_alloc_freelist_mask(&m, 0u); set_alloc_freelist_mask(&m, 1u);
-    clear_alloc_freelist_mask(&m, 0);
-    EXPECT_FALSE(get_alloc_freelist_mask(&m, 0u));
-    EXPECT_TRUE(get_alloc_freelist_mask(&m, 1u));
-    EXPECT_EQ(find_alloc_freelist_index(&m, 1u), 1);
+    reset_mask(&m); alloc_set_freelist_mask(&m, 0u); alloc_set_freelist_mask(&m, 1u);
+    alloc_clear_freelist_mask(&m, 0);
+    EXPECT_FALSE(alloc_get_freelist_mask(&m, 0u));
+    EXPECT_TRUE(alloc_get_freelist_mask(&m, 1u));
+    EXPECT_EQ(alloc_find_freelist_index(&m, 1u), 1);
 
-    reset_mask(&m); set_alloc_freelist_mask(&m, 63u);
-    EXPECT_EQ(find_alloc_freelist_index(&m, 1u<<30), -1); // > 2048 handled by large-tree path
-    EXPECT_EQ(find_alloc_freelist_index(&m, 0u), 63);
+    reset_mask(&m); alloc_set_freelist_mask(&m, 63u);
+    EXPECT_EQ(alloc_find_freelist_index(&m, 1u<<30), -1); // > 2048 handled by large-tree path
+    EXPECT_EQ(alloc_find_freelist_index(&m, 0u), 63);
 
     reset_mask(&m);
-    for (int i = 0; i <= 10; ++i) set_alloc_freelist_mask(&m, i);
-    clear_alloc_freelist_mask(&m, 2u);
-    clear_alloc_freelist_mask(&m, 4u);
-    EXPECT_EQ(find_alloc_freelist_index(&m, 1u), 0);
-    EXPECT_EQ(find_alloc_freelist_index(&m, 65u), 3);
+    for (int i = 0; i <= 10; ++i) alloc_set_freelist_mask(&m, i);
+    alloc_clear_freelist_mask(&m, 2u);
+    alloc_clear_freelist_mask(&m, 4u);
+    EXPECT_EQ(alloc_find_freelist_index(&m, 1u), 0);
+    EXPECT_EQ(alloc_find_freelist_index(&m, 65u), 3);
 
-    reset_mask(&m); for (int i = 0; i < 64; ++i) set_alloc_freelist_mask(&m, i);
-    EXPECT_EQ(find_alloc_freelist_index(&m, (64u*32u)+1u), -1);
+    reset_mask(&m); for (int i = 0; i < 64; ++i) alloc_set_freelist_mask(&m, i);
+    EXPECT_EQ(alloc_find_freelist_index(&m, (64u*32u)+1u), -1);
 }

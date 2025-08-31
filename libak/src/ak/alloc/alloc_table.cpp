@@ -23,7 +23,7 @@ namespace ak {
     static constexpr int STATS_IDX_WILD = AkAllocStats::ALLOCATOR_BIN_COUNT + 1;   // 65
 
     
-    AkI32 priv::init_alloc_table(AkAllocTable* at, AkVoid* mem, AkSize size) noexcept {
+    AkI32 priv::alloc_table_init(AkAllocTable* at, AkVoid* mem, AkSize size) noexcept {
         
         constexpr AkU64 SENTINEL_SIZE = sizeof(AkAllocPooledFreeBlockHeader);
 
@@ -62,7 +62,7 @@ namespace ak {
         at->sentinel_begin       = begin_sentinel;
         at->wild_block           = wild_block;
         at->sentinel_end         = end_sentinel;
-        init_free_block_tree_root(&at->root_free_block);
+        alloc_freeblock_init_root(&at->root_free_block);
         
         begin_sentinel->this_desc.size       = (AkU64)SENTINEL_SIZE;
         begin_sentinel->this_desc.state      = (AkU32)AkAllocBlockState::BEGIN_SENTINEL;
@@ -82,7 +82,7 @@ namespace ak {
         }
         at->freelist_count[63] = 0; // bin 63 is a regular freelist bin (up to 2048)
         at->freelist_mask = 0ull;
-        check_alloc_table_invariants(at);
+        alloc_table_check_invariants(at);
         return 0;
     }
 
@@ -100,9 +100,9 @@ namespace ak {
     /// 
     /// Returns nullptr if no suitable block found (heap doesn't grow).
     /// For async version that suspends on failure, use co_await AllocMem(size).
-    AkVoid* priv::try_alloc_table_malloc(AkAllocTable* at, AkSize size) noexcept {
+    AkVoid* priv::alloc_table_try_malloc(AkAllocTable* at, AkSize size) noexcept {
         using namespace priv;
-        check_alloc_table_invariants(at);
+        alloc_table_check_invariants(at);
         // Compute aligned block size
         AkSize maybe_block = HEADER_SIZE + size;
         AkSize unaligned = maybe_block & (ALIGNMENT - 1);
@@ -114,23 +114,23 @@ namespace ak {
         // Try small bin freelists first when eligible (<= 2048)
         AkI32 bin_idx = -1;
         if (requested_block_size <= MAX_SMALL_BIN_SIZE) {
-            bin_idx = find_alloc_freelist_index(&at->freelist_mask, requested_block_size);
+            bin_idx = alloc_find_freelist_index(&at->freelist_mask, requested_block_size);
         }
         
         // Small bin allocation case (bins 0..63)
         // ======================================
         if (bin_idx >= 0) {
             AK_ASSERT(at->freelist_count[bin_idx] > 0);
-            AK_ASSERT(get_alloc_freelist_mask(&at->freelist_mask, bin_idx));
+            AK_ASSERT(alloc_get_freelist_mask(&at->freelist_mask, bin_idx));
             
             AkDLink* free_stack = &at->freelist_head[bin_idx];
             AkDLink* link = ak_pop_dlink(free_stack);
             --at->freelist_count[bin_idx];
             if (at->freelist_count[bin_idx] == 0) {
-                clear_alloc_freelist_mask(&at->freelist_mask, bin_idx);
+                alloc_clear_freelist_mask(&at->freelist_mask, bin_idx);
             }
             AkAllocBlockHeader* block = (AkAllocBlockHeader*)((AkChar*)link - AK_OFFSET(AkAllocPooledFreeBlockHeader, freelist_link));
-            AkAllocBlockHeader* next_block = next(block);
+            AkAllocBlockHeader* next_block = alloc_next_block(block);
             __builtin_prefetch(next_block, 1, 3);
             
             if constexpr (AK_IS_DEBUG_MODE) { ak_clear_dlink(link); }
@@ -154,7 +154,7 @@ namespace ak {
                 ++at->stats.alloc_counter[bin_idx];
                 ++at->stats.reused_counter[bin_idx];
                 
-                check_alloc_table_invariants(at);
+                alloc_table_check_invariants(at);
                 return (AkVoid*)((AkChar*)block + HEADER_SIZE);
             } 
             
@@ -171,7 +171,7 @@ namespace ak {
 
             // Prefetch stats
             // --------------
-            AkSize new_bin_idx = get_alloc_freelist_index(new_free_size);
+            AkSize new_bin_idx = alloc_get_freelist_index(new_free_size);
             __builtin_prefetch(&at->stats.split_counter[bin_idx], 1, 3);  
             __builtin_prefetch(&at->stats.alloc_counter[bin_idx], 1, 3);
             __builtin_prefetch(&at->stats.pooled_counter[new_bin_idx],  1, 3);
@@ -199,7 +199,7 @@ namespace ak {
             ++at->stats.alloc_counter[bin_idx];
             // push to head (LIFO)
             ak_push_dlink(&at->freelist_head[new_bin_idx], &new_free->freelist_link);
-            set_alloc_freelist_mask(&at->freelist_mask, new_bin_idx);
+            alloc_set_freelist_mask(&at->freelist_mask, new_bin_idx);
             ++at->stats.pooled_counter[new_bin_idx];            
             ++at->freelist_count[new_bin_idx];
             at->free_mem_size -= requested_block_size;
@@ -209,13 +209,13 @@ namespace ak {
 
         // Large block tree allocation path for sizes > 2048
         if (requested_block_size > MAX_SMALL_BIN_SIZE) {
-            AkAllocFreeBlockHeader* free_block = find_gte_free_block(at->root_free_block, requested_block_size);
+            AkAllocFreeBlockHeader* free_block = alloc_freeblock_find_gte(at->root_free_block, requested_block_size);
             if (free_block != nullptr) {
                 // Detach chosen block from the tree/list structure
-                detach_free_block(&at->root_free_block, free_block);
+                alloc_freeblock_detach(&at->root_free_block, free_block);
 
                 AkAllocBlockHeader* block = (AkAllocBlockHeader*)free_block;
-                AkAllocBlockHeader* next_block = next(block);
+                AkAllocBlockHeader* next_block = alloc_next_block(block);
                 __builtin_prefetch(next_block, 1, 3);
 
                 AkSize block_size = block->this_desc.size;
@@ -230,7 +230,7 @@ namespace ak {
                     ++at->stats.alloc_counter[STATS_IDX_TREE];
                     ++at->stats.reused_counter[STATS_IDX_TREE];
                     
-                    check_alloc_table_invariants(at);
+                    alloc_table_check_invariants(at);
                     return (AkVoid*)((AkChar*)block + HEADER_SIZE);
                 }
 
@@ -250,11 +250,11 @@ namespace ak {
 
                 // Place the remainder appropriately
                 if (new_free_size > MAX_SMALL_BIN_SIZE) {
-                    put_free_block(&at->root_free_block, (AkAllocBlockHeader*)new_free_hdr);
+                    alloc_freeblock_put(&at->root_free_block, (AkAllocBlockHeader*)new_free_hdr);
                 } else {
-                    AkU32 new_bin_idx = get_alloc_freelist_index(new_free_size);
+                    AkU32 new_bin_idx = alloc_get_freelist_index(new_free_size);
                     ak_push_dlink(&at->freelist_head[new_bin_idx], &((AkAllocPooledFreeBlockHeader*)new_free_hdr)->freelist_link);
-                    set_alloc_freelist_mask(&at->freelist_mask, new_bin_idx);
+                    alloc_set_freelist_mask(&at->freelist_mask, new_bin_idx);
                     ++at->freelist_count[new_bin_idx];
                     ++at->stats.pooled_counter[new_bin_idx];
                 }
@@ -263,7 +263,7 @@ namespace ak {
                 ++at->stats.split_counter[STATS_IDX_TREE];
                 at->free_mem_size -= requested_block_size;
 
-                check_alloc_table_invariants(at);
+                alloc_table_check_invariants(at);
                 return (AkVoid*)((AkChar*)block + HEADER_SIZE);
             }
         }
@@ -286,7 +286,7 @@ namespace ak {
             // --------------------------------------------------------------
             
             // 1. Prefetch the next block
-            AkAllocBlockHeader* next_block = next(old_wild);
+            AkAllocBlockHeader* next_block = alloc_next_block(old_wild);
             __builtin_prefetch(next_block, 1, 3);
             
             // 2. Prefetch the new wild block
@@ -326,7 +326,7 @@ namespace ak {
             ++at->stats.split_counter[STATS_IDX_WILD];
             at->free_mem_size -= requested_block_size;
             
-            check_alloc_table_invariants(at);
+            alloc_table_check_invariants(at);
             return (AkVoid*)((AkChar*)allocated + HEADER_SIZE);
         }
     }
@@ -349,7 +349,7 @@ namespace ak {
         AK_ASSERT(ptr != nullptr);
         (AkVoid)side_coalescing;
 
-        check_alloc_table_invariants(at);
+        alloc_table_check_invariants(at);
         // Release Block
         // -------------
         AkAllocPooledFreeBlockHeader* block = (AkAllocPooledFreeBlockHeader*)((AkChar*)ptr - HEADER_SIZE);
@@ -365,7 +365,7 @@ namespace ak {
 
         // Update next block prevSize
         // --------------------------
-        AkAllocBlockHeader* next_block = next((AkAllocBlockHeader*)block);
+        AkAllocBlockHeader* next_block = alloc_next_block((AkAllocBlockHeader*)block);
         next_block->prev_desc = block->this_desc;
 
         // Update stats
@@ -373,33 +373,33 @@ namespace ak {
 
         // Place freed block back into appropriate structure
         if (block_size > MAX_SMALL_BIN_SIZE) {
-            ak::priv::put_free_block(&at->root_free_block, (AkAllocBlockHeader*)block);
+            ak::priv::alloc_freeblock_put(&at->root_free_block, (AkAllocBlockHeader*)block);
             ++at->stats.free_counter[STATS_IDX_TREE];
-            check_alloc_table_invariants(at);
+            alloc_table_check_invariants(at);
             return;
         }
 
         // Small bin free case (bins 0..63)
         // --------------------------------
-        unsigned orig_bin_idx = get_alloc_freelist_index(block_size);
+        unsigned orig_bin_idx = alloc_get_freelist_index(block_size);
         AK_ASSERT(orig_bin_idx < AkAllocTable::ALLOCATOR_BIN_COUNT);
         // push to head of freelist (AkDLink)
         ak_push_dlink(&at->freelist_head[orig_bin_idx], &block->freelist_link);
         ++at->stats.free_counter[orig_bin_idx];
         ++at->stats.pooled_counter[orig_bin_idx];
         ++at->freelist_count[orig_bin_idx];
-        set_alloc_freelist_mask(&at->freelist_mask, orig_bin_idx);
-        check_alloc_table_invariants(at);
+        alloc_set_freelist_mask(&at->freelist_mask, orig_bin_idx);
+        alloc_table_check_invariants(at);
     }
 
 
     // Coalesce helpers: merge adjacent free or wild blocks into the provided block
     // Returns: total merged size added into '*out_block' (not including original block size), or -1 on error
-    AkI64 priv::coalesce_alloc_table_left(AkAllocTable* at, AkAllocBlockHeader** out_block, AkU32 max_merges) noexcept {
+    AkI64 priv::alloc_table_coalesce_left(AkAllocTable* at, AkAllocBlockHeader** out_block, AkU32 max_merges) noexcept {
         AK_ASSERT(out_block != nullptr);
         AkAllocBlockHeader* block = *out_block;
         AK_ASSERT(block != nullptr);
-        check_alloc_table_invariants(at);
+        alloc_table_check_invariants(at);
         AkAllocBlockState st = (AkAllocBlockState)block->this_desc.state;
         if (!(st == AkAllocBlockState::FREE || st == AkAllocBlockState::WILD_BLOCK)) return -1;
 
@@ -407,24 +407,24 @@ namespace ak {
         if (st == AkAllocBlockState::FREE) {
             AkU64 sz = block->this_desc.size;
             if (sz <= MAX_SMALL_BIN_SIZE) {
-                AkU32 bin = get_alloc_freelist_index(sz);
+                AkU32 bin = alloc_get_freelist_index(sz);
                 AkDLink* link = &((AkAllocPooledFreeBlockHeader*)block)->freelist_link;
                 if (!ak_is_dlink_detached(link)) {
                     ak_detach_dlink(link);
                     AK_ASSERT(at->freelist_count[bin] > 0);
                     --at->freelist_count[bin];
                     if (at->freelist_count[bin] == 0) {
-                        clear_alloc_freelist_mask(&at->freelist_mask, bin);
+                        alloc_clear_freelist_mask(&at->freelist_mask, bin);
                     }
                 }
             } else {
-                detach_free_block(&at->root_free_block, (AkAllocFreeBlockHeader*)block);
+                alloc_freeblock_detach(&at->root_free_block, (AkAllocFreeBlockHeader*)block);
             }
         }
 
         AkI64 merged = 0;
         while (max_merges--) {
-            AkAllocBlockHeader* left = prev(block);
+            AkAllocBlockHeader* left = alloc_prev_block(block);
             AkAllocBlockState lst = (AkAllocBlockState)left->this_desc.state;
             if (!(lst == AkAllocBlockState::FREE || lst == AkAllocBlockState::WILD_BLOCK)) break;
 
@@ -432,19 +432,19 @@ namespace ak {
             AkU64 left_size = left->this_desc.size;
             if (lst == AkAllocBlockState::FREE) {
                 if (left_size <= MAX_SMALL_BIN_SIZE) {
-                    AkU32 lbin = get_alloc_freelist_index(left_size);
+                    AkU32 lbin = alloc_get_freelist_index(left_size);
                     AkDLink* link = &((AkAllocPooledFreeBlockHeader*)left)->freelist_link;
                     if (!ak_is_dlink_detached(link)) {
                         ak_detach_dlink(link);
                         AK_ASSERT(at->freelist_count[lbin] > 0);
                         --at->freelist_count[lbin];
                         if (at->freelist_count[lbin] == 0) {
-                            clear_alloc_freelist_mask(&at->freelist_mask, lbin);
+                            alloc_clear_freelist_mask(&at->freelist_mask, lbin);
                         }
                     }
                     ++at->stats.merged_counter[lbin];
                 } else {
-                    detach_free_block(&at->root_free_block, (AkAllocFreeBlockHeader*)left);
+                    alloc_freeblock_detach(&at->root_free_block, (AkAllocFreeBlockHeader*)left);
                     ++at->stats.merged_counter[STATS_IDX_TREE];
                 }
             } else { // WILD_BLOCK
@@ -457,7 +457,7 @@ namespace ak {
             AkU64 new_size  = left_size + cur_size;
             block = left; // shift to left block
             block->this_desc.size = new_size;
-            AkAllocBlockHeader* right = next((AkAllocBlockHeader*)block);
+            AkAllocBlockHeader* right = alloc_next_block((AkAllocBlockHeader*)block);
             right->prev_desc = block->this_desc;
             merged += (AkI64)left_size;
         }
@@ -466,14 +466,14 @@ namespace ak {
         if ((AkAllocBlockState)block->this_desc.state == AkAllocBlockState::FREE) {
             AkU64 sz = block->this_desc.size;
             if (sz <= MAX_SMALL_BIN_SIZE) {
-                AkU32 bin = get_alloc_freelist_index(sz);
+                AkU32 bin = alloc_get_freelist_index(sz);
                 ak_push_dlink(&at->freelist_head[bin], &((AkAllocPooledFreeBlockHeader*)block)->freelist_link);
-                set_alloc_freelist_mask(&at->freelist_mask, bin);
+                alloc_set_freelist_mask(&at->freelist_mask, bin);
                 ++at->freelist_count[bin];
                 ++at->stats.pooled_counter[bin];
                 ++at->stats.free_counter[bin];
             } else {
-                put_free_block(&at->root_free_block, (AkAllocBlockHeader*)block);
+                alloc_freeblock_put(&at->root_free_block, (AkAllocBlockHeader*)block);
                 ++at->stats.free_counter[STATS_IDX_TREE];
             }
         } else {
@@ -482,15 +482,15 @@ namespace ak {
         }
 
         *out_block = block;
-        check_alloc_table_invariants(at);
+        alloc_table_check_invariants(at);
         return merged;
     }
 
-    AkI64 priv::coalesce_alloc_table_right(AkAllocTable* at, AkAllocBlockHeader** out_block, AkU32 max_merges) noexcept {
+    AkI64 priv::alloc_table_coalesce_right(AkAllocTable* at, AkAllocBlockHeader** out_block, AkU32 max_merges) noexcept {
         AK_ASSERT(out_block != nullptr);
         AkAllocBlockHeader* block = *out_block;
         AK_ASSERT(block != nullptr);
-        check_alloc_table_invariants(at);
+        alloc_table_check_invariants(at);
         AkAllocBlockState st = (AkAllocBlockState)block->this_desc.state;
         if (!(st == AkAllocBlockState::FREE || st == AkAllocBlockState::WILD_BLOCK)) return -1;
 
@@ -498,43 +498,43 @@ namespace ak {
         if (st == AkAllocBlockState::FREE) {
             AkU64 sz = block->this_desc.size;
             if (sz <= MAX_SMALL_BIN_SIZE) {
-                AkU32 bin = get_alloc_freelist_index(sz);
+                AkU32 bin = alloc_get_freelist_index(sz);
                 AkDLink* link = &((AkAllocPooledFreeBlockHeader*)block)->freelist_link;
                 if (!ak_is_dlink_detached(link)) {
                     ak_detach_dlink(link);
                     AK_ASSERT(at->freelist_count[bin] > 0);
                     --at->freelist_count[bin];
                     if (at->freelist_count[bin] == 0) {
-                        clear_alloc_freelist_mask(&at->freelist_mask, bin);
+                        alloc_clear_freelist_mask(&at->freelist_mask, bin);
                     }
                 }
             } else {
-                detach_free_block(&at->root_free_block, (AkAllocFreeBlockHeader*)block);
+                alloc_freeblock_detach(&at->root_free_block, (AkAllocFreeBlockHeader*)block);
             }
         }
 
         AkI64 merged = 0;
         while (max_merges--) {
-            AkAllocBlockHeader* right = next(block);
+            AkAllocBlockHeader* right = alloc_next_block(block);
             AkAllocBlockState rst = (AkAllocBlockState)right->this_desc.state;
             if (!(rst == AkAllocBlockState::FREE || rst == AkAllocBlockState::WILD_BLOCK)) break;
 
             AkU64 right_size = right->this_desc.size;
             if (rst == AkAllocBlockState::FREE) {
                 if (right_size <= MAX_SMALL_BIN_SIZE) {
-                    AkU32 rbin = get_alloc_freelist_index(right_size);
+                    AkU32 rbin = alloc_get_freelist_index(right_size);
                     AkDLink* link = &((AkAllocPooledFreeBlockHeader*)right)->freelist_link;
                     if (!ak_is_dlink_detached(link)) {
                         ak_detach_dlink(link);
                         AK_ASSERT(at->freelist_count[rbin] > 0);
                         --at->freelist_count[rbin];
                         if (at->freelist_count[rbin] == 0) {
-                            clear_alloc_freelist_mask(&at->freelist_mask, rbin);
+                            alloc_clear_freelist_mask(&at->freelist_mask, rbin);
                         }
                     }
                     ++at->stats.merged_counter[rbin];
                 } else {
-                    detach_free_block(&at->root_free_block, (AkAllocFreeBlockHeader*)right);
+                    alloc_freeblock_detach(&at->root_free_block, (AkAllocFreeBlockHeader*)right);
                     ++at->stats.merged_counter[STATS_IDX_TREE];
                 }
             } else { // WILD_BLOCK
@@ -546,7 +546,7 @@ namespace ak {
             AkU64 cur_size   = block->this_desc.size;
             AkU64 new_size   = cur_size + right_size;
             block->this_desc.size = new_size;
-            AkAllocBlockHeader* right_right = next(block);
+            AkAllocBlockHeader* right_right = alloc_next_block(block);
             right_right->prev_desc = block->this_desc;
             merged += (AkI64)right_size;
         }
@@ -555,14 +555,14 @@ namespace ak {
         if ((AkAllocBlockState)block->this_desc.state == AkAllocBlockState::FREE) {
             AkU64 sz = block->this_desc.size;
             if (sz <= MAX_SMALL_BIN_SIZE) {
-                AkU32 bin = get_alloc_freelist_index(sz);
+                AkU32 bin = alloc_get_freelist_index(sz);
                 ak_push_dlink(&at->freelist_head[bin], &((AkAllocPooledFreeBlockHeader*)block)->freelist_link);
-                set_alloc_freelist_mask(&at->freelist_mask, bin);
+                alloc_set_freelist_mask(&at->freelist_mask, bin);
                 ++at->freelist_count[bin];
                 ++at->stats.pooled_counter[bin];
                 ++at->stats.free_counter[bin];
             } else {
-                put_free_block(&at->root_free_block, (AkAllocBlockHeader*)block);
+                alloc_freeblock_put(&at->root_free_block, (AkAllocBlockHeader*)block);
                 ++at->stats.free_counter[STATS_IDX_TREE];
             }
         } else {
@@ -571,26 +571,26 @@ namespace ak {
         }
 
         *out_block = block;
-        check_alloc_table_invariants(at);
+        alloc_table_check_invariants(at);
         return merged;
     }
 
-    AkI32 priv::defrag_alloc_table_mem(AkAllocTable* at, AkU64 millis_budget) noexcept {
+    AkI32 priv::alloc_table_defrag(AkAllocTable* at, AkU64 millis_budget) noexcept {
         (void)millis_budget;
-        priv::check_alloc_table_invariants(at);
+        priv::alloc_table_check_invariants(at);
         using namespace priv;
         int defragged = 0;
         AkAllocBlockHeader* begin = (AkAllocBlockHeader*)at->sentinel_begin;
-        AkAllocBlockHeader* end   = (AkAllocBlockHeader*)next((AkAllocBlockHeader*)at->sentinel_end);
-        for (AkAllocBlockHeader* h = begin; h != end; h = next(h)) {
+        AkAllocBlockHeader* end   = (AkAllocBlockHeader*)alloc_next_block((AkAllocBlockHeader*)at->sentinel_end);
+        for (AkAllocBlockHeader* h = begin; h != end; h = alloc_next_block(h)) {
             AkAllocBlockState st = (AkAllocBlockState)h->this_desc.state;
             if (st != AkAllocBlockState::FREE) continue;
             AkAllocBlockHeader* cur = h;
-            AkI64 merged = ak::priv::coalesce_alloc_table_right(at, &cur, 1);
+            AkI64 merged = ak::priv::alloc_table_coalesce_right(at, &cur, 1);
             if (merged > 0) ++defragged;
             h = cur; // continue from the merged block
         }
-        priv::check_alloc_table_invariants(at);
+        priv::alloc_table_check_invariants(at);
         return defragged;
     }
 }

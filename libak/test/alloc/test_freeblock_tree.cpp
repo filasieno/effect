@@ -46,7 +46,7 @@ void verify_tree(const AkAllocFreeBlockHeader* node, AkU64 min_key = 0, AkU64 ma
     if (!node) return;
 
     if (!is_tree_node(node)) {
-        EXPECT_TRUE(is_detached(node) || (node->multimap_link.next && node->multimap_link.prev));
+        EXPECT_TRUE(alloc_freeblock_is_detached(node) || (node->multimap_link.next && node->multimap_link.prev));
         EXPECT_EQ(node->height, -1);
         EXPECT_EQ(node->balance, 0);
         EXPECT_EQ(node->left, nullptr);
@@ -69,7 +69,7 @@ void verify_tree(const AkAllocFreeBlockHeader* node, AkU64 min_key = 0, AkU64 ma
     verify_tree(node->left, min_key, node->this_desc.size);
     verify_tree(node->right, node->this_desc.size, max_key);
 
-    if (!is_detached(node)) {
+    if (!alloc_freeblock_is_detached(node)) {
         const AkAllocFreeBlockHeader* current = node;
         int count = 0;
         do {
@@ -89,7 +89,7 @@ void verify_tree(const AkAllocFreeBlockHeader* node, AkU64 min_key = 0, AkU64 ma
 
 TEST(AllocFreeBlockHeaderTest, Init) {
     AkAllocFreeBlockHeader* root = reinterpret_cast<AkAllocFreeBlockHeader*>(0xdeadbeef);
-    init_free_block_tree_root(&root);
+    alloc_freeblock_init_root(&root);
     EXPECT_EQ(root, nullptr);
 }
 
@@ -99,7 +99,7 @@ TEST(AllocFreeBlockHeaderTest, InsertSingle) {
 
     MockBlock* b1 = create_mock_block(8192);
     blocks.push_back(b1);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
     EXPECT_EQ(root, b1);
     EXPECT_EQ(b1->height, 1);
     EXPECT_EQ(b1->balance, 0);
@@ -122,11 +122,11 @@ TEST(AllocFreeBlockHeaderTest, InsertDuplicate) {
 
     MockBlock* b1 = create_mock_block(8192);
     blocks.push_back(b1);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
 
     MockBlock* b2 = create_mock_block(8192);
     blocks.push_back(b2);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
     EXPECT_EQ(root, b1);
     EXPECT_EQ(b2->height, -1);
     EXPECT_EQ(b2->balance, 0);
@@ -139,8 +139,8 @@ TEST(AllocFreeBlockHeaderTest, InsertDuplicate) {
     EXPECT_EQ(b2->multimap_link.prev, &b1->multimap_link);
 
     verify_tree(root);
-    EXPECT_FALSE(is_detached(b1));
-    EXPECT_FALSE(is_detached(b2));
+    EXPECT_FALSE(alloc_freeblock_is_detached(b1));
+    EXPECT_FALSE(alloc_freeblock_is_detached(b2));
 
     for (auto* b : blocks) {
         std::free(b);
@@ -153,15 +153,15 @@ TEST(AllocFreeBlockHeaderTest, InsertMultipleDuplicates) {
 
     MockBlock* b1 = create_mock_block(16384);
     blocks.push_back(b1);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
 
     MockBlock* b2 = create_mock_block(16384);
     blocks.push_back(b2);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
 
     MockBlock* b3 = create_mock_block(16384);
     blocks.push_back(b3);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
 
     EXPECT_EQ(root, b1);
     EXPECT_EQ(b1->multimap_link.next, &b2->multimap_link);
@@ -188,15 +188,15 @@ TEST(AllocFreeBlockHeaderTest, InsertRightRotation) {
 
     MockBlock* b300 = create_mock_block(24576);
     blocks.push_back(b300);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b300));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b300));
 
     MockBlock* b200 = create_mock_block(16384);
     blocks.push_back(b200);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b200));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b200));
 
     MockBlock* b100 = create_mock_block(8192);
     blocks.push_back(b100);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
 
     EXPECT_EQ(root, b200);
     EXPECT_EQ(b200->left, b100);
@@ -219,15 +219,15 @@ TEST(AllocFreeBlockHeaderTest, InsertLeftRotation) {
 
     MockBlock* b100 = create_mock_block(8192);
     blocks.push_back(b100);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
 
     MockBlock* b200 = create_mock_block(16384);
     blocks.push_back(b200);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b200));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b200));
 
     MockBlock* b300 = create_mock_block(24576);
     blocks.push_back(b300);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b300));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b300));
 
     EXPECT_EQ(root, b200);
     EXPECT_EQ(b200->left, b100);
@@ -250,15 +250,15 @@ TEST(AllocFreeBlockHeaderTest, InsertLeftRightRotation) {
 
     MockBlock* b300 = create_mock_block(24576);
     blocks.push_back(b300);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b300));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b300));
 
     MockBlock* b100 = create_mock_block(8192);
     blocks.push_back(b100);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
 
     MockBlock* b200 = create_mock_block(16384);
     blocks.push_back(b200);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b200));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b200));
 
     EXPECT_EQ(root, b200);
     EXPECT_EQ(b200->left, b100);
@@ -279,15 +279,15 @@ TEST(AllocFreeBlockHeaderTest, InsertRightLeftRotation) {
 
     MockBlock* b100 = create_mock_block(8192);
     blocks.push_back(b100);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
 
     MockBlock* b300 = create_mock_block(24576);
     blocks.push_back(b300);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b300));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b300));
 
     MockBlock* b200 = create_mock_block(16384);
     blocks.push_back(b200);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b200));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b200));
 
     EXPECT_EQ(root, b200);
     EXPECT_EQ(b200->left, b100);
@@ -306,13 +306,13 @@ TEST(AllocFreeBlockHeaderTest, FindGTE_Exact) {
 
     MockBlock* b64 = create_mock_block(8192);
     blocks.push_back(b64);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b64));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b64));
 
     MockBlock* b128 = create_mock_block(16384);
     blocks.push_back(b128);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b128));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b128));
 
-    AkAllocFreeBlockHeader* found = find_gte_free_block(root, 16384);
+    AkAllocFreeBlockHeader* found = alloc_freeblock_find_gte(root, 16384);
     EXPECT_EQ(found, b128);
 
     for (auto* b : blocks) {
@@ -326,13 +326,13 @@ TEST(AllocFreeBlockHeaderTest, FindGTE_Greater) {
 
     MockBlock* b64 = create_mock_block(8192);
     blocks.push_back(b64);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b64));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b64));
 
     MockBlock* b256 = create_mock_block(32768);
     blocks.push_back(b256);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b256));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b256));
 
-    AkAllocFreeBlockHeader* found = find_gte_free_block(root, 16384);
+    AkAllocFreeBlockHeader* found = alloc_freeblock_find_gte(root, 16384);
     EXPECT_EQ(found, b256);
 
     for (auto* b : blocks) {
@@ -342,13 +342,13 @@ TEST(AllocFreeBlockHeaderTest, FindGTE_Greater) {
 
 TEST(AllocFreeBlockHeaderTest, FindGTE_None) {
     AkAllocFreeBlockHeader* root = nullptr;
-    AkAllocFreeBlockHeader* found = find_gte_free_block(root, 8192);
+    AkAllocFreeBlockHeader* found = alloc_freeblock_find_gte(root, 8192);
     EXPECT_EQ(found, nullptr);
 
     MockBlock* b32 = create_mock_block(16384);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b32));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b32));
     // Search strictly larger than any present so that none is found
-    found = find_gte_free_block(root, 65536);
+    found = alloc_freeblock_find_gte(root, 65536);
     EXPECT_EQ(found, nullptr);
     std::free(b32);
 }
@@ -359,17 +359,17 @@ TEST(AllocFreeBlockHeaderTest, DetachListNode) {
 
     MockBlock* b1 = create_mock_block(8192);
     blocks.push_back(b1);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
 
     MockBlock* b2 = create_mock_block(8192);
     blocks.push_back(b2);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
 
     MockBlock* b3 = create_mock_block(8192);
     blocks.push_back(b3);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
 
-    detach_free_block(&root, b2);
+    alloc_freeblock_detach(&root, b2);
     // List-node detach clears the node
     EXPECT_EQ(b2->multimap_link.next, nullptr);
     EXPECT_EQ(b2->multimap_link.prev, nullptr);
@@ -394,9 +394,9 @@ TEST(AllocFreeBlockHeaderTest, DetachTreeNodeLeaf) {
 
     MockBlock* b100 = create_mock_block(8192);
     blocks.push_back(b100);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
 
-    detach_free_block(&root, b100);
+    alloc_freeblock_detach(&root, b100);
     EXPECT_EQ(root, nullptr);
     // Tree-node detach clears the node
     EXPECT_EQ(b100->multimap_link.next, nullptr);
@@ -417,13 +417,13 @@ TEST(AllocFreeBlockHeaderTest, DetachTreeNodeOneChild) {
 
     MockBlock* b100 = create_mock_block(8192);
     blocks.push_back(b100);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
 
     MockBlock* b50 = create_mock_block(16384);
     blocks.push_back(b50);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b50));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b50));
 
-    detach_free_block(&root, b100);
+    alloc_freeblock_detach(&root, b100);
     EXPECT_EQ(root, b50);
     EXPECT_EQ(b50->parent, nullptr);
     // Detached node cleared
@@ -443,21 +443,21 @@ TEST(AllocFreeBlockHeaderTest, DetachTreeNodeTwoChildren) {
 
     MockBlock* b100 = create_mock_block(8192);
     blocks.push_back(b100);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
 
     MockBlock* b50 = create_mock_block(16384);
     blocks.push_back(b50);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b50));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b50));
 
     MockBlock* b150 = create_mock_block(24576);
     blocks.push_back(b150);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b150));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b150));
 
     MockBlock* b125 = create_mock_block(20480);
     blocks.push_back(b125);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b125));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b125));
 
-    detach_free_block(&root, b100);
+    alloc_freeblock_detach(&root, b100);
     EXPECT_EQ(root, b125);
     EXPECT_EQ(b125->left, b50);
     EXPECT_EQ(b125->right, b150);
@@ -477,17 +477,17 @@ TEST(AllocFreeBlockHeaderTest, DetachHeadWithList) {
 
     MockBlock* b1 = create_mock_block(8192);
     blocks.push_back(b1);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
 
     MockBlock* b2 = create_mock_block(8192);
     blocks.push_back(b2);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
 
     MockBlock* b3 = create_mock_block(8192);
     blocks.push_back(b3);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
 
-    detach_free_block(&root, b1);
+    alloc_freeblock_detach(&root, b1);
     EXPECT_EQ(root, b2);
     EXPECT_TRUE(is_tree_node(b2));
     EXPECT_EQ(b2->height, 1);
@@ -512,15 +512,15 @@ TEST(AllocFreeBlockHeaderTest, DetachLastInListPromotes) {
 
     MockBlock* b1 = create_mock_block(8192);
     blocks.push_back(b1);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
 
     MockBlock* b2 = create_mock_block(8192);
     blocks.push_back(b2);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
 
-    detach_free_block(&root, b2);
+    alloc_freeblock_detach(&root, b2);
 
-    detach_free_block(&root, b1);
+    alloc_freeblock_detach(&root, b1);
     EXPECT_EQ(root, nullptr);
 
     for (auto* b : blocks) {
@@ -534,32 +534,32 @@ TEST(AllocFreeBlockHeaderTest, FIFOOrder) {
 
     MockBlock* b1 = create_mock_block(8192);
     blocks.push_back(b1);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
 
     MockBlock* b2 = create_mock_block(8192);
     blocks.push_back(b2);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
 
     MockBlock* b3 = create_mock_block(8192);
     blocks.push_back(b3);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
 
-    AkAllocFreeBlockHeader* group = find_gte_free_block(root, 8192);
+    AkAllocFreeBlockHeader* group = alloc_freeblock_find_gte(root, 8192);
     EXPECT_EQ(group, b1);
 
-    detach_free_block(&root, group);
+    alloc_freeblock_detach(&root, group);
     
     EXPECT_EQ(root, b2);
     EXPECT_EQ(b2->multimap_link.next, &b3->multimap_link);
 
-    group = find_gte_free_block(root, 8192);
-    detach_free_block(&root, group);
+    group = alloc_freeblock_find_gte(root, 8192);
+    alloc_freeblock_detach(&root, group);
     
     EXPECT_EQ(root, b3);
-    EXPECT_TRUE(is_detached(b3));
+    EXPECT_TRUE(alloc_freeblock_is_detached(b3));
 
-    group = find_gte_free_block(root, 8192);
-    detach_free_block(&root, group);
+    group = alloc_freeblock_find_gte(root, 8192);
+    alloc_freeblock_detach(&root, group);
     
     EXPECT_EQ(root, nullptr);
 
@@ -578,7 +578,7 @@ TEST(AllocFreeBlockHeaderTest, Clear) {
     b->multimap_link.next = &b->multimap_link;
     b->multimap_link.prev = &b->multimap_link;
 
-    clear(b);
+    alloc_freeblock_clear(b);
 
     EXPECT_EQ(b->height, 0);
     EXPECT_EQ(b->balance, 0);
@@ -598,17 +598,17 @@ TEST(AllocFreeBlockHeaderTest, IsDetached) {
     MockBlock* b = create_mock_block(8192);
     b->multimap_link.next = &b->multimap_link;
     b->multimap_link.prev = &b->multimap_link;
-    EXPECT_TRUE(is_detached(b));
+    EXPECT_TRUE(alloc_freeblock_is_detached(b));
 
     b->multimap_link.next = reinterpret_cast<AkDLink*>(0x1);
-    EXPECT_FALSE(is_detached(b));
+    EXPECT_FALSE(alloc_freeblock_is_detached(b));
 
     b->multimap_link.prev = reinterpret_cast<AkDLink*>(0x2);
-    EXPECT_FALSE(is_detached(b));
+    EXPECT_FALSE(alloc_freeblock_is_detached(b));
 
     b->multimap_link.next = &b->multimap_link;
     b->multimap_link.prev = &b->multimap_link;
-    EXPECT_TRUE(is_detached(b));
+    EXPECT_TRUE(alloc_freeblock_is_detached(b));
 
     std::free(b);
 }
@@ -619,23 +619,23 @@ TEST(AllocFreeBlockHeaderTest, DetachTriggersRightRotation) {
 
     MockBlock* b4 = create_mock_block(32768);
     blocks.push_back(b4);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b4));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b4));
 
     MockBlock* b2 = create_mock_block(16384);
     blocks.push_back(b2);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
 
     MockBlock* b5 = create_mock_block(40960);
     blocks.push_back(b5);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b5));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b5));
 
     MockBlock* b1 = create_mock_block(8192);
     blocks.push_back(b1);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
 
     MockBlock* b3 = create_mock_block(24576);
     blocks.push_back(b3);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
 
     EXPECT_EQ(root, b4);
     EXPECT_EQ(b4->left, b2);
@@ -643,7 +643,7 @@ TEST(AllocFreeBlockHeaderTest, DetachTriggersRightRotation) {
     EXPECT_EQ(b2->left, b1);
     EXPECT_EQ(b2->right, b3);
 
-    detach_free_block(&root, b5);
+    alloc_freeblock_detach(&root, b5);
     
     EXPECT_EQ(root, b2);
     EXPECT_EQ(b2->left, b1);
@@ -667,23 +667,23 @@ TEST(AllocFreeBlockHeaderTest, DetachTriggersLeftRotation) {
     // Build tree with unique keys: root=16384, left=8192, right=24576, right-left=20480, right-right=32768
     MockBlock* b1 = create_mock_block(16384);
     blocks.push_back(b1);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
 
     MockBlock* b3 = create_mock_block(24576);
     blocks.push_back(b3);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
 
     MockBlock* b0 = create_mock_block(8192);
     blocks.push_back(b0);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b0));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b0));
 
     MockBlock* b2 = create_mock_block(20480);
     blocks.push_back(b2);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
 
     MockBlock* b4 = create_mock_block(32768);
     blocks.push_back(b4);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b4));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b4));
 
     EXPECT_EQ(root, b1);
     EXPECT_EQ(b1->left, b0);
@@ -691,7 +691,7 @@ TEST(AllocFreeBlockHeaderTest, DetachTriggersLeftRotation) {
     EXPECT_EQ(b3->left, b2);
     EXPECT_EQ(b3->right, b4);
 
-    detach_free_block(&root, b0);
+    alloc_freeblock_detach(&root, b0);
     
     EXPECT_EQ(root, b3);
     EXPECT_EQ(b3->left, b1);
@@ -717,21 +717,21 @@ TEST(AllocFreeBlockHeaderTest, LargeTreeMultipleOperations) {
     for (AkU64 s : sizes) {
         MockBlock* b = create_mock_block(s);
         blocks.push_back(b);
-        put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b));
+        alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b));
         verify_tree(root);
     }
 
     for (size_t i = 0; i < blocks.size() / 2; ++i) {
-        AkAllocFreeBlockHeader* to_detach = find_gte_free_block(root, 16384);
+        AkAllocFreeBlockHeader* to_detach = alloc_freeblock_find_gte(root, 16384);
         if (to_detach) {
-            detach_free_block(&root, to_detach);
+            alloc_freeblock_detach(&root, to_detach);
             verify_tree(root);
         }
     }
 
     while (root) {
         AkAllocFreeBlockHeader* to_detach = root;
-        detach_free_block(&root, to_detach);
+        alloc_freeblock_detach(&root, to_detach);
         verify_tree(root);
     }
 
@@ -743,8 +743,8 @@ TEST(AllocFreeBlockHeaderTest, LargeTreeMultipleOperations) {
 TEST(AllocFreeBlockHeaderTest, MinSize) {
     AkAllocFreeBlockHeader* root = nullptr;
     MockBlock* b = create_mock_block(8192);
-    put_free_block(&root, reinterpret_cast<AkAllocBlockHeader*>(b));
+    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b));
     verify_tree(root);
-    detach_free_block(&root, b);
+    alloc_freeblock_detach(&root, b);
     std::free(b);
 }

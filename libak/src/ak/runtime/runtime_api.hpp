@@ -42,14 +42,14 @@ struct AkPromise {
         AkCoroutineHandle await_suspend(AkCoroutineHandle hdl) const noexcept;
     };
 
-    static AkVoid*   operator new(std::size_t n) noexcept;
-    static AkVoid    operator delete(AkVoid* ptr, std::size_t sz);
-    static AkTask   get_return_object_on_allocation_failure() noexcept;
+    static AkVoid* operator new(std::size_t n) noexcept;
+    static AkVoid  operator delete(AkVoid* ptr, std::size_t sz);
+    static AkTask  get_return_object_on_allocation_failure() noexcept;
 
     AkPromise();
     ~AkPromise();
     
-    AkTask        get_return_object() noexcept;
+    AkTask         get_return_object() noexcept;
     constexpr auto initial_suspend() const noexcept { return InitialSuspend {}; }
     constexpr auto final_suspend () const noexcept { return FinalSuspend{}; }
     AkVoid         return_value(int value) noexcept;

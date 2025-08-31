@@ -25,7 +25,7 @@ inline static FrameEntry *get_entry(FrameTable *ft, FrameId frame_id) noexcept {
 void init_frame_pool(FramePool *framePool, AkU32 capacity, AkAllocTable *at) noexcept {
     AkU32 aligned_capacity = std::bit_ceil(static_cast<AkU32>(capacity));
     AkSize byte_size = static_cast<AkSize>(aligned_capacity) * sizeof(FrameId);
-    FrameId *e = static_cast<FrameId *>(ak::priv::try_alloc_table_malloc(at, byte_size));
+    FrameId *e = static_cast<FrameId *>(ak::priv::alloc_table_try_malloc(at, byte_size));
     AK_ASSERT(e != nullptr);
     std::fill(e, e + aligned_capacity, FrameId());
     framePool->entries = e;
@@ -46,7 +46,7 @@ void init_frame_table(FrameTable *ft, AkU32 capacity, AkAllocTable *at) noexcept
 
     AkU32 aligned = std::bit_ceil(static_cast<AkU32>(capacity));
     AkSize byte_size = static_cast<AkSize>(aligned) * sizeof(FrameEntry);
-    FrameEntry *entries = static_cast<FrameEntry *>(ak::priv::try_alloc_table_malloc(at, byte_size));
+    FrameEntry *entries = static_cast<FrameEntry *>(ak::priv::alloc_table_try_malloc(at, byte_size));
     AK_ASSERT(entries != nullptr);
 
     init_frame_pool(&ft->free_pool, aligned, at);

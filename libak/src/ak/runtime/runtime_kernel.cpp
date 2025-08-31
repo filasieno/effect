@@ -5,7 +5,7 @@ alignas(64) AkKernel global_kernel_state;
 int ak_init_kernel(AkKernelConfig* config) noexcept {
 
     
-    if (ak::priv::init_alloc_table(&global_kernel_state.alloc_table, config->mem_buffer, config->mem_buffer_size) != 0) {
+    if (ak::priv::alloc_table_init(&global_kernel_state.alloc_table, config->mem_buffer, config->mem_buffer_size) != 0) {
         return -1;
     }
 
