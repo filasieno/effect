@@ -30,13 +30,13 @@ namespace ak::priv {
         AK_ASSERT(global_kernel_state.task_count == 1);
         AK_ASSERT(global_kernel_state.ready_task_count == 1);
         AK_ASSERT(scheduler_ctx->state == AkCoroutineState::READY);
-        AK_ASSERT(!ak_is_dlink_detached(&scheduler_ctx->wait_link));
+        AK_ASSERT(!ak_dlink_is_detached(&scheduler_ctx->wait_link));
         AK_ASSERT(global_kernel_state.current_task == AkCoroutineHandle());
 
         // Setup SchedulerTask for execution (from READY -> RUNNING)
         global_kernel_state.current_task = global_kernel_state.scheduler_task;
         scheduler_ctx->state = AkCoroutineState::RUNNING;
-        ak_detach_dlink(&scheduler_ctx->wait_link);
+        ak_dlink_detach(&scheduler_ctx->wait_link);
         --global_kernel_state.ready_task_count;
 
         // Check expected state post task system bootstrap
@@ -55,11 +55,11 @@ namespace ak::priv {
 
         auto* scheduler_context = get_context(global_kernel_state.scheduler_task);
         AK_ASSERT(scheduler_context->state == AkCoroutineState::RUNNING);
-        AK_ASSERT(ak_is_dlink_detached(&scheduler_context->wait_link));
+        AK_ASSERT(ak_dlink_is_detached(&scheduler_context->wait_link));
 
         scheduler_context->state = AkCoroutineState::ZOMBIE;
         global_kernel_state.current_task.reset();
-        ak_enqueue_dlink(&global_kernel_state.zombie_list, &scheduler_context->wait_link);
+        ak_dlink_enqueue(&global_kernel_state.zombie_list, &scheduler_context->wait_link);
         ++global_kernel_state.zombie_task_count;
 
         return global_kernel_state.boot_task;
@@ -73,11 +73,11 @@ namespace ak::priv {
         auto* context = get_context(ct);
 
         // Remove from Task list
-        ak_detach_dlink(&context->tasklist_link);
+        ak_dlink_detach(&context->tasklist_link);
         --global_kernel_state.task_count;
 
         // Remove from Zombie List
-        ak_detach_dlink(&context->wait_link);
+        ak_dlink_detach(&context->wait_link);
         --global_kernel_state.zombie_task_count;
 
         context->state = AkCoroutineState::DELETING;
@@ -102,7 +102,7 @@ AkCoroutineHandle runtime_schedule_next_thread() noexcept {
     // If we have a ready task, resume it
     while (true) {
         if (global_kernel_state.ready_task_count > 0) {
-            AkDLink* link = ak_dequeue_dlink(&global_kernel_state.ready_list);
+            AkDLink* link = ak_dlink_dequeue(&global_kernel_state.ready_list);
             AkPromise* ctx = runtime_get_linked_task_context(link);
             AkCoroutineHandle task = AkCoroutineHandle::from_promise(*ctx);
             AK_ASSERT(ctx->state == AkCoroutineState::READY);
@@ -138,7 +138,7 @@ AkCoroutineHandle runtime_schedule_next_thread() noexcept {
                 --global_kernel_state.iowaiting_task_count;
                 ctx->state = AkCoroutineState::READY;
                 ++global_kernel_state.ready_task_count;
-                ak_enqueue_dlink(&global_kernel_state.ready_list, &ctx->wait_link);
+                ak_dlink_enqueue(&global_kernel_state.ready_list, &ctx->wait_link);
                 
                 // Complete operation
                 ctx->res = cqe->res;
@@ -155,16 +155,16 @@ AkCoroutineHandle runtime_schedule_next_thread() noexcept {
         while (global_kernel_state.zombie_task_count > 0) {
             //dump_task_count();
 
-            AkDLink* zombie_node = ak_dequeue_dlink(&global_kernel_state.zombie_list);
+            AkDLink* zombie_node = ak_dlink_dequeue(&global_kernel_state.zombie_list);
             AkPromise& zombie_promise = *runtime_get_linked_task_context(zombie_node);
             AK_ASSERT(zombie_promise.state == AkCoroutineState::ZOMBIE);
 
             // Remove from zombie list
             --global_kernel_state.zombie_task_count;
-            ak_detach_dlink(&zombie_promise.wait_link);
+            ak_dlink_detach(&zombie_promise.wait_link);
 
             // Remove from task list
-            ak_detach_dlink(&zombie_promise.tasklist_link);
+            ak_dlink_detach(&zombie_promise.tasklist_link);
             --global_kernel_state.task_count;
 
             // Delete

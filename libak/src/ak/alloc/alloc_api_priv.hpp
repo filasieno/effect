@@ -38,7 +38,7 @@ namespace ak::priv {
     AkU64  alloc_get_freelist_index(AkU64 sz) noexcept;
 
     
-    // Iteration
+    // Block Iteration
     AkAllocBlockHeader* alloc_next_block(AkAllocBlockHeader* header) noexcept;
     AkAllocBlockHeader* alloc_prev_block(AkAllocBlockHeader* header) noexcept;    
 }

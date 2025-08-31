@@ -27,9 +27,9 @@ int ak_init_kernel(AkKernelConfig* config) noexcept {
     global_kernel_state.current_task.reset();
     global_kernel_state.scheduler_task.reset();
 
-    ak_init_dlink(&global_kernel_state.zombie_list);
-    ak_init_dlink(&global_kernel_state.ready_list);
-    ak_init_dlink(&global_kernel_state.task_list);
+    ak_dlink_init(&global_kernel_state.zombie_list);
+    ak_dlink_init(&global_kernel_state.ready_list);
+    ak_dlink_init(&global_kernel_state.task_list);
     
     return 0;
 }

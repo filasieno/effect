@@ -36,7 +36,7 @@ namespace ak { namespace priv {
             new_link->parent = nullptr;
             new_link->left = nullptr;
             new_link->right = nullptr;
-            ak_init_dlink(&new_link->multimap_link);
+            ak_dlink_init(&new_link->multimap_link);
             *root = new_link;
             return;
         }
@@ -56,7 +56,7 @@ namespace ak { namespace priv {
                 new_link->left = nullptr;
                 new_link->right = nullptr;
                 // append before head (FIFO): head->next remains first inserted
-                ak_insert_prev_dlink(&cur->multimap_link, &new_link->multimap_link);
+                ak_dlink_insert_prev(&cur->multimap_link, &new_link->multimap_link);
                 return;
             } else if (k < ck) {
                 cur = cur->left;
@@ -70,7 +70,7 @@ namespace ak { namespace priv {
         new_link->balance = 0;
         new_link->left = nullptr;
         new_link->right = nullptr;
-        ak_init_dlink(&new_link->multimap_link);
+        ak_dlink_init(&new_link->multimap_link);
         new_link->parent = parent;
         if (k < key_of(parent)) parent->left = new_link; else parent->right = new_link;
 
@@ -105,7 +105,7 @@ namespace ak { namespace priv {
         // It is guarateed that root is stable 
         // Nothing ever to rebalance
         if (node->height < 0) {
-            ak_detach_dlink(&node->multimap_link);
+            ak_dlink_detach(&node->multimap_link);
             alloc_freeblock_clear(node);
             return;
         }
@@ -152,7 +152,7 @@ namespace ak { namespace priv {
         AkAllocFreeBlockHeader* next_node = (AkAllocFreeBlockHeader*)((AkChar*)next_node_link - AK_OFFSET(AkAllocFreeBlockHeader, multimap_link));
         AK_ASSERT(next_node != nullptr && next_node != node);
         // Remove H from circular list so that N becomes the new head
-        ak_detach_dlink(&node->multimap_link);
+        ak_dlink_detach(&node->multimap_link);
         // H becomes a detached single-node ring (already true after detach)
 
         // 2. Replace in the tree the node H with the node N

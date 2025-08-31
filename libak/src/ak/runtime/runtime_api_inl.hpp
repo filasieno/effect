@@ -6,16 +6,16 @@
 
 inline AkPromise::AkPromise() {
 
-    ak_init_dlink(&tasklist_link);
-    ak_init_dlink(&wait_link);  
-    ak_init_dlink(&awaiter_list);
+    ak_dlink_init(&tasklist_link);
+    ak_dlink_init(&wait_link);  
+    ak_dlink_init(&awaiter_list);
     state = AkCoroutineState::CREATED;
     prepared_io = 0;
     res = -1;
 
     // Check post-conditions
-    AK_ASSERT(ak_is_dlink_detached(&tasklist_link));
-    AK_ASSERT(ak_is_dlink_detached(&wait_link));
+    AK_ASSERT(ak_dlink_is_detached(&tasklist_link));
+    AK_ASSERT(ak_dlink_is_detached(&wait_link));
     AK_ASSERT(state == AkCoroutineState::CREATED);
     // check_invariants();
 }
@@ -160,16 +160,16 @@ namespace ak {
 
                 // Zombie bashing
                 while (global_kernel_state.zombie_task_count > 0) {
-                    AkDLink* zombie_link = ak_dequeue_dlink(&global_kernel_state.zombie_list);
+                    AkDLink* zombie_link = ak_dlink_dequeue(&global_kernel_state.zombie_list);
                     AkPromise* ctx = runtime_get_linked_task_context(zombie_link);
                     AK_ASSERT(ctx->state == AkCoroutineState::ZOMBIE);
 
                     // Remove from zombie list
                     --global_kernel_state.zombie_task_count;
-                    ak_detach_dlink(&ctx->wait_link);
+                    ak_dlink_detach(&ctx->wait_link);
 
                     // Remove from task list
-                    ak_detach_dlink(&ctx->tasklist_link);
+                    ak_dlink_detach(&ctx->tasklist_link);
                     --global_kernel_state.task_count;
 
                     // Delete
@@ -193,7 +193,7 @@ namespace ak {
                         --global_kernel_state.iowaiting_task_count;
                         ctx->state = AkCoroutineState::READY;
                         ++global_kernel_state.ready_task_count;
-                        ak_enqueue_dlink(&global_kernel_state.ready_list, &ctx->wait_link);
+                        ak_dlink_enqueue(&global_kernel_state.ready_list, &ctx->wait_link);
                         
                         // Complete operation
                         ctx->res = cqe->res;

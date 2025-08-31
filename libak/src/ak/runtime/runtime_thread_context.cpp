@@ -6,8 +6,8 @@
 // TaskContext ctor/dtor definitions
 AkPromise::~AkPromise() {
     AK_ASSERT(state == AkCoroutineState::DELETING);
-    AK_ASSERT(ak_is_dlink_detached(&tasklist_link));
-    AK_ASSERT(ak_is_dlink_detached(&wait_link));
+    AK_ASSERT(ak_dlink_is_detached(&tasklist_link));
+    AK_ASSERT(ak_dlink_is_detached(&wait_link));
     runtime_dump_task_count();
     runtime_check_invariants();
 }
@@ -40,22 +40,22 @@ AkVoid AkPromise::return_value(int value) noexcept {
     }
 
     // Wake up all tasks waiting for this task
-    if (ak_is_dlink_detached(&awaiter_list)) {
+    if (ak_dlink_is_detached(&awaiter_list)) {
         return;
     }
 
     do {
-        AkDLink* next = ak_dequeue_dlink(&awaiter_list);
+        AkDLink* next = ak_dlink_dequeue(&awaiter_list);
         AkPromise* ctx = runtime_get_linked_task_context(next);
         runtime_dump_task_count();
         AK_ASSERT(ctx->state == AkCoroutineState::WAITING);
         --global_kernel_state.waiting_task_count;
         ctx->state = AkCoroutineState::READY;
-        ak_enqueue_dlink(&global_kernel_state.ready_list, &ctx->wait_link);
+        ak_dlink_enqueue(&global_kernel_state.ready_list, &ctx->wait_link);
         ++global_kernel_state.ready_task_count;
         runtime_dump_task_count();
 
-    } while (!ak_is_dlink_detached(&awaiter_list));
+    } while (!ak_dlink_is_detached(&awaiter_list));
 
 }
 
@@ -65,20 +65,20 @@ AkVoid AkPromise::InitialSuspend::await_suspend(AkCoroutineHandle hdl) const noe
 
     // Check initial preconditions
     AK_ASSERT(promise->state == AkCoroutineState::CREATED);
-    AK_ASSERT(ak_is_dlink_detached(&promise->wait_link));
+    AK_ASSERT(ak_dlink_is_detached(&promise->wait_link));
     runtime_check_invariants();
 
     // Add task to the kernel
     ++global_kernel_state.task_count;
-    ak_enqueue_dlink(&global_kernel_state.task_list, &promise->tasklist_link);
+    ak_dlink_enqueue(&global_kernel_state.task_list, &promise->tasklist_link);
 
     ++global_kernel_state.ready_task_count;
-    ak_enqueue_dlink(&global_kernel_state.ready_list, &promise->wait_link);
+    ak_dlink_enqueue(&global_kernel_state.ready_list, &promise->wait_link);
     promise->state = AkCoroutineState::READY;
 
     // Check post-conditions
     AK_ASSERT(promise->state == AkCoroutineState::READY);
-    AK_ASSERT(!ak_is_dlink_detached(&promise->wait_link));
+    AK_ASSERT(!ak_dlink_is_detached(&promise->wait_link));
     runtime_check_invariants();
     runtime_dump_task_count();
 }
@@ -88,13 +88,13 @@ AkCoroutineHandle AkPromise::FinalSuspend::await_suspend(AkCoroutineHandle hdl) 
     AkPromise* ctx = &hdl.promise();
     AK_ASSERT(global_kernel_state.current_task == hdl);
     AK_ASSERT(ctx->state == AkCoroutineState::RUNNING);
-    AK_ASSERT(ak_is_dlink_detached(&ctx->wait_link));
+    AK_ASSERT(ak_dlink_is_detached(&ctx->wait_link));
     runtime_check_invariants();
 
     // Move the current task from RUNNING to ZOMBIE
     ctx->state = AkCoroutineState::ZOMBIE;
     ++global_kernel_state.zombie_task_count;
-    ak_enqueue_dlink(&global_kernel_state.zombie_list, &ctx->wait_link);
+    ak_dlink_enqueue(&global_kernel_state.zombie_list, &ctx->wait_link);
     global_kernel_state.current_task = AkTask();
     runtime_check_invariants();
 

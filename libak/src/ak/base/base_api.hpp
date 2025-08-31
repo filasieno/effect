@@ -10,8 +10,8 @@
 #define AK_PACKED_ATTR               __attribute__((packed))
 #define AK_OFFSET(TYPE, MEMBER)      ((AkSize)((AkU64)&(((TYPE*)0)->MEMBER)))
 
-#define AK_ASSERT(cond, ...)         ::ak::priv::ak_ensure((cond), #cond, std::source_location::current(), ##__VA_ARGS__)
-#define AK_ASSERT_AT(loc, cond, ...) ::ak::priv::ak_ensure((cond), #cond, loc                            , ##__VA_ARGS__)
+#define AK_ASSERT(cond, ...)         ak_ensure((cond), #cond, std::source_location::current(), ##__VA_ARGS__)
+#define AK_ASSERT_AT(loc, cond, ...) ak_ensure((cond), #cond, loc                            , ##__VA_ARGS__)
 
 using AkVoid    = void;
 using AkBool    = bool;
@@ -54,18 +54,25 @@ struct AkDLink {
     AkDLink* prev; 
 };
 
-namespace ak::priv {
-    ///\brief Assertion backend
-    template <typename... Args>
-    inline AkVoid ak_ensure(
-        AkBool condition,
-        const AkChar* expression_text,
-        const std::source_location loc = std::source_location::current(),
-        const std::string_view fmt = {},
-        Args&&... args
-    ) noexcept;
+AkVoid   ak_dlink_init(AkDLink* link) noexcept;
+AkBool   ak_dlink_is_detached(const AkDLink* link) noexcept;
+AkVoid   ak_dlink_detach(AkDLink* link) noexcept;
+AkVoid   ak_dlink_clear(AkDLink* link) noexcept;
+AkVoid   ak_dlink_enqueue(AkDLink* queue, AkDLink* link) noexcept;
+AkDLink* ak_dlink_dequeue(AkDLink* queue) noexcept;
+AkVoid   ak_dlink_insert_prev(AkDLink* list, AkDLink* link) noexcept;
+AkVoid   ak_dlink_insert_next(AkDLink* list, AkDLink* link) noexcept;
+AkVoid   ak_dlink_push(AkDLink* stack, AkDLink* link) noexcept;
+AkDLink* ak_dlink_pop(AkDLink* stack) noexcept;
 
-} // namespace ak
-
+///\brief Assertion backend
+template <typename... Args>
+inline AkVoid ak_ensure(
+    AkBool condition,
+    const AkChar* expression_text,
+    const std::source_location loc = std::source_location::current(),
+    const std::string_view fmt = {},
+    Args&&... args
+) noexcept;
 
 AkU64 ak_query_timer_ns() noexcept;

@@ -14,7 +14,7 @@ AkCoroutineHandle AkIOOp::await_suspend(AkCoroutineHandle current_context_hdl) n
     auto* sched_ctx = ak::get_context(global_kernel_state.scheduler_task);
     AK_ASSERT(sched_ctx->state == AkCoroutineState::READY);
     sched_ctx->state = AkCoroutineState::RUNNING;
-    ak_detach_dlink(&sched_ctx->wait_link);
+    ak_dlink_detach(&sched_ctx->wait_link);
     --global_kernel_state.ready_task_count;
     global_kernel_state.current_task = global_kernel_state.scheduler_task;
     runtime_check_invariants();
