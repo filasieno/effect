@@ -197,42 +197,40 @@ namespace ak {
     // Declarations for ops 
     namespace op {
         struct ResumeCThread {
-            using Hdl = AkCoroutineHandle;
             explicit ResumeCThread(AkTask ct) : hdl(ct.hdl) {};
     
-            constexpr AkBool await_ready() const noexcept { return false; }
-            Hdl            await_suspend(Hdl hdl) const noexcept;
-            constexpr AkVoid await_resume() const noexcept {}
+            constexpr AkBool  await_ready() const noexcept { return false; }
+            constexpr AkVoid  await_resume() const noexcept {}
+
+            AkCoroutineHandle await_suspend(AkCoroutineHandle hdl) const noexcept;
     
-            Hdl hdl;
+            AkCoroutineHandle hdl;
         };
 
         struct JoinCThread {
-            using Hdl = AkCoroutineHandle;
-            explicit JoinCThread(Hdl hdl) : hdl(hdl) {};
+            
+            explicit JoinCThread(AkCoroutineHandle hdl) : hdl(hdl) {};
     
-            constexpr AkBool await_ready() const noexcept { return false; }
-            Hdl            await_suspend(Hdl hdl) const noexcept;
-            constexpr int  await_resume() const noexcept { return hdl.promise().res; }
-    
-            Hdl hdl;
+            constexpr AkBool  await_ready() const noexcept  { return false; }
+            constexpr int     await_resume() const noexcept { return hdl.promise().res; }
+
+            AkCoroutineHandle await_suspend(AkCoroutineHandle hdl) const noexcept;
+
+            AkCoroutineHandle hdl;
         };
 
         struct Suspend {
-            using Hdl = AkCoroutineHandle;
-
-            constexpr AkBool await_ready() const noexcept { return false; }
-            Hdl            await_suspend(Hdl hdl) const noexcept;
-            constexpr AkVoid await_resume() const noexcept {}
+            constexpr AkBool  await_ready() const noexcept { return false; }
+            AkCoroutineHandle await_suspend(AkCoroutineHandle hdl) const noexcept;
+            constexpr AkVoid  await_resume() const noexcept {}
         };
 
         struct GetCurrentTask {
-            using Hdl = AkCoroutineHandle;
-            constexpr AkBool await_ready() const noexcept { return false; }
-            constexpr Hdl  await_suspend(Hdl hdl) noexcept;
-            constexpr Hdl  await_resume() const noexcept { return hdl; }
+            constexpr AkBool             await_ready() const noexcept { return false; }
+            constexpr AkCoroutineHandle  await_suspend(AkCoroutineHandle hdl) noexcept;
+            constexpr AkCoroutineHandle  await_resume() const noexcept { return hdl; }
 
-            Hdl hdl;
+            AkCoroutineHandle hdl;
         };
     }
     // Declarations for ops 
