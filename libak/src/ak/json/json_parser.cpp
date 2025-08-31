@@ -2,15 +2,18 @@
 
 #include <cstring>
 #include <cstdlib>
+#include <charconv>
+#include <system_error>
 
 namespace ak {
 
 #define AK_MUST_TAIL __attribute__((musttail))
 
+/// \brief **JSON parser: tail-recursive, streaming, suspendable**
 /// \internal
 ///
-/// \brief JSON parser: tail-recursive, streaming, suspendable
-/// Architecture
+/// Architecture:
+///
 /// - Tail-recursive state machine: each state consumes input and tail-calls the next.
 ///   Continuations are stored explicitly on an internal stack (JSONParseContext[]);
 ///   the C++ call stack is never used for parsing recursion.
@@ -26,7 +29,7 @@ namespace ak {
 ///
 /// Strings:
 ///
-/// - Validate escapes (\", \\, \/, \b, \f, \n, \r, \t) and \uXXXX (including surrogate pairs).
+/// - Validate escapes (\", \\, \/, \\b, \f, \\n, \\r, \\t) and \\uXXXX (including surrogate pairs).
 /// - Do not decode; validated UTF-8 is forwarded as-is to callbacks.
 /// - Spanning across buffers switches to streaming callbacks.
 ///
@@ -38,7 +41,7 @@ namespace ak {
 ///
 /// Numbers:
 ///
-///- Only token using suspend_buffer to span buffers; format validated per RFC 8259.
+/// - Only token using suspend_buffer to span buffers; format validated per RFC 8259.
 ///
 /// Errors and contracts:
 ///
@@ -52,8 +55,20 @@ namespace ak {
 /// - Explicit continuation stack: enables suspend/resume with precise state capture; depth checks
 ///   raise runtime errors for user misconfiguration.
 /// - Public API checks vs assertions: user errors -> errors; programmer errors -> asserts.
+/// - Suspend buffer asymmetry (numbers only): numbers are the only token that may need to be
+///   reconstructed across buffers as a contiguous lexical unit to validate the grammar before
+///   deciding INT vs FLOAT. Strings are instead emitted verbatim to the client via chunked
+///   callbacks (with the 'more' flag) so the client can choose its own decoding strategy
+///   (e.g., UTF-8 validation/decoding, allocation policy). We deliberately avoid buffering
+///   strings internally to not impose an allocation/decoding policy on users.
+/// - Character-class tables: keeping the tables compact and focused on first-byte dispatch
+///   yields the best cost/benefit. Adding higher-level semantic tags would bloat tables without
+///   removing meaningful branches in state code, so we keep them minimal and fast.
+/// - The 'more' parameter in callbacks is mandatory. It indicates whether additional chunks
+///   for the current key/string value will follow. API consumers must rely on it to know
+///   when a streaming text emission is complete. See json_api.hpp for precise semantics.
 ///
-/// TODO:
+/// TODO (next version):
 ///
 /// - SIMD/SWAR whitespace skipping and first-byte classification (AVX2/NEON).
 /// - Table-driven separators in object/array states to reduce switches.
@@ -975,11 +990,15 @@ static JSONParserState state_number_head(JSONParseSession *session, U32 sub_stat
         if (significant_digits > 16) {
             return raise_error(session, JSONErrorCode::FLOAT_TOO_MANY_DIGITS);
         }
-        // parse float using simple strtod from C standard library
-        char *endp = nullptr;
-        F64 v = std::strtod(session->suspend_buffer, &endp);
-        if ((U64)(endp - session->suspend_buffer) != session->suspend_buffer_size) {
-            return raise_error(session, JSONErrorCode::INVALID_FLOAT_FORMAT);
+        // Parse float using locale-independent from_chars if available
+        F64 v = 0.0;
+        {
+            const char *b = session->suspend_buffer;
+            const char *e = session->suspend_buffer + session->suspend_buffer_size;
+            std::from_chars_result r = std::from_chars(b, e, v, std::chars_format::general);
+            if (r.ec != std::errc() || r.ptr != e) {
+                return raise_error(session, JSONErrorCode::INVALID_FLOAT_FORMAT);
+            }
         }
         notify_value_number_float(session, v);
     }
