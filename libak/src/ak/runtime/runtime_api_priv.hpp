@@ -6,7 +6,7 @@
 namespace ak::priv {
     
     // Scheduler task routines
-    CThread::Hdl schedule_next_thread() noexcept;
+    AkCoroutineHandle schedule_next_thread() noexcept;
 
     // Debug routines
     AkVoid check_invariants() noexcept;

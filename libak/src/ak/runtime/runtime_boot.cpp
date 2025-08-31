@@ -19,7 +19,7 @@ namespace ak::priv {
     // RunSchedulerTaskOp
     // ----------------------------------------------------------------------------------------------------------------
 
-    CThread::Hdl RunSchedulerOp::await_suspend(BootCThread::Hdl current_task_hdl) const noexcept {
+    AkCoroutineHandle RunSchedulerOp::await_suspend(BootCThread::Hdl current_task_hdl) const noexcept {
         using namespace priv;
 
         (AkVoid)current_task_hdl;
@@ -31,7 +31,7 @@ namespace ak::priv {
         AK_ASSERT(global_kernel_state.ready_cthread_count == 1);
         AK_ASSERT(scheduler_ctx->state == AkCoroutineState::READY);
         AK_ASSERT(!ak_is_dlink_detached(&scheduler_ctx->wait_link));
-        AK_ASSERT(global_kernel_state.current_cthread == CThread::Hdl());
+        AK_ASSERT(global_kernel_state.current_cthread == AkCoroutineHandle());
 
         // Setup SchedulerTask for execution (from READY -> RUNNING)
         global_kernel_state.current_cthread = global_kernel_state.scheduler_cthread;
@@ -47,7 +47,7 @@ namespace ak::priv {
     // TerminateSchedulerOp
     // ----------------------------------------------------------------------------------------------------------------
 
-    BootCThread::Hdl TerminateSchedulerOp::await_suspend(CThread::Hdl hdl) const noexcept {
+    BootCThread::Hdl TerminateSchedulerOp::await_suspend(AkCoroutineHandle hdl) const noexcept {
         using namespace priv;
 
         AK_ASSERT(global_kernel_state.current_cthread == global_kernel_state.scheduler_cthread);
@@ -68,7 +68,7 @@ namespace ak::priv {
     // Boot implementation
     // ----------------------------------------------------------------------------------------------------------------
 
-    AkVoid destroy_scheduler(CThread ct) noexcept {
+    AkVoid destroy_scheduler(AkTask ct) noexcept {
         using namespace priv;
         auto* context = get_context(ct);
 
@@ -94,7 +94,7 @@ namespace ak::priv {
     ///
     /// \return the next Task to be resumed
     /// \internal
-    CThread::Hdl schedule_next_thread() noexcept {
+    AkCoroutineHandle schedule_next_thread() noexcept {
         using namespace priv;
 
         // If we have a ready task, resume it
@@ -102,7 +102,7 @@ namespace ak::priv {
             if (global_kernel_state.ready_cthread_count > 0) {
                 AkDLink* link = ak_dequeue_dlink(&global_kernel_state.ready_list);
                 AkPromise* ctx = get_linked_cthread_context(link);
-                CThread::Hdl task = CThread::Hdl::from_promise(*ctx);
+                AkCoroutineHandle task = AkCoroutineHandle::from_promise(*ctx);
                 AK_ASSERT(ctx->state == AkCoroutineState::READY);
                 ctx->state = AkCoroutineState::RUNNING;
                 --global_kernel_state.ready_cthread_count;
@@ -167,7 +167,7 @@ namespace ak::priv {
 
                 // Delete
                 zombie_promise.state = AkCoroutineState::DELETING;
-                CThread::Hdl zombie_task_hdl = CThread::Hdl::from_promise(zombie_promise);
+                AkCoroutineHandle zombie_task_hdl = AkCoroutineHandle::from_promise(zombie_promise);
                 zombie_task_hdl.destroy();
 
                 //dump_task_count();

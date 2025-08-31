@@ -26,7 +26,7 @@ enum class AkCoroutineState
 const char* to_string(AkCoroutineState state) noexcept;
 
 
-struct CThread;
+struct AkTask;
 
 struct AkPromise {
 
@@ -44,12 +44,12 @@ struct AkPromise {
 
     static AkVoid*   operator new(std::size_t n) noexcept;
     static AkVoid    operator delete(AkVoid* ptr, std::size_t sz);
-    static CThread   get_return_object_on_allocation_failure() noexcept;
+    static AkTask   get_return_object_on_allocation_failure() noexcept;
 
     AkPromise();
     ~AkPromise();
     
-    CThread        get_return_object() noexcept;
+    AkTask        get_return_object() noexcept;
     constexpr auto initial_suspend() const noexcept { return InitialSuspend {}; }
     constexpr auto final_suspend () const noexcept { return FinalSuspend{}; }
     AkVoid         return_value(int value) noexcept;
@@ -67,28 +67,27 @@ struct AkPromise {
 
 /// \brief A handle to a cooperative thread (C++20 coroutine)
 /// \ingroup CThread
-struct CThread {
-    using Hdl = AkCoroutineHandle;
+struct AkTask {
     using promise_type = AkPromise;
 
-    CThread() = default;
-    CThread(const CThread&) = default;
-    CThread(CThread&&) = default;
-    CThread& operator=(const CThread&) = default;
-    CThread& operator=(CThread&&) = default;
-    ~CThread() = default;
+    AkTask() = default;
+    AkTask(const AkTask&) = default;
+    AkTask(AkTask&&) = default;
+    AkTask& operator=(const AkTask&) = default;
+    AkTask& operator=(AkTask&&) = default;
+    ~AkTask() = default;
 
-    CThread(const Hdl& hdl) : hdl(hdl) {}
-    CThread& operator=(const Hdl& hdl) {
+    AkTask(const AkCoroutineHandle& hdl) : hdl(hdl) {}
+    AkTask& operator=(const AkCoroutineHandle& hdl) {
         this->hdl = hdl;
         return *this;
     }    
-    AkBool operator==(const CThread& other) const noexcept { return hdl == other.hdl; }
+    AkBool operator==(const AkTask& other) const noexcept { return hdl == other.hdl; }
     operator AkBool() const noexcept { return hdl.address() != nullptr; }
     operator AkCoroutineHandle() const noexcept { return hdl; }
     
     AkVoid reset() noexcept {
-        hdl = Hdl{};
+        hdl = AkCoroutineHandle{};
     }
 
     AkCoroutineHandle hdl;
@@ -99,8 +98,8 @@ inline AkCoroutineHandle to_handle(AkPromise* cthread_context) noexcept {
     return AkCoroutineHandle::from_promise(*cthread_context);        
 }
 
-inline CThread AkPromise::get_return_object_on_allocation_failure() noexcept { return {}; }
-inline CThread AkPromise::get_return_object() noexcept { return { AkCoroutineHandle::from_promise(*this) }; }
+inline AkTask AkPromise::get_return_object_on_allocation_failure() noexcept { return {}; }
+inline AkTask AkPromise::get_return_object() noexcept { return { AkCoroutineHandle::from_promise(*this) }; }
 
 namespace ak { 
  
@@ -118,7 +117,7 @@ namespace ak {
             get_return_object_on_allocation_failure() noexcept;
 
             template <typename... Args>
-            Context(CThread(*)(Args ...) noexcept, Args... ) noexcept : exit_code(0) {}
+            Context(AkTask(*)(Args ...) noexcept, Args... ) noexcept : exit_code(0) {}
             
             constexpr BootCThread    get_return_object() noexcept { return {Hdl::from_promise(*this)}; }
             constexpr InitialSuspend initial_suspend() noexcept { return {}; }
@@ -143,41 +142,40 @@ namespace ak {
         operator Hdl() const noexcept { return hdl; }
 
         Hdl hdl;
-    };
-    
-    struct Kernel {        
-        // Allocation table
-        AkAllocTable alloc_table;
-        
-        // Task management
-        char        boot_cthread_frame_buffer[64];
-        BootCThread boot_cthread;
-        CThread     current_cthread;
-        CThread     scheduler_cthread;
-        CThread     main_cthread;
-        
-        AkDLink       zombie_list;
-        AkDLink       ready_list;
-        AkDLink       cthread_list;
-        AkVoid*       mem;
-        AkSize        mem_size; // remove mem begin+end
-        AkI32         main_cthread_exit_code;
-
-        // Count state variables
-        AkI32         cthread_count;
-        AkI32         ready_cthread_count;
-        AkI32         waiting_cthread_count;
-        AkI32         iowaiting_cthread_count;
-        AkI32         zombie_cthread_count;
-        AkI32         interrupted;
-        
-        // IOManagement
-        io_uring      io_uring_state;
-        AkU32         io_uring_entry_count;
-    };
+    };    
 }
 
-extern ak::Kernel global_kernel_state;
+struct AkKernel {        
+    // Allocation table
+    AkAllocTable alloc_table;
+    
+    // Task management
+    char            boot_cthread_frame_buffer[64];
+    ak::BootCThread boot_cthread;
+    AkTask          current_cthread;
+    AkTask          scheduler_cthread;
+    AkTask          main_cthread;
+    
+    AkDLink       zombie_list;
+    AkDLink       ready_list;
+    AkDLink       cthread_list;
+    AkVoid*       mem;
+    AkSize        mem_size; // remove mem begin+end
+    AkI32         main_cthread_exit_code;
+
+    // Count state variables
+    AkI32         cthread_count;
+    AkI32         ready_cthread_count;
+    AkI32         waiting_cthread_count;
+    AkI32         iowaiting_cthread_count;
+    AkI32         zombie_cthread_count;
+    AkI32         interrupted;
+    
+    // IOManagement
+    io_uring      io_uring_state;
+    AkU32         io_uring_entry_count;
+};
+extern AkKernel global_kernel_state;
 
 struct AkKernelConfig {
     AkVoid*    mem_buffer;
@@ -192,7 +190,7 @@ namespace ak {
     
 
     template <typename... Args>
-    int run_main(CThread (*co_main)(Args ...) noexcept, Args... args) noexcept;
+    int run_main(AkTask (*co_main)(Args ...) noexcept, Args... args) noexcept;
     
     //struct Event { AkDLink wait_list; };
     //
@@ -200,7 +198,7 @@ namespace ak {
     namespace op {
         struct ResumeCThread {
             using Hdl = AkCoroutineHandle;
-            explicit ResumeCThread(CThread ct) : hdl(ct.hdl) {};
+            explicit ResumeCThread(AkTask ct) : hdl(ct.hdl) {};
     
             constexpr AkBool await_ready() const noexcept { return false; }
             Hdl            await_suspend(Hdl hdl) const noexcept;
@@ -240,14 +238,14 @@ namespace ak {
     // Declarations for ops 
 
     // CThread routines
-    AkBool              is_valid(CThread thread) noexcept;
-    AkBool              is_done(CThread thread) noexcept;
+    AkBool              is_valid(AkTask thread) noexcept;
+    AkBool              is_done(AkTask thread) noexcept;
     AkPromise*          get_context() noexcept;
-    AkPromise*          get_context(CThread thread) noexcept;
-    AkCoroutineState    get_state(CThread thread) noexcept;
-    op::JoinCThread     join(CThread thread) noexcept;
-    op::JoinCThread     operator co_await(CThread thread) noexcept;
-    op::ResumeCThread   resume(CThread thread) noexcept;
+    AkPromise*          get_context(AkTask thread) noexcept;
+    AkCoroutineState    get_state(AkTask thread) noexcept;
+    op::JoinCThread     join(AkTask thread) noexcept;
+    op::JoinCThread     operator co_await(AkTask thread) noexcept;
+    op::ResumeCThread   resume(AkTask thread) noexcept;
     
     constexpr op::Suspend suspend() noexcept;
 
@@ -257,7 +255,7 @@ namespace ak {
     // IO API (moved from ak/io)
     namespace op {
         struct ExecIO {
-            using Hdl = CThread::Hdl;
+            using Hdl = AkCoroutineHandle;
             constexpr AkBool await_ready() const noexcept  { return false; }
             constexpr AkI32  await_resume() const noexcept { return global_kernel_state.current_cthread.hdl.promise().res; }
             Hdl await_suspend(Hdl hdl) noexcept;

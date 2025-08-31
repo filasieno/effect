@@ -7,7 +7,7 @@ namespace ak {
     // SuspendOp implmentation
     // ----------------------------------------------------------------------------------------------------------------
 
-    CThread::Hdl op::Suspend::await_suspend(CThread::Hdl current_task) const noexcept {
+    AkCoroutineHandle op::Suspend::await_suspend(AkCoroutineHandle current_task) const noexcept {
         using namespace priv;
 
         AK_ASSERT(global_kernel_state.current_cthread);
@@ -34,7 +34,7 @@ namespace ak {
     // ResumeTaskOp implementation
     // ----------------------------------------------------------------------------------------------------------------
 
-    CThread::Hdl op::ResumeCThread::await_suspend(CThread::Hdl current_task_hdl) const noexcept {
+    AkCoroutineHandle op::ResumeCThread::await_suspend(AkCoroutineHandle current_task_hdl) const noexcept {
         using namespace priv;
 
         AK_ASSERT(global_kernel_state.current_cthread == current_task_hdl);
@@ -67,7 +67,7 @@ namespace ak {
     // JoinTaskOp implementation
     // ----------------------------------------------------------------------------------------------------------------
 
-    CThread::Hdl op::JoinCThread::await_suspend(CThread::Hdl current_task_hdl) const noexcept
+    AkCoroutineHandle op::JoinCThread::await_suspend(AkCoroutineHandle current_task_hdl) const noexcept
     {
         using namespace priv;
 

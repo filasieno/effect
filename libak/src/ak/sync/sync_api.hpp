@@ -12,9 +12,9 @@ namespace ak {
         struct WaitEvent {
             explicit WaitEvent(Event* event) : evt(event) {}
 
-            constexpr AkBool await_ready() const noexcept  { return false; }
-            constexpr AkVoid await_resume() const noexcept { }
-            CThread::Hdl   await_suspend(CThread::Hdl hdl) const noexcept;
+            constexpr AkBool  await_ready() const noexcept  { return false; }
+            constexpr AkVoid  await_resume() const noexcept { }
+            AkCoroutineHandle await_suspend(AkCoroutineHandle hdl) const noexcept;
             
 
             Event* evt;
@@ -23,10 +23,10 @@ namespace ak {
 
     // Concurrency Tools
 
-    AkVoid          init_event(Event* event);
-    AkI32           signal(Event* event);
-    AkI32           signal_n(Event* event, int n);
-    AkI32           signal_all(Event* event);
+    AkVoid        init_event(Event* event);
+    AkI32         signal(Event* event);
+    AkI32         signal_n(Event* event, int n);
+    AkI32         signal_all(Event* event);
     op::WaitEvent wait(Event* event);
 
 }

@@ -5,7 +5,7 @@ namespace ak {
     // WaitOp
     // ----------------------------------------------------------------------------------------------------------------
 
-    CThread::Hdl op::WaitEvent::await_suspend(CThread::Hdl hdl) const noexcept {
+    AkCoroutineHandle op::WaitEvent::await_suspend(AkCoroutineHandle hdl) const noexcept {
         using namespace priv;
 
         AkPromise* ctx = &hdl.promise();

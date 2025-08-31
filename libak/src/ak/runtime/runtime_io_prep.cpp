@@ -7,7 +7,7 @@
 namespace ak {
 
      
-    CThread::Hdl op::ExecIO::await_suspend(CThread::Hdl current_context_hdl) noexcept {
+    AkCoroutineHandle op::ExecIO::await_suspend(AkCoroutineHandle current_context_hdl) noexcept {
         // if suspend is called we know that the operation has been submitted
         using namespace priv;
         // Move current task to IO_WAITING and resume scheduler

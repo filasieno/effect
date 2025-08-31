@@ -21,7 +21,7 @@ protected:
 	}
 };
 
-static CThread io_sequence(const AkChar* p) noexcept {
+static AkTask io_sequence(const AkChar* p) noexcept {
 	int fd = co_await io_open(p, O_RDWR | O_CREAT | O_TRUNC | O_NONBLOCK, 0666);
 	std::print("open fd: {}\n", fd);
 	EXPECT_GE(fd, 0);

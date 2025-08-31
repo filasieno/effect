@@ -22,7 +22,7 @@ protected:
 };
 
 
-static CThread reader_thread(Event* r_ready, Event* w_ready, int *r_signal, int* w_signal, int* value) noexcept {
+static AkTask reader_thread(Event* r_ready, Event* w_ready, int *r_signal, int* w_signal, int* value) noexcept {
 	int check = 0;
 	while (true) {
 		EXPECT_LT(check, 12);
@@ -48,7 +48,7 @@ static CThread reader_thread(Event* r_ready, Event* w_ready, int *r_signal, int*
 	}
 }
 
-static CThread writer_thread(Event* r_ready, Event* w_ready, int *r_signal, int* w_signal, int* value) noexcept {
+static AkTask writer_thread(Event* r_ready, Event* w_ready, int *r_signal, int* w_signal, int* value) noexcept {
 	int check = 0;
 	int i = 10;
 	while (true) {
@@ -76,7 +76,7 @@ static CThread writer_thread(Event* r_ready, Event* w_ready, int *r_signal, int*
 	}
 }
 
-static CThread co_main() noexcept {
+static AkTask co_main() noexcept {
 	int   value = -1;
 	int   r_signal = 0;
 	int   w_signal = 0; 
@@ -86,8 +86,8 @@ static CThread co_main() noexcept {
 	ak::init_event(&r_ready);
 	ak::init_event(&w_ready);
 
-	CThread writer = writer_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
-	CThread reader = reader_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
+	AkTask writer = writer_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
+	AkTask reader = reader_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
 	co_await reader;
 	co_await writer;
 	std::fflush(stdout);

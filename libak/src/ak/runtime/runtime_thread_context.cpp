@@ -59,7 +59,7 @@ AkVoid AkPromise::return_value(int value) noexcept {
 
 }
 
-AkVoid AkPromise::InitialSuspend::await_suspend(CThread::Hdl hdl) const noexcept {
+AkVoid AkPromise::InitialSuspend::await_suspend(AkCoroutineHandle hdl) const noexcept {
     
     AkPromise* promise = &hdl.promise();
 
@@ -83,7 +83,7 @@ AkVoid AkPromise::InitialSuspend::await_suspend(CThread::Hdl hdl) const noexcept
     ak::priv::dump_task_count();
 }
 
-CThread::Hdl AkPromise::FinalSuspend::await_suspend(CThread::Hdl hdl) const noexcept {
+AkCoroutineHandle AkPromise::FinalSuspend::await_suspend(AkCoroutineHandle hdl) const noexcept {
     // Check preconditions
     AkPromise* ctx = &hdl.promise();
     AK_ASSERT(global_kernel_state.current_cthread == hdl);
@@ -95,7 +95,7 @@ CThread::Hdl AkPromise::FinalSuspend::await_suspend(CThread::Hdl hdl) const noex
     ctx->state = AkCoroutineState::ZOMBIE;
     ++global_kernel_state.zombie_cthread_count;
     ak_enqueue_dlink(&global_kernel_state.zombie_list, &ctx->wait_link);
-    global_kernel_state.current_cthread = CThread();
+    global_kernel_state.current_cthread = AkTask();
     ak::priv::check_invariants();
 
     return ak::priv::schedule_next_thread();

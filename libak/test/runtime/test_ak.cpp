@@ -22,7 +22,7 @@ protected:
 	}
 };
 
-static CThread a_thread() noexcept {
+static AkTask a_thread() noexcept {
 	co_await suspend();
 	co_await suspend();
 	co_await suspend();
@@ -31,11 +31,11 @@ static CThread a_thread() noexcept {
 	co_return 0;
 }
 
-static CThread b_thread() noexcept {
+static AkTask b_thread() noexcept {
 	co_return 0;
 }
 
-static CThread co_main() noexcept {
+static AkTask co_main() noexcept {
 	auto a = a_thread();
 	auto b = b_thread();
 	co_await a;

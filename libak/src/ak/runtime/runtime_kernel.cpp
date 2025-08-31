@@ -1,6 +1,6 @@
 #include "ak/runtime/runtime.hpp" // IWYU pragma: keep
 
-alignas(64) ak::Kernel global_kernel_state;
+alignas(64) AkKernel global_kernel_state;
 
 int ak_init_kernel(AkKernelConfig* config) noexcept {
 

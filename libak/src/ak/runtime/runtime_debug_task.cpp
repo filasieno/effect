@@ -7,7 +7,7 @@
 
     AkVoid dump_task_count() noexcept {
         if constexpr (AK_TRACE_DEBUG_CODE) {
-            int running_count = global_kernel_state.current_cthread != CThread::Hdl() ? 1 : 0;
+            int running_count = global_kernel_state.current_cthread != AkCoroutineHandle() ? 1 : 0;
             std::print("- {} Running\n", running_count);
             std::print("  {} Ready\n", global_kernel_state.ready_cthread_count);
             std::print("  {} Waiting\n", global_kernel_state.waiting_cthread_count);
@@ -20,7 +20,7 @@
     // ----------------------------------------------------------------------------------------------------------------
 
     AkVoid do_check_task_count_invariant() noexcept {
-        int running_count = global_kernel_state.current_cthread != CThread::Hdl() ? 1 : 0;
+        int running_count = global_kernel_state.current_cthread != AkCoroutineHandle() ? 1 : 0;
         AkBool condition = global_kernel_state.cthread_count == running_count + global_kernel_state.ready_cthread_count + global_kernel_state.waiting_cthread_count + global_kernel_state.iowaiting_cthread_count + global_kernel_state.zombie_cthread_count;
         if (!condition) {
             dump_task_count();
