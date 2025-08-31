@@ -1,8 +1,9 @@
 #include "ak/runtime/runtime.hpp" // IWYU pragma: keep
 
+alignas(64) ak::Kernel global_kernel_state;
+
 // Global kernel instance declaration
 namespace ak {
-    alignas(64) Kernel global_kernel_state;
 
     // Kernel init/fini
     // ----------------------------------------------------------------------------------------------------------------
@@ -32,9 +33,9 @@ namespace ak {
         global_kernel_state.current_cthread.reset();
         global_kernel_state.scheduler_cthread.reset();
 
-        init_AkDLink(&global_kernel_state.zombie_list);
-        init_AkDLink(&global_kernel_state.ready_list);
-        init_AkDLink(&global_kernel_state.cthread_list);
+        ak_init_dlink(&global_kernel_state.zombie_list);
+        ak_init_dlink(&global_kernel_state.ready_list);
+        ak_init_dlink(&global_kernel_state.cthread_list);
         
         return 0;
     }

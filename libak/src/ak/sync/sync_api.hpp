@@ -4,7 +4,7 @@
 
 namespace ak {
     struct Event {  
-        priv::AkDLink wait_list;
+        AkDLink wait_list;
     };
 
     namespace op {

@@ -12,17 +12,17 @@ namespace ak {
         using namespace priv;
         // Move current task to IO_WAITING and resume scheduler
         auto* current_context = get_context(current_context_hdl);
-        AK_ASSERT(current_context->state == CThread::State::RUNNING);
-        current_context->state = CThread::State::IO_WAITING;
+        AK_ASSERT(current_context->state == AkCoroutineState::RUNNING);
+        current_context->state = AkCoroutineState::IO_WAITING;
         ++global_kernel_state.iowaiting_cthread_count;
         global_kernel_state.current_cthread.reset();
         check_invariants();
         dump_task_count();
 
         auto* sched_ctx = get_context(global_kernel_state.scheduler_cthread);
-        AK_ASSERT(sched_ctx->state == CThread::State::READY);
-        sched_ctx->state = CThread::State::RUNNING;
-        detach_AkDLink(&sched_ctx->wait_link);
+        AK_ASSERT(sched_ctx->state == AkCoroutineState::READY);
+        sched_ctx->state = AkCoroutineState::RUNNING;
+        ak_detach_dlink(&sched_ctx->wait_link);
         --global_kernel_state.ready_cthread_count;
         global_kernel_state.current_cthread = global_kernel_state.scheduler_cthread;
         check_invariants();
@@ -41,7 +41,7 @@ namespace ak::priv {
     template <typename PrepFn>
     inline op::ExecIO prep_io(PrepFn prep_fn) noexcept {
         using namespace priv;
-        CThread::Context* ctx = get_context(global_kernel_state.current_cthread);
+        AkPromise* ctx = get_context(global_kernel_state.current_cthread);
         unsigned int free_slots = io_uring_sq_space_left(&global_kernel_state.io_uring_state);
         while (free_slots < 1) {
             int ret = io_uring_submit(&global_kernel_state.io_uring_state);

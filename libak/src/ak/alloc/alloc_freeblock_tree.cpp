@@ -11,7 +11,7 @@ namespace ak { namespace priv {
     inline static AkVoid                  rotate_right(AllocFreeBlockHeader** root, AllocFreeBlockHeader* y) noexcept;
     inline static AkVoid                  rebalance_upwards(AllocFreeBlockHeader** root, AllocFreeBlockHeader* n) noexcept;
     inline static AkVoid                  transplant(AllocFreeBlockHeader** root, AllocFreeBlockHeader* u, AllocFreeBlockHeader* v) noexcept;
-    inline static AllocFreeBlockHeader* min_node(AllocFreeBlockHeader* root) noexcept;
+    inline static AllocFreeBlockHeader*   min_node(AllocFreeBlockHeader* root) noexcept;
 
     AkVoid init_free_block_tree_root(AllocFreeBlockHeader** root) noexcept {
         AK_ASSERT(root != nullptr);
@@ -36,7 +36,7 @@ namespace ak { namespace priv {
             new_link->parent = nullptr;
             new_link->left = nullptr;
             new_link->right = nullptr;
-            init_AkDLink(&new_link->multimap_link);
+            ak_init_dlink(&new_link->multimap_link);
             *root = new_link;
             return;
         }
@@ -56,7 +56,7 @@ namespace ak { namespace priv {
                 new_link->left = nullptr;
                 new_link->right = nullptr;
                 // append before head (FIFO): head->next remains first inserted
-                insert_prev_AkDLink(&cur->multimap_link, &new_link->multimap_link);
+                ak_insert_prev_dlink(&cur->multimap_link, &new_link->multimap_link);
                 return;
             } else if (k < ck) {
                 cur = cur->left;
@@ -70,7 +70,7 @@ namespace ak { namespace priv {
         new_link->balance = 0;
         new_link->left = nullptr;
         new_link->right = nullptr;
-        init_AkDLink(&new_link->multimap_link);
+        ak_init_dlink(&new_link->multimap_link);
         new_link->parent = parent;
         if (k < key_of(parent)) parent->left = new_link; else parent->right = new_link;
 
@@ -105,7 +105,7 @@ namespace ak { namespace priv {
         // It is guarateed that root is stable 
         // Nothing ever to rebalance
         if (node->height < 0) {
-            detach_AkDLink(&node->multimap_link);
+            ak_detach_dlink(&node->multimap_link);
             clear(node);
             return;
         }
@@ -148,11 +148,11 @@ namespace ak { namespace priv {
         //
         // 1. Get the first element of the list N (FIFO) and detach H from the ring
         
-        priv::AkDLink* next_node_link = node->multimap_link.next;
+        AkDLink* next_node_link = node->multimap_link.next;
         AllocFreeBlockHeader* next_node = (AllocFreeBlockHeader*)((AkChar*)next_node_link - AK_OFFSET(AllocFreeBlockHeader, multimap_link));
         AK_ASSERT(next_node != nullptr && next_node != node);
         // Remove H from circular list so that N becomes the new head
-        detach_AkDLink(&node->multimap_link);
+        ak_detach_dlink(&node->multimap_link);
         // H becomes a detached single-node ring (already true after detach)
 
         // 2. Replace in the tree the node H with the node N

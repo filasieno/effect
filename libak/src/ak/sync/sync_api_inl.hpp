@@ -6,7 +6,7 @@
 namespace ak {
     
     inline AkVoid init_event(Event* event) {  
-        init_AkDLink(&event->wait_list);
+        ak_init_dlink(&event->wait_list);
     }
     
     inline op::WaitEvent wait(Event* event) {

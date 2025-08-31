@@ -116,9 +116,9 @@ namespace ak { namespace priv {
             // Validate small freelist structures: mask and counts
             AkU64 observed_mask = 0ull;
             for (AkU32 bin = 0; bin < AllocTable::ALLOCATOR_BIN_COUNT; ++bin) {
-                priv::AkDLink* head = &at->freelist_head[bin];
+                AkDLink* head = &at->freelist_head[bin];
                 AkU64 ring_count = 0ull;
-                for (priv::AkDLink* it = head->next; it != head; it = it->next) {
+                for (AkDLink* it = head->next; it != head; it = it->next) {
                     const AkSize link_off = AK_OFFSET(AllocPooledFreeBlockHeader, freelist_link);
                     AllocBlockHeader* b = (AllocBlockHeader*)((AkChar*)it - link_off);
                     // Each member must be FREE and in-range
@@ -152,7 +152,7 @@ namespace ak { namespace priv {
                 AkI32 hr = self(self, node->right, key, max_key);
                 // multimap ring: all nodes must have the same size and FREE state
                 AkU64 list_count = 0ull;
-                for (priv::AkDLink* it = node->multimap_link.next; it != &node->multimap_link; it = it->next) {
+                for (AkDLink* it = node->multimap_link.next; it != &node->multimap_link; it = it->next) {
                     AllocFreeBlockHeader* n = (AllocFreeBlockHeader*)((AkChar*)it - AK_OFFSET(AllocFreeBlockHeader, multimap_link));
                     AK_ASSERT_AT(loc, n->this_desc.size == key, "large freelist invariant failed");
                     AK_ASSERT_AT(loc, n->this_desc.state == (AkU32)AllocBlockState::FREE, "large freelist invariant failed");

@@ -2,64 +2,62 @@
 
 #include "ak.hpp" // IWYU pragma: keep
 
-using namespace ak;
-
-AkI32 on_parse_event(JSONParseSession* session, JSONEvent event, const JSONEventData* data, AkU64 more) noexcept {
+AkI32 on_parse_event(AkJSONParser* session, AkJSONEvent event, const AkJSONEventData* data, AkU64 more) noexcept {
     (void) session;
     (void) data;
     (void) more;
     switch (event) {
-        case JSONEvent::OBJECT_BEGIN:
+        case AkJSONEvent::OBJECT_BEGIN:
         {
             std::print("OBJECT_BEGIN\n");
             return 0;
         }
-        case JSONEvent::OBJECT_END:
+        case AkJSONEvent::OBJECT_END:
         {
             std::print("OBJECT_END\n");
             return 0;
         }
-        case JSONEvent::ARRAY_END:
+        case AkJSONEvent::ARRAY_END:
         {
             std::print("OBJECT_END\n");
             return 0; 
         }
-        case JSONEvent::NULL_VALUE:
+        case AkJSONEvent::NULL_VALUE:
         {
             std::print("NULL_VALUE\n");
             return 0;
         }
-        case JSONEvent::ATTR_KEY:
+        case AkJSONEvent::ATTR_KEY:
         {
             std::print("ATTR_KEY '{}'\n", std::string_view(data->string_data.str, data->string_data.len));
             return 0; 
         }
-        case JSONEvent::STRING_VALUE:
+        case AkJSONEvent::STRING_VALUE:
         {
             std::print("STRING_VALUE '{}'\n", std::string_view(data->string_data.str, data->string_data.len));
             return 0;
         }
-        case JSONEvent::INT_VALUE:
+        case AkJSONEvent::INT_VALUE:
         {
             std::print("INT_VALUE {}\n", data->int_value);
             return 0;
         }
-        case JSONEvent::FLOAT_VALUE:
+        case AkJSONEvent::FLOAT_VALUE:
         {
             std::print("FLOAT_VALUE {}\n", data->float_value);
             return 0;
         }
-        case JSONEvent::BOOL_VALUE:
+        case AkJSONEvent::BOOL_VALUE:
         {
             std::print("BOOL_VALUE {}\n", data->bool_value);
             return 0;
         }
-        case JSONEvent::PARSE_STATE_CHANGED:
+        case AkJSONEvent::PARSE_STATE_CHANGED:
         {
             std::print("PARSE_STATE_CHANGED '{}'\n", (AkU32)data->state_data.state);
             return 0;
         }
-        case JSONEvent::PARSE_EOF:
+        case AkJSONEvent::PARSE_EOF:
         {
             std::print("PARSE_EOF\n");
             return 0;
@@ -75,19 +73,19 @@ TEST(JSONParserTest, ReaderWriterHandshake) {
     const AkChar json[] = R"({"name": "John", "age": 30})";
     const AkU64 json_size = sizeof(json);
 
-    JSONParseSessionConfig cfg = { };
+    AkJSONParserConfig cfg = { };
     cfg.max_depth = 32;
     cfg.max_string_size = 2048;
     cfg.max_json_size = 1024 * 1024;
     
-    auto* session = ak::init_json_parser(buffer, sizeof(buffer), &cfg, on_parse_event, nullptr);
+    auto* session = ak_init_json_parser(buffer, sizeof(buffer), &cfg, on_parse_event, nullptr);
     ASSERT_NE(session, nullptr);
-    ASSERT_EQ(session->state, JSONParserState::INITIALIZED);
+    ASSERT_EQ(session->state, AkJSONParserState::INITIALIZED);
 
 
-    JSONParserState state;
-    state = ak::run_json_parser(session, (AkVoid*)json, json_size);
-    ASSERT_EQ(state, JSONParserState::DONE);
-    state = ak::eof_json_parser(session);
-    ASSERT_EQ(state, JSONParserState::DONE);
+    AkJSONParserState state;
+    state = ak_run_json_parser(session, (AkVoid*)json, json_size);
+    ASSERT_EQ(state, AkJSONParserState::DONE);
+    state = ak_eof_json_parser(session);
+    ASSERT_EQ(state, AkJSONParserState::DONE);
 }

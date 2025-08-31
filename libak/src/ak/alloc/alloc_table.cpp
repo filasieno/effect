@@ -76,7 +76,7 @@ namespace ak {
         at->free_mem_size                     = wild_block->this_desc.size;
 
         for (int i = 0; i < AllocTable::ALLOCATOR_BIN_COUNT; ++i) {
-            init_AkDLink(&at->freelist_head[i]);
+            ak_init_dlink(&at->freelist_head[i]);
         }
         at->freelist_count[63] = 0; // bin 63 is a regular freelist bin (up to 2048)
         at->freelist_mask = 0ull;
@@ -121,8 +121,8 @@ namespace ak {
             AK_ASSERT(at->freelist_count[bin_idx] > 0);
             AK_ASSERT(get_alloc_freelist_mask(&at->freelist_mask, bin_idx));
             
-            priv::AkDLink* free_stack = &at->freelist_head[bin_idx];
-            priv::AkDLink* link = pop_AkDLink(free_stack);
+            AkDLink* free_stack = &at->freelist_head[bin_idx];
+            AkDLink* link = ak_pop_dlink(free_stack);
             --at->freelist_count[bin_idx];
             if (at->freelist_count[bin_idx] == 0) {
                 clear_alloc_freelist_mask(&at->freelist_mask, bin_idx);
@@ -131,7 +131,7 @@ namespace ak {
             AllocBlockHeader* next_block = next(block);
             __builtin_prefetch(next_block, 1, 3);
             
-            if constexpr (AK_IS_DEBUG_MODE) { clear_AkDLink(link); }
+            if constexpr (AK_IS_DEBUG_MODE) { ak_clear_dlink(link); }
 
             AkSize block_size = block->this_desc.size;
             
@@ -196,7 +196,7 @@ namespace ak {
             ++at->stats.split_counter[bin_idx];
             ++at->stats.alloc_counter[bin_idx];
             // push to head (LIFO)
-            push_AkDLink(&at->freelist_head[new_bin_idx], &new_free->freelist_link);
+            ak_push_dlink(&at->freelist_head[new_bin_idx], &new_free->freelist_link);
             set_alloc_freelist_mask(&at->freelist_mask, new_bin_idx);
             ++at->stats.pooled_counter[new_bin_idx];            
             ++at->freelist_count[new_bin_idx];
@@ -251,7 +251,7 @@ namespace ak {
                     put_free_block(&at->root_free_block, (AllocBlockHeader*)new_free_hdr);
                 } else {
                     AkU32 new_bin_idx = get_alloc_freelist_index(new_free_size);
-                    push_AkDLink(&at->freelist_head[new_bin_idx], &((AllocPooledFreeBlockHeader*)new_free_hdr)->freelist_link);
+                    ak_push_dlink(&at->freelist_head[new_bin_idx], &((AllocPooledFreeBlockHeader*)new_free_hdr)->freelist_link);
                     set_alloc_freelist_mask(&at->freelist_mask, new_bin_idx);
                     ++at->freelist_count[new_bin_idx];
                     ++at->stats.pooled_counter[new_bin_idx];
@@ -382,7 +382,7 @@ namespace ak {
         unsigned orig_bin_idx = get_alloc_freelist_index(block_size);
         AK_ASSERT(orig_bin_idx < AllocTable::ALLOCATOR_BIN_COUNT);
         // push to head of freelist (AkDLink)
-        push_AkDLink(&at->freelist_head[orig_bin_idx], &block->freelist_link);
+        ak_push_dlink(&at->freelist_head[orig_bin_idx], &block->freelist_link);
         ++at->stats.free_counter[orig_bin_idx];
         ++at->stats.pooled_counter[orig_bin_idx];
         ++at->freelist_count[orig_bin_idx];
@@ -406,9 +406,9 @@ namespace ak {
             AkU64 sz = block->this_desc.size;
             if (sz <= MAX_SMALL_BIN_SIZE) {
                 AkU32 bin = get_alloc_freelist_index(sz);
-                priv::AkDLink* link = &((AllocPooledFreeBlockHeader*)block)->freelist_link;
-                if (!is_AkDLink_detached(link)) {
-                    detach_AkDLink(link);
+                AkDLink* link = &((AllocPooledFreeBlockHeader*)block)->freelist_link;
+                if (!ak_is_dlink_detached(link)) {
+                    ak_detach_dlink(link);
                     AK_ASSERT(at->freelist_count[bin] > 0);
                     --at->freelist_count[bin];
                     if (at->freelist_count[bin] == 0) {
@@ -431,9 +431,9 @@ namespace ak {
             if (lst == AllocBlockState::FREE) {
                 if (left_size <= MAX_SMALL_BIN_SIZE) {
                     AkU32 lbin = get_alloc_freelist_index(left_size);
-                    priv::AkDLink* link = &((AllocPooledFreeBlockHeader*)left)->freelist_link;
-                    if (!is_AkDLink_detached(link)) {
-                        detach_AkDLink(link);
+                    AkDLink* link = &((AllocPooledFreeBlockHeader*)left)->freelist_link;
+                    if (!ak_is_dlink_detached(link)) {
+                        ak_detach_dlink(link);
                         AK_ASSERT(at->freelist_count[lbin] > 0);
                         --at->freelist_count[lbin];
                         if (at->freelist_count[lbin] == 0) {
@@ -465,7 +465,7 @@ namespace ak {
             AkU64 sz = block->this_desc.size;
             if (sz <= MAX_SMALL_BIN_SIZE) {
                 AkU32 bin = get_alloc_freelist_index(sz);
-                push_AkDLink(&at->freelist_head[bin], &((AllocPooledFreeBlockHeader*)block)->freelist_link);
+                ak_push_dlink(&at->freelist_head[bin], &((AllocPooledFreeBlockHeader*)block)->freelist_link);
                 set_alloc_freelist_mask(&at->freelist_mask, bin);
                 ++at->freelist_count[bin];
                 ++at->stats.pooled_counter[bin];
@@ -497,9 +497,9 @@ namespace ak {
             AkU64 sz = block->this_desc.size;
             if (sz <= MAX_SMALL_BIN_SIZE) {
                 AkU32 bin = get_alloc_freelist_index(sz);
-                priv::AkDLink* link = &((AllocPooledFreeBlockHeader*)block)->freelist_link;
-                if (!is_AkDLink_detached(link)) {
-                    detach_AkDLink(link);
+                AkDLink* link = &((AllocPooledFreeBlockHeader*)block)->freelist_link;
+                if (!ak_is_dlink_detached(link)) {
+                    ak_detach_dlink(link);
                     AK_ASSERT(at->freelist_count[bin] > 0);
                     --at->freelist_count[bin];
                     if (at->freelist_count[bin] == 0) {
@@ -521,9 +521,9 @@ namespace ak {
             if (rst == AllocBlockState::FREE) {
                 if (right_size <= MAX_SMALL_BIN_SIZE) {
                     AkU32 rbin = get_alloc_freelist_index(right_size);
-                    priv::AkDLink* link = &((AllocPooledFreeBlockHeader*)right)->freelist_link;
-                    if (!is_AkDLink_detached(link)) {
-                        detach_AkDLink(link);
+                    AkDLink* link = &((AllocPooledFreeBlockHeader*)right)->freelist_link;
+                    if (!ak_is_dlink_detached(link)) {
+                        ak_detach_dlink(link);
                         AK_ASSERT(at->freelist_count[rbin] > 0);
                         --at->freelist_count[rbin];
                         if (at->freelist_count[rbin] == 0) {
@@ -554,7 +554,7 @@ namespace ak {
             AkU64 sz = block->this_desc.size;
             if (sz <= MAX_SMALL_BIN_SIZE) {
                 AkU32 bin = get_alloc_freelist_index(sz);
-                push_AkDLink(&at->freelist_head[bin], &((AllocPooledFreeBlockHeader*)block)->freelist_link);
+                ak_push_dlink(&at->freelist_head[bin], &((AllocPooledFreeBlockHeader*)block)->freelist_link);
                 set_alloc_freelist_mask(&at->freelist_mask, bin);
                 ++at->freelist_count[bin];
                 ++at->stats.pooled_counter[bin];

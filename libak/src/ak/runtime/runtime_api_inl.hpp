@@ -6,47 +6,45 @@
 #include "ak/runtime/runtime_api.hpp"
 #include <cstdlib>
 
+template <typename... Args>
+inline AkPromise::AkPromise(Args&&... ) {
+
+    ak_init_dlink(&tasklist_link);
+    ak_init_dlink(&wait_link);  
+    ak_init_dlink(&awaiter_list);
+    state = AkCoroutineState::CREATED;
+    prepared_io = 0;
+    res = -1;
+
+    // Check post-conditions
+    AK_ASSERT(ak_is_dlink_detached(&tasklist_link));
+    AK_ASSERT(ak_is_dlink_detached(&wait_link));
+    AK_ASSERT(state == AkCoroutineState::CREATED);
+    // check_invariants();
+}
+
 namespace ak { 
 
     // Inline Context
     // ----------------------------------------------------------------------------------------------------------------
-
-    
 
     inline BootCThread BootCThread::Context::get_return_object_on_allocation_failure() noexcept 
     {
         std::abort(); /* unreachable */
     }
 
-    template <typename... Args>
-    inline CThread::Context::Context(Args&&... ) {
-        using namespace priv;
 
-        init_AkDLink(&tasklist_link);
-        init_AkDLink(&wait_link);  
-        init_AkDLink(&awaiter_list);
-        state = CThread::State::CREATED;
-        prepared_io = 0;
-        res = -1;
-
-        // Check post-conditions
-        AK_ASSERT(is_AkDLink_detached(&tasklist_link));
-        AK_ASSERT(is_AkDLink_detached(&wait_link));
-        AK_ASSERT(state == CThread::State::CREATED);
-        // check_invariants();
-    }
-
-    inline const AkChar* to_string(CThread::State state) noexcept 
+    inline const AkChar* to_string(AkCoroutineState state) noexcept 
     {
         switch (state) {
-            case CThread::State::INVALID:    return "INVALID";
-            case CThread::State::CREATED:    return "CREATED";
-            case CThread::State::READY:      return "READY";
-            case CThread::State::RUNNING:    return "RUNNING";
-            case CThread::State::IO_WAITING: return "IO_WAITING";
-            case CThread::State::WAITING:    return "WAITING";
-            case CThread::State::ZOMBIE:     return "ZOMBIE";
-            case CThread::State::DELETING:   return "DELETING";
+            case AkCoroutineState::INVALID:    return "INVALID";
+            case AkCoroutineState::CREATED:    return "CREATED";
+            case AkCoroutineState::READY:      return "READY";
+            case AkCoroutineState::RUNNING:    return "RUNNING";
+            case AkCoroutineState::IO_WAITING: return "IO_WAITING";
+            case AkCoroutineState::WAITING:    return "WAITING";
+            case AkCoroutineState::ZOMBIE:     return "ZOMBIE";
+            case AkCoroutineState::DELETING:   return "DELETING";
             default: return nullptr;
         }
     }
@@ -56,9 +54,9 @@ namespace ak {
 
     inline AkBool is_valid(CThread ct) noexcept { return ct.hdl.address() != nullptr; }
 
-    inline CThread::Context* get_context(CThread ct) noexcept { return &ct.hdl.promise(); }
+    inline AkPromise* get_context(CThread ct) noexcept { return &ct.hdl.promise(); }
 
-    inline CThread::Context* get_context() noexcept { return &global_kernel_state.current_cthread.hdl.promise(); }
+    inline AkPromise* get_context() noexcept { return &global_kernel_state.current_cthread.hdl.promise(); }
 
     inline constexpr op::GetCurrentTask get_cthread_context_async() noexcept { return {}; }
 
@@ -68,7 +66,7 @@ namespace ak {
 
     inline op::JoinCThread operator co_await(CThread ct) noexcept { return op::JoinCThread(ct); }
 
-    inline CThread::State get_state(CThread ct) noexcept { return ct.hdl.promise().state; }
+    inline AkCoroutineState get_state(CThread ct) noexcept { return ct.hdl.promise().state; }
 
     inline AkBool is_done(CThread ct) noexcept { return ct.hdl.done(); }
 
@@ -85,9 +83,9 @@ namespace ak {
 
     namespace priv {
         
-        inline CThread::Context* get_linked_cthread_context(const AkDLink* link) noexcept {
-            unsigned long long promise_off = ((unsigned long long)link) - offsetof(CThread::Context, wait_link);
-            return reinterpret_cast<CThread::Context*>(promise_off);
+        inline AkPromise* get_linked_cthread_context(const AkDLink* link) noexcept {
+            unsigned long long promise_off = ((unsigned long long)link) - offsetof(AkPromise, wait_link);
+            return reinterpret_cast<AkPromise*>(promise_off);
         }
 
         // Scheduler operations
@@ -137,7 +135,7 @@ namespace ak {
             CThread::Hdl main_task = main_proc(args...);
             global_kernel_state.main_cthread = main_task;
             AK_ASSERT(!main_task.done());
-            AK_ASSERT(get_state(main_task) == CThread::State::READY);
+            AK_ASSERT(get_state(main_task) == AkCoroutineState::READY);
 
             while (true) {
                 // Sumbit IO operations
@@ -154,7 +152,7 @@ namespace ak {
                 // If we have a ready task, resume it
                 if (global_kernel_state.ready_cthread_count > 0) {
                     AkDLink* next_node = global_kernel_state.ready_list.prev;
-                    CThread::Context* next_promise = get_linked_cthread_context(next_node);
+                    AkPromise* next_promise = get_linked_cthread_context(next_node);
                     CThread::Hdl next_task = CThread::Hdl::from_promise(*next_promise);
                     AK_ASSERT(next_task != global_kernel_state.scheduler_cthread);
                     co_await op::ResumeCThread(next_task);
@@ -164,20 +162,20 @@ namespace ak {
 
                 // Zombie bashing
                 while (global_kernel_state.zombie_cthread_count > 0) {
-                    AkDLink* zombie_link = dequeue_AkDLink(&global_kernel_state.zombie_list);
-                    CThread::Context* ctx = get_linked_cthread_context(zombie_link);
-                    AK_ASSERT(ctx->state == CThread::State::ZOMBIE);
+                    AkDLink* zombie_link = ak_dequeue_dlink(&global_kernel_state.zombie_list);
+                    AkPromise* ctx = get_linked_cthread_context(zombie_link);
+                    AK_ASSERT(ctx->state == AkCoroutineState::ZOMBIE);
 
                     // Remove from zombie list
                     --global_kernel_state.zombie_cthread_count;
-                    detach_AkDLink(&ctx->wait_link);
+                    ak_detach_dlink(&ctx->wait_link);
 
                     // Remove from task list
-                    detach_AkDLink(&ctx->tasklist_link);
+                    ak_detach_dlink(&ctx->tasklist_link);
                     --global_kernel_state.cthread_count;
 
                     // Delete
-                    ctx->state = CThread::State::DELETING;
+                    ctx->state = AkCoroutineState::DELETING;
                     CThread::Hdl zombieTaskHdl = CThread::Hdl::from_promise(*ctx);
                     zombieTaskHdl.destroy();
                 }
@@ -190,14 +188,14 @@ namespace ak {
                     unsigned completed = 0;
                     io_uring_for_each_cqe(&global_kernel_state.io_uring_state, head, cqe) {
                         // Return Result to the target Awaitable 
-                        CThread::Context* ctx = (CThread::Context*) io_uring_cqe_get_data(cqe);
-                        AK_ASSERT(ctx->state == CThread::State::IO_WAITING);
+                        AkPromise* ctx = (AkPromise*) io_uring_cqe_get_data(cqe);
+                        AK_ASSERT(ctx->state == AkCoroutineState::IO_WAITING);
 
                         // Move the target task from IO_WAITING to READY
                         --global_kernel_state.iowaiting_cthread_count;
-                        ctx->state = CThread::State::READY;
+                        ctx->state = AkCoroutineState::READY;
                         ++global_kernel_state.ready_cthread_count;
-                        enqueue_AkDLink(&global_kernel_state.ready_list, &ctx->wait_link);
+                        ak_enqueue_dlink(&global_kernel_state.ready_list, &ctx->wait_link);
                         
                         // Complete operation
                         ctx->res = cqe->res;

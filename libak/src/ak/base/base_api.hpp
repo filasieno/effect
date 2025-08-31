@@ -5,9 +5,10 @@
 #include <source_location>
 
 // Macros
-#define AK_PACKED_ATTR          __attribute__((packed))
-#define AK_OFFSET(TYPE, MEMBER) ((AkSize)((AkU64)&(((TYPE*)0)->MEMBER)))
-#define AK_UNLIKELY(x)          __builtin_expect(!!(x), 0)
+#define AK_UNLIKELY(x)               __builtin_expect(!!(x), 0)
+#define AK_MUST_TAIL                 __attribute__((musttail))
+#define AK_PACKED_ATTR               __attribute__((packed))
+#define AK_OFFSET(TYPE, MEMBER)      ((AkSize)((AkU64)&(((TYPE*)0)->MEMBER)))
 
 #define AK_ASSERT(cond, ...)         ::ak::priv::ak_ensure((cond), #cond, std::source_location::current(), ##__VA_ARGS__)
 #define AK_ASSERT_AT(loc, cond, ...) ::ak::priv::ak_ensure((cond), #cond, loc                            , ##__VA_ARGS__)
@@ -48,13 +49,12 @@ constexpr AkBool AK_TRACE_DEBUG_CODE             = false;
 constexpr AkBool AK_ENABLE_FULL_INVARIANT_CHECKS = true;
 constexpr AkU64  AK_CACHE_LINE_SIZE              = 64;
 
-namespace ak::priv {
-    
-    struct AkDLink { 
-        AkDLink* next; 
-        AkDLink* prev; 
-    };
+struct AkDLink { 
+    AkDLink* next; 
+    AkDLink* prev; 
+};
 
+namespace ak::priv {
     ///\brief Assertion backend
     template <typename... Args>
     inline AkVoid ak_ensure(

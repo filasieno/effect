@@ -46,7 +46,11 @@ namespace fs = std::filesystem;
 // -----------------------------
 
 // Parameter describing a single test case discovered from the data directory.
-struct JSONCaseParam { std::string name; fs::path input; fs::path expected; };
+struct TestCaseParam { 
+    std::string name; 
+    fs::path input; 
+    fs::path expected; 
+};
 
 // Sink that accumulates serialized events and per-buffer snapshots.
 struct SerializedSink {
@@ -54,54 +58,54 @@ struct SerializedSink {
     AkU32 last_err_code = 0;
     // For multi-buffer tests, store intermediate results
     std::vector<std::vector<std::string>> buffer_results;
-    std::vector<JSONParserState> buffer_states;
+    std::vector<AkJSONParserState> buffer_states;
     std::vector<AkU32> buffer_error_codes;
 };
 
 // gtest typed fixture
-struct JSONParser : public ::testing::TestWithParam<JSONCaseParam> {};
+struct JSONParser : public ::testing::TestWithParam<TestCaseParam> {};
 
 // on_json_event
 //  Unified callback invoked by the parser. Translates events into textual
 //  lines appended to the SerializedSink. Returns 0 to let parsing continue.
-static int on_json_event(JSONParseSession *session, ak::JSONEvent event, const JSONEventData *data, AkU64 more) noexcept {
+static int on_json_event(AkJSONParser *session, AkJSONEvent event, const AkJSONEventData *data, AkU64 more) noexcept {
     auto *sink = static_cast<SerializedSink *>(session->user_data);
     if (!sink) return 0;
     switch (event) {
-        case ak::JSONEvent::OBJECT_BEGIN: sink->lines.emplace_back("BEGIN_OBJECT"); break;
-        case ak::JSONEvent::OBJECT_END: sink->lines.emplace_back("END_OBJECT"); break;
-        case ak::JSONEvent::ARRAY_BEGIN: sink->lines.emplace_back("BEGIN_ARRAY"); break;
-        case ak::JSONEvent::ARRAY_END: sink->lines.emplace_back("END_ARRAY"); break;
-        case ak::JSONEvent::ATTR_KEY:
+        case AkJSONEvent::OBJECT_BEGIN: sink->lines.emplace_back("BEGIN_OBJECT"); break;
+        case AkJSONEvent::OBJECT_END: sink->lines.emplace_back("END_OBJECT"); break;
+        case AkJSONEvent::ARRAY_BEGIN: sink->lines.emplace_back("BEGIN_ARRAY"); break;
+        case AkJSONEvent::ARRAY_END: sink->lines.emplace_back("END_ARRAY"); break;
+        case AkJSONEvent::ATTR_KEY:
             if (data) sink->lines.emplace_back(std::string("ATTR_KEY \"") + std::string(data->string_data.str, data->string_data.len) + "\" more=" + (more ? "1" : "0"));
             break;
-        case ak::JSONEvent::NULL_VALUE: sink->lines.emplace_back("NULL"); break;
-        case ak::JSONEvent::BOOL_VALUE:
+        case AkJSONEvent::NULL_VALUE: sink->lines.emplace_back("NULL"); break;
+        case AkJSONEvent::BOOL_VALUE:
             if (data) sink->lines.emplace_back(std::string("BOOL ") + (data->bool_value ? "true" : "false"));
             break;
-        case ak::JSONEvent::INT_VALUE:
+        case AkJSONEvent::INT_VALUE:
             if (data) sink->lines.emplace_back(std::string("INT ") + std::to_string((long long)data->int_value));
             break;
-        case ak::JSONEvent::FLOAT_VALUE: {
+        case AkJSONEvent::FLOAT_VALUE: {
             if (data) { std::ostringstream os; os.setf(std::ios::fmtflags(0), std::ios::floatfield); os.precision(17); os << data->float_value; sink->lines.emplace_back(std::string("FLOAT ") + os.str()); }
             break; }
-        case ak::JSONEvent::STRING_VALUE:
+        case AkJSONEvent::STRING_VALUE:
             if (data) sink->lines.emplace_back(std::string("STRING_VALUE \"") + std::string(data->string_data.str, data->string_data.len) + "\" more=" + (more ? "1" : "0"));
             break;
-        case ak::JSONEvent::PARSE_STATE_CHANGED:
+        case AkJSONEvent::PARSE_STATE_CHANGED:
             if (data) {
                 sink->last_err_code = data->state_data.err_code;
                 switch (data->state_data.state) {
-                    case JSONParserState::INITIALIZED:
+                    case AkJSONParserState::INITIALIZED:
                         sink->lines.emplace_back("STATE_CHANGED_EVENT: STATE_INITIALIZED");
                         break;
-                    case JSONParserState::CONTINUE:
+                    case AkJSONParserState::CONTINUE:
                         sink->lines.emplace_back("STATE_CHANGED_EVENT: STATE_CONTINUE");
                         break;
-                    case JSONParserState::DONE:
+                    case AkJSONParserState::DONE:
                         sink->lines.emplace_back("STATE_CHANGED_EVENT: STATE_DONE");
                         break;
-                    case JSONParserState::ERROR:
+                    case AkJSONParserState::ERROR:
                         sink->lines.emplace_back(std::string("STATE_CHANGED_EVENT: STATE_ERROR ") + std::to_string((unsigned long long)data->state_data.err_code));
                         break;
                     default:
@@ -110,7 +114,7 @@ static int on_json_event(JSONParseSession *session, ak::JSONEvent event, const J
                 }
             }
             break;
-        case ak::JSONEvent::PARSE_EOF:
+        case AkJSONEvent::PARSE_EOF:
             sink->lines.emplace_back("PARSE_EOF_EVENT");
             break;
     }
@@ -121,11 +125,11 @@ static int on_json_event(JSONParseSession *session, ak::JSONEvent event, const J
 //  Configure a parse session from header key/values, feed each JSON chunk,
 //  record per-chunk outputs, and finalize with EOF notification when needed.
 //  Returns the final JSONParserState and sets out_err_code on error.
-static JSONParserState parse_json_chunks(const std::vector<std::pair<std::string,std::string>> &kv,
+static AkJSONParserState parse_json_chunks(const std::vector<std::pair<std::string,std::string>> &kv,
                                          const std::vector<std::string> &chunks,
                                          SerializedSink &sink, AkU32 &out_err_code, std::ostream &log_stream) {
     // Defaults; may be overridden by key/values in the test input header
-    JSONParseSessionConfig cfg = { };
+    AkJSONParserConfig cfg = { };
     // Apply key/value configuration
     for (const auto &p : kv) {
         if (p.first == "max_depth") {
@@ -141,23 +145,23 @@ static JSONParserState parse_json_chunks(const std::vector<std::pair<std::string
     }
 
     // Determine required parser buffer size and allocate dynamically
-    AkU64 required_size = get_required_parse_session_buffer_size(&cfg);
+    AkU64 required_size = ak_get_required_buffer_size(&cfg);
     log_stream << "INFO: Required parser buffer size: " << required_size << " bytes\n";
     void *parser_mem = std::malloc((size_t)required_size);
     if (!parser_mem) {
         log_stream << "ERROR: Failed to allocate parser buffer of size " << required_size << "\n";
-        out_err_code = (AkU32)JSONErrorCode::FATAL_STACK_OOB; // generic internal error for OOM in tests
-        return JSONParserState::ERROR;
+        out_err_code = (AkU32)AkJSONErrorCode::FATAL_STACK_OOB; // generic internal error for OOM in tests
+        return AkJSONParserState::ERROR;
     }
     std::memset(parser_mem, 0, (size_t)required_size);
-    JSONParseSession *session = init_json_parser(parser_mem, required_size, &cfg, on_json_event, (AkVoid *)&sink);
+    AkJSONParser *session = ak_init_json_parser(parser_mem, required_size, &cfg, on_json_event, (AkVoid *)&sink);
     if (!session) {
         log_stream << "ERROR: Failed to initialize JSON parser session\n";
         std::free(parser_mem);
-        return JSONParserState::ERROR;
+        return AkJSONParserState::ERROR;
     }
     log_stream << "INFO: JSON parser session initialized successfully\n";
-    JSONParserState st = JSONParserState::INVALID;
+    AkJSONParserState st = AkJSONParserState::INVALID;
 
     for (size_t i = 0; i < chunks.size(); ++i) {
         log_stream << "INFO: Processing chunk " << (i + 1) << "/" << chunks.size() << " (size: " << chunks[i].size() << " bytes)\n";
@@ -165,37 +169,37 @@ static JSONParserState parse_json_chunks(const std::vector<std::pair<std::string
         // Capture lines before this chunk for intermediate results
         size_t chunk_start_lines = sink.lines.size();
 
-        st = run_json_parser(session, (void *)chunks[i].data(), (AkU64)chunks[i].size());
-        log_stream << "INFO: Chunk " << (i + 1) << " processing result: " << (st == JSONParserState::DONE ? "DONE" :
-                                                                               st == JSONParserState::CONTINUE ? "CONTINUE" :
-                                                                               st == JSONParserState::ERROR ? "ERROR" : "INVALID") << "\n";
+        st = ak_run_json_parser(session, (void *)chunks[i].data(), (AkU64)chunks[i].size());
+        log_stream << "INFO: Chunk " << (i + 1) << " processing result: " << (st == AkJSONParserState::DONE ? "DONE" :
+                                                                               st == AkJSONParserState::CONTINUE ? "CONTINUE" :
+                                                                               st == AkJSONParserState::ERROR ? "ERROR" : "INVALID") << "\n";
 
         // Store intermediate results for this buffer
         std::vector<std::string> chunk_lines(sink.lines.begin() + chunk_start_lines, sink.lines.end());
         sink.buffer_results.push_back(chunk_lines);
         sink.buffer_states.push_back(st);
-        sink.buffer_error_codes.push_back((st == JSONParserState::ERROR) ? sink.last_err_code : 0);
+        sink.buffer_error_codes.push_back((st == AkJSONParserState::ERROR) ? sink.last_err_code : 0);
 
-        if (st == JSONParserState::ERROR) break;
+        if (st == AkJSONParserState::ERROR) break;
     }
 
     // Always signal end of input when parser expects more data
-    if (st == JSONParserState::CONTINUE) {
+    if (st == AkJSONParserState::CONTINUE) {
         log_stream << "INFO: Calling stop_json_parser to signal end of input\n";
 
         // Capture lines before stop_json_parser for intermediate results
         size_t lines_before_stop = sink.lines.size();
 
-        st = eof_json_parser(session);
-        log_stream << "INFO: stop_json_parser result: " << (st == JSONParserState::DONE ? "DONE" :
-                                                             st == JSONParserState::CONTINUE ? "CONTINUE" :
-                                                             st == JSONParserState::ERROR ? "ERROR" : "INVALID") << "\n";
+        st = ak_eof_json_parser(session);
+        log_stream << "INFO: stop_json_parser result: " << (st == AkJSONParserState::DONE ? "DONE" :
+                                                             st == AkJSONParserState::CONTINUE ? "CONTINUE" :
+                                                             st == AkJSONParserState::ERROR ? "ERROR" : "INVALID") << "\n";
 
         // Store results from stop_json_parser as a separate "buffer"
         std::vector<std::string> stop_lines(sink.lines.begin() + lines_before_stop, sink.lines.end());
         sink.buffer_results.push_back(stop_lines);
         sink.buffer_states.push_back(st);
-        sink.buffer_error_codes.push_back((st == JSONParserState::ERROR) ? sink.last_err_code : 0);
+        sink.buffer_error_codes.push_back((st == AkJSONParserState::ERROR) ? sink.last_err_code : 0);
     }
 
     // If we have multiple buffers and the first buffer doesn't include the
@@ -208,11 +212,11 @@ static JSONParserState parse_json_chunks(const std::vector<std::pair<std::string
         }
     }
 
-    out_err_code = (st == JSONParserState::ERROR) ? sink.last_err_code : 0;
-    log_stream << "INFO: Final parsing state: " << (st == JSONParserState::DONE ? "DONE" :
-                                                     st == JSONParserState::CONTINUE ? "CONTINUE" :
-                                                     st == JSONParserState::ERROR ? "ERROR" : "INVALID") << "\n";
-    if (st == JSONParserState::ERROR) {
+    out_err_code = (st == AkJSONParserState::ERROR) ? sink.last_err_code : 0;
+    log_stream << "INFO: Final parsing state: " << (st == AkJSONParserState::DONE ? "DONE" :
+                                                     st == AkJSONParserState::CONTINUE ? "CONTINUE" :
+                                                     st == AkJSONParserState::ERROR ? "ERROR" : "INVALID") << "\n";
+    if (st == AkJSONParserState::ERROR) {
         log_stream << "ERROR: Parsing failed with error code: " << out_err_code << "\n";
     }
     // Free allocated parser buffer
@@ -233,12 +237,12 @@ static std::string serialize_out(const SerializedSink &sink) {
             for (const auto &ln : sink.buffer_results[i]) os << ln << "\n";
 
             // If this buffer had an error, stop here (don't include subsequent buffers)
-            if (sink.buffer_states[i] == JSONParserState::ERROR) {
+            if (sink.buffer_states[i] == AkJSONParserState::ERROR) {
                 break;
             }
 
             // Add buffer separator if not the last buffer and not an error
-            if (i < sink.buffer_results.size() - 1 && sink.buffer_states[i] != JSONParserState::ERROR) {
+            if (i < sink.buffer_results.size() - 1 && sink.buffer_states[i] != AkJSONParserState::ERROR) {
                 os << "---\n";
             }
         }
@@ -289,8 +293,8 @@ static bool read_input_case(const fs::path &p, std::vector<std::pair<std::string
 // discover_cases
 //  Enumerate <name>.txt inputs and pair them with existing <name>.expected.txt
 //  expected files. Skip files that are themselves expected files.
-static std::vector<JSONCaseParam> discover_cases(const fs::path &data_root) {
-    std::vector<JSONCaseParam> out;
+static std::vector<TestCaseParam> discover_cases(const fs::path &data_root) {
+    std::vector<TestCaseParam> out;
     if (!fs::exists(data_root)) return out;
     for (auto &entry : fs::directory_iterator(data_root)) {
         if (!entry.is_regular_file()) continue;
@@ -304,7 +308,7 @@ static std::vector<JSONCaseParam> discover_cases(const fs::path &data_root) {
         // New expected suffix: .expected.txt
         fs::path expected = data_root / (in_path.stem().string() + ".expected.txt");
         if (fs::exists(expected) && fs::is_regular_file(expected)) {
-            out.push_back(JSONCaseParam{name, in_path, expected});
+            out.push_back(TestCaseParam{name, in_path, expected});
         }
     }
     return out;
@@ -417,14 +421,14 @@ TEST_P(JSONParser, Case) {
     EXPECT_TRUE(test_passed);  // Details are in log files, keep stdout clean
 }
 
-static std::vector<JSONCaseParam> load_params() {
+static std::vector<TestCaseParam> load_params() {
     const char *env_data = std::getenv("AK_TEST_DATA_DIR");
     fs::path data_root = env_data ? fs::path(env_data) : fs::path("libak/test/json/data");
     return discover_cases(data_root);
 }
 
 struct NamePrinter {
-    std::string operator()(const ::testing::TestParamInfo<JSONCaseParam>& info) const {
+    std::string operator()(const ::testing::TestParamInfo<TestCaseParam>& info) const {
         // Use the full filename with extension stripped for uniqueness
         std::string name = info.param.name;
         // Remove .txt extension

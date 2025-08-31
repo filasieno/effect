@@ -77,7 +77,7 @@ void verify_tree(const AllocFreeBlockHeader* node, AkU64 min_key = 0, AkU64 max_
             if (!is_tree_node(current)) {
                 verify_tree(current);
             }
-            priv::AkDLink* nl = current->multimap_link.next;
+            AkDLink* nl = current->multimap_link.next;
             current = (const AllocFreeBlockHeader*)((const AkChar*)nl - AK_OFFSET(AllocFreeBlockHeader, multimap_link));
             ++count;
             ASSERT_LT(count, 1000) << "Infinite list loop";
@@ -600,10 +600,10 @@ TEST(AllocFreeBlockHeaderTest, IsDetached) {
     b->multimap_link.prev = &b->multimap_link;
     EXPECT_TRUE(is_detached(b));
 
-    b->multimap_link.next = reinterpret_cast<priv::AkDLink*>(0x1);
+    b->multimap_link.next = reinterpret_cast<AkDLink*>(0x1);
     EXPECT_FALSE(is_detached(b));
 
-    b->multimap_link.prev = reinterpret_cast<priv::AkDLink*>(0x2);
+    b->multimap_link.prev = reinterpret_cast<AkDLink*>(0x2);
     EXPECT_FALSE(is_detached(b));
 
     b->multimap_link.next = &b->multimap_link;

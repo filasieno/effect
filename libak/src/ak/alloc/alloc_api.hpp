@@ -41,14 +41,13 @@ namespace ak {
 
     struct AllocPooledFreeBlockHeader : public AllocBlockHeader 
     { 
-        priv::AkDLink freelist_link; 
+        AkDLink freelist_link; 
     };
     static_assert(sizeof(AllocPooledFreeBlockHeader) == 32);
 
-
     struct AllocFreeBlockHeader : public AllocBlockHeader 
     {
-        priv::AkDLink          multimap_link;
+        AkDLink                multimap_link;
         AllocFreeBlockHeader*  parent;
         AllocFreeBlockHeader*  left;
         AllocFreeBlockHeader*  right;
@@ -80,7 +79,7 @@ namespace ak {
         static constexpr int ALLOCATOR_BIN_COUNT = AllocStats::ALLOCATOR_BIN_COUNT;
 
         alignas(8)  AkU64                       freelist_mask;
-        alignas(64) priv::AkDLink               freelist_head[ALLOCATOR_BIN_COUNT];
+        alignas(64) AkDLink                     freelist_head[ALLOCATOR_BIN_COUNT];
         alignas(64) AkU32                       freelist_count[ALLOCATOR_BIN_COUNT];
         alignas(8)  AkChar*                     heap_begin;
         alignas(8)  AkChar*                     heap_end;

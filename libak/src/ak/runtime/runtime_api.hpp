@@ -6,97 +6,104 @@
 #include "ak/base/base.hpp"   // IWYU pragma: keep
 #include "ak/alloc/alloc.hpp" // IWYU pragma: keep
 
-namespace ak { 
-   
- 
-    /// \brief A handle to a cooperative thread (C++20 coroutine)
-    /// \ingroup CThread
-    struct CThread {
-        struct Context;
-        using Hdl = std::coroutine_handle<Context>;
-        using promise_type = Context;
+struct AkPromise;
+using AkCoroutineHandle = std::coroutine_handle<AkPromise>;
 
-        /// \brief Idenfies the state of a task
-        /// \ingroup Task
-        enum class State
-        {
-            INVALID = 0, ///< Invalid OR uninitialized state
-            CREATED,     ///< Task has been created (BUT NOT REGISTERED WITH THE RUNTINME)
-            READY,       ///< Ready for execution
-            RUNNING,     ///< Currently running
-            IO_WAITING,  ///< Waiting for IO
-            WAITING,     ///< Waiting for an event
-            ZOMBIE,      ///< Already dead
-            DELETING     ///< Currently being deleted
-        };
 
-        struct Context {
-            using AkDLink = priv::AkDLink;
-            struct SizeProbe {};
-    
-            struct InitialSuspend {
-                constexpr AkBool await_ready() const noexcept  { return false; }
-                constexpr AkVoid await_resume() const noexcept {}
-                AkVoid           await_suspend(Hdl hdl) const noexcept;
-            };
-    
-            struct FinalSuspend {
-                constexpr AkBool await_ready() const noexcept  { return false; }
-                constexpr AkVoid await_resume() const noexcept {}
-                Hdl            await_suspend(Hdl hdl) const noexcept;
-            };
-    
-            static AkVoid*   operator new(std::size_t n) noexcept;
-            static AkVoid    operator delete(AkVoid* ptr, std::size_t sz);
-            static CThread get_return_object_on_allocation_failure() noexcept { return {}; }
-    
-            template <typename... Args>
-            Context(Args&&...);
-            ~Context();
-            
-            CThread        get_return_object() noexcept { return { Hdl::from_promise(*this) }; }
-            constexpr auto initial_suspend() const noexcept { return InitialSuspend {}; }
-            constexpr auto final_suspend () const noexcept { return FinalSuspend{}; }
-            AkVoid           return_value(int value) noexcept;
-            AkVoid           unhandled_exception() noexcept;
+/// \brief Idenfies the state of a task
+/// \ingroup Task
+enum class AkCoroutineState
+{
+    INVALID = 0, ///< Invalid OR uninitialized state
+    CREATED,     ///< Task has been created (BUT NOT REGISTERED WITH THE RUNTINME)
+    READY,       ///< Ready for execution
+    RUNNING,     ///< Currently running
+    IO_WAITING,  ///< Waiting for IO
+    WAITING,     ///< Waiting for an event
+    ZOMBIE,      ///< Already dead
+    DELETING     ///< Currently being deleted
+};
 
-            State state;
-            int   res;
-            AkU32   prepared_io;
-            AkDLink wait_link;     //< Used to enqueue tasks waiting for Critical Section
-            AkDLink tasklist_link; //< Global Task list
-            AkDLink awaiter_list;  //< The list of all tasks waiting for this task
-        };
 
-        CThread() = default;
-        CThread(const CThread&) = default;
-        CThread(CThread&&) = default;
-        CThread& operator=(const CThread&) = default;
-        CThread& operator=(CThread&&) = default;
-        ~CThread() = default;
+struct CThread;
 
-        CThread(const Hdl& hdl) : hdl(hdl) {}
-        CThread& operator=(const Hdl& hdl) {
-            this->hdl = hdl;
-            return *this;
-        }    
-        AkBool operator==(const CThread& other) const noexcept { return hdl == other.hdl; }
-        operator AkBool() const noexcept { return hdl.address() != nullptr; }
-        operator Hdl() const noexcept { return hdl; }
-        
-        AkVoid reset() noexcept {
-            hdl = Hdl{};
-        }
+struct AkPromise {
 
-        Hdl hdl;
+    struct InitialSuspend {
+        constexpr AkBool await_ready() const noexcept  { return false; }
+        constexpr AkVoid await_resume() const noexcept {}
+        AkVoid           await_suspend(AkCoroutineHandle hdl) const noexcept;
     };
-    const char* to_string(CThread::State state) noexcept;
+
+    struct FinalSuspend {
+        constexpr AkBool  await_ready() const noexcept  { return false; }
+        constexpr AkVoid  await_resume() const noexcept {}
+        AkCoroutineHandle await_suspend(AkCoroutineHandle hdl) const noexcept;
+    };
+
+    static AkVoid*   operator new(std::size_t n) noexcept;
+    static AkVoid    operator delete(AkVoid* ptr, std::size_t sz);
+    static CThread   get_return_object_on_allocation_failure() noexcept;
+
+    template <typename... Args>
+    AkPromise(Args&&...);
+    ~AkPromise();
     
-    inline CThread::Hdl to_handle(CThread::Context* cthread_context) noexcept {
-        return CThread::Hdl::from_promise(*cthread_context);        
+    CThread        get_return_object() noexcept;
+    constexpr auto initial_suspend() const noexcept { return InitialSuspend {}; }
+    constexpr auto final_suspend () const noexcept { return FinalSuspend{}; }
+    AkVoid         return_value(int value) noexcept;
+    AkVoid         unhandled_exception() noexcept;
+
+    AkCoroutineState state;
+    AkI32            res;
+    AkU32            prepared_io;
+    AkDLink          wait_link;     //< Used to enqueue tasks waiting for Critical Section
+    AkDLink          tasklist_link; //< Global Task list
+    AkDLink          awaiter_list;  //< The list of all tasks waiting for this task
+};
+
+
+
+/// \brief A handle to a cooperative thread (C++20 coroutine)
+/// \ingroup CThread
+struct CThread {
+    using Hdl = AkCoroutineHandle;
+    using promise_type = AkPromise;
+
+    CThread() = default;
+    CThread(const CThread&) = default;
+    CThread(CThread&&) = default;
+    CThread& operator=(const CThread&) = default;
+    CThread& operator=(CThread&&) = default;
+    ~CThread() = default;
+
+    CThread(const Hdl& hdl) : hdl(hdl) {}
+    CThread& operator=(const Hdl& hdl) {
+        this->hdl = hdl;
+        return *this;
+    }    
+    AkBool operator==(const CThread& other) const noexcept { return hdl == other.hdl; }
+    operator AkBool() const noexcept { return hdl.address() != nullptr; }
+    operator AkCoroutineHandle() const noexcept { return hdl; }
+    
+    AkVoid reset() noexcept {
+        hdl = Hdl{};
     }
 
+    AkCoroutineHandle hdl;
+};
+const char* to_string(AkCoroutineState state) noexcept;
 
+inline AkCoroutineHandle to_handle(AkPromise* cthread_context) noexcept {
+    return AkCoroutineHandle::from_promise(*cthread_context);        
+}
+
+inline CThread AkPromise::get_return_object_on_allocation_failure() noexcept { return {}; }
+inline CThread AkPromise::get_return_object() noexcept { return { AkCoroutineHandle::from_promise(*this) }; }
+
+namespace ak { 
+ 
     // Kernel
     // ----------------------------------------------------------------------------------------------------------------
     
@@ -139,7 +146,7 @@ namespace ak {
     };
     
     struct Kernel {
-        using AkDLink = priv::AkDLink;
+        using AkDLink = AkDLink;
         
         // Allocation table
         AllocTable alloc_table;
@@ -167,11 +174,14 @@ namespace ak {
         AkI32         interrupted;
         
         // IOManagement
-        io_uring    io_uring_state;
+        io_uring      io_uring_state;
         AkU32         ioentry_count;
     };
+}
 
-    extern Kernel global_kernel_state;
+extern ak::Kernel global_kernel_state;
+
+namespace ak {
     
     // Main Routine
     struct KernelConfig {
@@ -186,12 +196,12 @@ namespace ak {
     template <typename... Args>
     int run_main(CThread (*co_main)(Args ...) noexcept, Args... args) noexcept;
     
-    //struct Event { priv::AkDLink wait_list; };
+    //struct Event { AkDLink wait_list; };
     //
     // Declarations for ops 
     namespace op {
         struct ResumeCThread {
-            using Hdl = CThread::Hdl;
+            using Hdl = AkCoroutineHandle;
             explicit ResumeCThread(CThread ct) : hdl(ct.hdl) {};
     
             constexpr AkBool await_ready() const noexcept { return false; }
@@ -202,7 +212,7 @@ namespace ak {
         };
 
         struct JoinCThread {
-            using Hdl = CThread::Hdl;
+            using Hdl = AkCoroutineHandle;
             explicit JoinCThread(Hdl hdl) : hdl(hdl) {};
     
             constexpr AkBool await_ready() const noexcept { return false; }
@@ -213,7 +223,7 @@ namespace ak {
         };
 
         struct Suspend {
-            using Hdl = CThread::Hdl;
+            using Hdl = AkCoroutineHandle;
 
             constexpr AkBool await_ready() const noexcept { return false; }
             Hdl            await_suspend(Hdl hdl) const noexcept;
@@ -221,7 +231,7 @@ namespace ak {
         };
 
         struct GetCurrentTask {
-            using Hdl = CThread::Hdl;
+            using Hdl = AkCoroutineHandle;
             constexpr AkBool await_ready() const noexcept { return false; }
             constexpr Hdl  await_suspend(Hdl hdl) noexcept;
             constexpr Hdl  await_resume() const noexcept { return hdl; }
@@ -232,11 +242,11 @@ namespace ak {
     // Declarations for ops 
 
     // CThread routines
-    AkBool                is_valid(CThread thread) noexcept;
-    AkBool                is_done(CThread thread) noexcept;
-    CThread::Context*   get_context() noexcept;
-    CThread::Context*   get_context(CThread thread) noexcept;
-    CThread::State      get_state(CThread thread) noexcept;
+    AkBool              is_valid(CThread thread) noexcept;
+    AkBool              is_done(CThread thread) noexcept;
+    AkPromise*          get_context() noexcept;
+    AkPromise*          get_context(CThread thread) noexcept;
+    AkCoroutineState    get_state(CThread thread) noexcept;
     op::JoinCThread     join(CThread thread) noexcept;
     op::JoinCThread     operator co_await(CThread thread) noexcept;
     op::ResumeCThread   resume(CThread thread) noexcept;
@@ -364,3 +374,5 @@ namespace ak {
     op::ExecIO io_cancel_fd(int fd, unsigned int flags) noexcept;
 
 }
+
+

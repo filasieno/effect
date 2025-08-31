@@ -6,8 +6,8 @@ using namespace ak;
 using namespace ak::priv;
 
 struct Data {
-    priv::AkDLink node;
-    int        value;
+    AkDLink node;
+    int     value;
 };
 
 TEST(UtlAkDLinkTest, BasicOperations) {
@@ -15,23 +15,23 @@ TEST(UtlAkDLinkTest, BasicOperations) {
     Data d2{.node = {}, .value = 200};
     Data d3{.node = {}, .value = 300};
 
-    init_AkDLink(&d1.node);
-    init_AkDLink(&d2.node);
-    init_AkDLink(&d3.node);
+    ak_init_dlink(&d1.node);
+    ak_init_dlink(&d2.node);
+    ak_init_dlink(&d3.node);
 
-    EXPECT_TRUE(is_AkDLink_detached(&d1.node));
-    EXPECT_TRUE(is_AkDLink_detached(&d2.node));
-    EXPECT_TRUE(is_AkDLink_detached(&d3.node));
+    EXPECT_TRUE(ak_is_dlink_detached(&d1.node));
+    EXPECT_TRUE(ak_is_dlink_detached(&d2.node));
+    EXPECT_TRUE(ak_is_dlink_detached(&d3.node));
 
-    enqueue_AkDLink(&d1.node, &d2.node);
-    EXPECT_FALSE(is_AkDLink_detached(&d1.node));
-    EXPECT_FALSE(is_AkDLink_detached(&d2.node));
+    ak_enqueue_dlink(&d1.node, &d2.node);
+    EXPECT_FALSE(ak_is_dlink_detached(&d1.node));
+    EXPECT_FALSE(ak_is_dlink_detached(&d2.node));
     EXPECT_EQ(d1.node.next, &d2.node);
     EXPECT_EQ(d1.node.prev, &d2.node);
     EXPECT_EQ(d2.node.prev, &d1.node);
     EXPECT_EQ(d2.node.next, &d1.node);
 
-    enqueue_AkDLink(&d2.node, &d3.node);
+    ak_enqueue_dlink(&d2.node, &d3.node);
     EXPECT_EQ(d3.node.prev, &d2.node);
     EXPECT_EQ(d3.node.next, &d1.node);
     EXPECT_EQ(d2.node.next, &d3.node);

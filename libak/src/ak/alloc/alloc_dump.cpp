@@ -146,9 +146,9 @@ namespace ak { namespace priv {
 
         // Print FreeListPrev (with AkDLink)
         if (h->this_desc.state == (AkU32)AllocBlockState::FREE && h->this_desc.size <= 2048) {
-            const priv::AkDLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
-            const priv::AkDLink* prev = free_list_link->prev;
-            const priv::AkDLink* head = &at->freelist_head[bin_idx];
+            const AkDLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
+            const AkDLink* prev = free_list_link->prev;
+            const AkDLink* head = &at->freelist_head[bin_idx];
             if (prev == head) {
                 std::print("{} {:<18} ", state_color, "HEAD");
             } else {
@@ -165,9 +165,9 @@ namespace ak { namespace priv {
 
         // Print FreeList Next (with AkDLink)
         if (h->this_desc.state == (AkU32)AllocBlockState::FREE && h->this_desc.size <= 2048) {
-            const priv::AkDLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
-            const priv::AkDLink* next = free_list_link->next;
-            const priv::AkDLink* head = &at->freelist_head[bin_idx];
+            const AkDLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
+            const AkDLink* next = free_list_link->next;
+            const AkDLink* head = &at->freelist_head[bin_idx];
             if (next == head) {
                 std::print("{} {:<18} ", state_color, "HEAD");
             } else {

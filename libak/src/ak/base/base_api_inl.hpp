@@ -9,7 +9,102 @@
 #include <tuple>
 
 
-namespace ak { namespace priv {
+
+inline AkVoid ak_init_dlink(AkDLink* link) noexcept {
+    AK_ASSERT(link != nullptr);
+    link->next = link;
+    link->prev = link;
+}
+
+inline AkBool ak_is_dlink_detached(const AkDLink* link) noexcept {
+    AK_ASSERT(link != nullptr);
+    AK_ASSERT(link->next != nullptr);
+    AK_ASSERT(link->prev != nullptr);
+    return link->next == link && link->prev == link;
+}
+
+inline AkVoid ak_detach_dlink(AkDLink* link) noexcept {
+    AK_ASSERT(link != nullptr);
+    AK_ASSERT(link->next != nullptr);
+    AK_ASSERT(link->prev != nullptr);
+    if (ak_is_dlink_detached(link)) return;
+    link->next->prev = link->prev;
+    link->prev->next = link->next;
+    link->next = link;
+    link->prev = link;
+}
+
+inline AkVoid ak_clear_dlink(AkDLink* link) noexcept {
+    AK_ASSERT(link != nullptr);
+    link->next = nullptr;
+    link->prev = nullptr;
+}
+
+   
+
+
+
+
+
+inline AkVoid ak_enqueue_dlink(AkDLink* queue, AkDLink* link) noexcept {
+    AK_ASSERT(queue != nullptr);
+    AK_ASSERT(link != nullptr);
+    AK_ASSERT(queue->next != nullptr);
+    AK_ASSERT(queue->prev != nullptr);
+    link->next = queue->next;
+    link->prev = queue;
+    link->next->prev = link;
+    queue->next = link;
+}
+
+inline AkDLink* ak_dequeue_dlink(AkDLink* queue) noexcept {
+    AK_ASSERT(queue != nullptr);
+    AK_ASSERT(queue->next != nullptr);
+    AK_ASSERT(queue->prev != nullptr);
+    if (ak_is_dlink_detached(queue)) return nullptr;
+    AkDLink* target = queue->prev;
+    ak_detach_dlink(target);
+    return target;
+}
+
+inline AkVoid ak_insert_prev_dlink(AkDLink* queue, AkDLink* link) noexcept {
+    AK_ASSERT(queue != nullptr);
+    AK_ASSERT(link != nullptr);
+    AK_ASSERT(queue->next != nullptr);
+    AK_ASSERT(queue->prev != nullptr);
+    link->next = queue;
+    link->prev = queue->prev;
+    link->next->prev = link;
+    link->prev->next = link;
+}
+
+inline AkVoid ak_insert_next_dlink(AkDLink* queue, AkDLink* link) noexcept {
+    AK_ASSERT(queue != nullptr);
+    AK_ASSERT(link != nullptr);
+    AK_ASSERT(queue->next != nullptr);
+    AK_ASSERT(queue->prev != nullptr);
+    link->next = queue->next;
+    link->prev = queue;
+    link->next->prev = link;
+    queue->next = link;
+}
+
+inline AkVoid ak_push_dlink(AkDLink* stack, AkDLink* link) noexcept { 
+    ak_insert_next_dlink(stack, link); 
+}
+
+inline AkDLink* ak_pop_dlink(AkDLink* stack) noexcept {
+    AK_ASSERT(stack != nullptr);
+    AK_ASSERT(stack->next != nullptr);
+    AK_ASSERT(stack->prev != nullptr);
+    AK_ASSERT(!ak_is_dlink_detached(stack));
+    AkDLink* target = stack->next;
+    ak_detach_dlink(target);
+    return target;
+}
+
+
+namespace ak::priv {
 
     template <typename... Args>
     inline AkVoid ak_ensure(AkBool condition,
@@ -38,93 +133,6 @@ namespace ak { namespace priv {
             std::abort();
         }
     }
-
-    inline AkVoid init_AkDLink(AkDLink* link) noexcept {
-        AK_ASSERT(link != nullptr);
-        link->next = link;
-        link->prev = link;
-    }
-
-    inline AkBool is_AkDLink_detached(const AkDLink* link) noexcept {
-        AK_ASSERT(link != nullptr);
-        AK_ASSERT(link->next != nullptr);
-        AK_ASSERT(link->prev != nullptr);
-        return link->next == link && link->prev == link;
-    }
-
-    inline AkVoid detach_AkDLink(AkDLink* link) noexcept {
-        AK_ASSERT(link != nullptr);
-        AK_ASSERT(link->next != nullptr);
-        AK_ASSERT(link->prev != nullptr);
-        if (is_AkDLink_detached(link)) return;
-        link->next->prev = link->prev;
-        link->prev->next = link->next;
-        link->next = link;
-        link->prev = link;
-    }
-
-    inline AkVoid clear_AkDLink(AkDLink* link) noexcept {
-        AK_ASSERT(link != nullptr);
-        link->next = nullptr;
-        link->prev = nullptr;
-    }
-
-    inline AkVoid enqueue_AkDLink(AkDLink* queue, AkDLink* link) noexcept {
-        AK_ASSERT(queue != nullptr);
-        AK_ASSERT(link != nullptr);
-        AK_ASSERT(queue->next != nullptr);
-        AK_ASSERT(queue->prev != nullptr);
-        link->next = queue->next;
-        link->prev = queue;
-        link->next->prev = link;
-        queue->next = link;
-    }
-
-    inline AkDLink* dequeue_AkDLink(AkDLink* queue) noexcept {
-        AK_ASSERT(queue != nullptr);
-        AK_ASSERT(queue->next != nullptr);
-        AK_ASSERT(queue->prev != nullptr);
-        if (is_AkDLink_detached(queue)) return nullptr;
-        AkDLink* target = queue->prev;
-        detach_AkDLink(target);
-        return target;
-    }
-
-    inline AkVoid insert_prev_AkDLink(AkDLink* queue, AkDLink* link) noexcept {
-        AK_ASSERT(queue != nullptr);
-        AK_ASSERT(link != nullptr);
-        AK_ASSERT(queue->next != nullptr);
-        AK_ASSERT(queue->prev != nullptr);
-        link->next = queue;
-        link->prev = queue->prev;
-        link->next->prev = link;
-        link->prev->next = link;
-    }
-
-    inline AkVoid insert_next_AkDLink(AkDLink* queue, AkDLink* link) noexcept {
-        AK_ASSERT(queue != nullptr);
-        AK_ASSERT(link != nullptr);
-        AK_ASSERT(queue->next != nullptr);
-        AK_ASSERT(queue->prev != nullptr);
-        link->next = queue->next;
-        link->prev = queue;
-        link->next->prev = link;
-        queue->next = link;
-    }
-
-    inline AkVoid push_AkDLink(AkDLink* stack, AkDLink* link) noexcept { 
-        insert_next_AkDLink(stack, link); 
-    }
-
-    inline AkDLink* pop_AkDLink(AkDLink* stack) noexcept {
-        AK_ASSERT(stack != nullptr);
-        AK_ASSERT(stack->next != nullptr);
-        AK_ASSERT(stack->prev != nullptr);
-        AK_ASSERT(!is_AkDLink_detached(stack));
-        AkDLink* target = stack->next;
-        detach_AkDLink(target);
-        return target;
-    }
-
-}} // namespace ak::priv
+ 
+} // namespace ak::priv
 
