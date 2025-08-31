@@ -93,14 +93,14 @@ Initializes the parsing session.
 
 ```C++
 struct JSONParseSessionConfig {
-    U32 max_total_string_size;
-    U32 max_string_size;
-    U32 max_nesting;
-    U32 max_json_size;
-    U32 max_identifier_size;
+    AkU32 max_total_string_size;
+    AkU32 max_string_size;
+    AkU32 max_nesting;
+    AkU32 max_json_size;
+    AkU32 max_identifier_size;
 };
-U32               get_required_parse_session_buffer_size(JSONParseSessionConfig* cfg);
-JSONParseSession* init_json_parse_session(void* buffer, U64 buffer_size, ParseHandlers* handlers, void* user_data);
+AkU32               get_required_parse_session_buffer_size(JSONParseSessionConfig* cfg);
+JSONParseSession* init_json_parse_session(void* buffer, AkU64 buffer_size, ParseHandlers* handlers, void* user_data);
 
 ```
 

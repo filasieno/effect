@@ -22,21 +22,21 @@ namespace ak {
     inline CThread::Context::Context(Args&&... ) {
         using namespace priv;
 
-        init_dlink(&tasklist_link);
-        init_dlink(&wait_link);  
-        init_dlink(&awaiter_list);
+        init_AkDLink(&tasklist_link);
+        init_AkDLink(&wait_link);  
+        init_AkDLink(&awaiter_list);
         state = CThread::State::CREATED;
         prepared_io = 0;
         res = -1;
 
         // Check post-conditions
-        AK_ASSERT(is_dlink_detached(&tasklist_link));
-        AK_ASSERT(is_dlink_detached(&wait_link));
+        AK_ASSERT(is_AkDLink_detached(&tasklist_link));
+        AK_ASSERT(is_AkDLink_detached(&wait_link));
         AK_ASSERT(state == CThread::State::CREATED);
         // check_invariants();
     }
 
-    inline const Char* to_string(CThread::State state) noexcept 
+    inline const AkChar* to_string(CThread::State state) noexcept 
     {
         switch (state) {
             case CThread::State::INVALID:    return "INVALID";
@@ -54,7 +54,7 @@ namespace ak {
     // Inline Public API Implementation
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline Bool is_valid(CThread ct) noexcept { return ct.hdl.address() != nullptr; }
+    inline AkBool is_valid(CThread ct) noexcept { return ct.hdl.address() != nullptr; }
 
     inline CThread::Context* get_context(CThread ct) noexcept { return &ct.hdl.promise(); }
 
@@ -70,22 +70,22 @@ namespace ak {
 
     inline CThread::State get_state(CThread ct) noexcept { return ct.hdl.promise().state; }
 
-    inline Bool is_done(CThread ct) noexcept { return ct.hdl.done(); }
+    inline AkBool is_done(CThread ct) noexcept { return ct.hdl.done(); }
 
     inline op::ResumeCThread resume(CThread ct) noexcept { return op::ResumeCThread(ct); }
 
-    inline Void* try_alloc_mem(Size sz) noexcept { return priv::try_alloc_table_malloc(&global_kernel_state.alloc_table, sz); }
+    inline AkVoid* try_alloc_mem(AkSize sz) noexcept { return priv::try_alloc_table_malloc(&global_kernel_state.alloc_table, sz); }
 
-    inline Void free_mem(Void* ptr, U32 side_coalesching) noexcept { priv::alloc_table_free(&global_kernel_state.alloc_table, ptr, side_coalesching); }
+    inline AkVoid free_mem(AkVoid* ptr, AkU32 side_coalesching) noexcept { priv::alloc_table_free(&global_kernel_state.alloc_table, ptr, side_coalesching); }
 
-    inline I32 defragment_mem(U64 millis_time_budget) noexcept { return priv::defrag_alloc_table_mem(&global_kernel_state.alloc_table, millis_time_budget); }
+    inline AkI32 defragment_mem(AkU64 millis_time_budget) noexcept { return priv::defrag_alloc_table_mem(&global_kernel_state.alloc_table, millis_time_budget); }
 
     // Boot operations
     // ----------------------------------------------------------------------------------------------------------------
 
     namespace priv {
         
-        inline CThread::Context* get_linked_cthread_context(const DLink* link) noexcept {
+        inline CThread::Context* get_linked_cthread_context(const AkDLink* link) noexcept {
             unsigned long long promise_off = ((unsigned long long)link) - offsetof(CThread::Context, wait_link);
             return reinterpret_cast<CThread::Context*>(promise_off);
         }
@@ -94,14 +94,14 @@ namespace ak {
         // ----------------------------------------------------------------------------------------------------------------
 
         struct RunSchedulerOp {
-            constexpr Bool await_ready() const noexcept { return false; }
-            constexpr Void await_resume() const noexcept { }
+            constexpr AkBool await_ready() const noexcept { return false; }
+            constexpr AkVoid await_resume() const noexcept { }
             CThread::Hdl   await_suspend(BootCThread::Hdl current_task_hdl) const noexcept;
         };
     
         struct TerminateSchedulerOp {
-            constexpr Bool   await_ready() const noexcept { return false; }
-            constexpr Void   await_resume() const noexcept { }
+            constexpr AkBool   await_ready() const noexcept { return false; }
+            constexpr AkVoid   await_resume() const noexcept { }
             BootCThread::Hdl await_suspend(CThread::Hdl hdl) const noexcept;
         };
 
@@ -109,7 +109,7 @@ namespace ak {
         
         constexpr TerminateSchedulerOp terminate_scheduler() noexcept { return {}; }
         
-        Void                           destroy_scheduler(CThread hdl) noexcept;
+        AkVoid                           destroy_scheduler(CThread hdl) noexcept;
         
         // Coroutine System Boot
         // ----------------------------------------------------------------------------------------------------------------
@@ -153,7 +153,7 @@ namespace ak {
 
                 // If we have a ready task, resume it
                 if (global_kernel_state.ready_cthread_count > 0) {
-                    DLink* next_node = global_kernel_state.ready_list.prev;
+                    AkDLink* next_node = global_kernel_state.ready_list.prev;
                     CThread::Context* next_promise = get_linked_cthread_context(next_node);
                     CThread::Hdl next_task = CThread::Hdl::from_promise(*next_promise);
                     AK_ASSERT(next_task != global_kernel_state.scheduler_cthread);
@@ -164,16 +164,16 @@ namespace ak {
 
                 // Zombie bashing
                 while (global_kernel_state.zombie_cthread_count > 0) {
-                    DLink* zombie_link = dequeue_dlink(&global_kernel_state.zombie_list);
+                    AkDLink* zombie_link = dequeue_AkDLink(&global_kernel_state.zombie_list);
                     CThread::Context* ctx = get_linked_cthread_context(zombie_link);
                     AK_ASSERT(ctx->state == CThread::State::ZOMBIE);
 
                     // Remove from zombie list
                     --global_kernel_state.zombie_cthread_count;
-                    detach_dlink(&ctx->wait_link);
+                    detach_AkDLink(&ctx->wait_link);
 
                     // Remove from task list
-                    detach_dlink(&ctx->tasklist_link);
+                    detach_AkDLink(&ctx->tasklist_link);
                     --global_kernel_state.cthread_count;
 
                     // Delete
@@ -182,7 +182,7 @@ namespace ak {
                     zombieTaskHdl.destroy();
                 }
 
-                Bool waiting_cc = global_kernel_state.iowaiting_cthread_count;
+                AkBool waiting_cc = global_kernel_state.iowaiting_cthread_count;
                 if (waiting_cc) {
                     // Process all available completions
                     struct io_uring_cqe *cqe;
@@ -197,7 +197,7 @@ namespace ak {
                         --global_kernel_state.iowaiting_cthread_count;
                         ctx->state = CThread::State::READY;
                         ++global_kernel_state.ready_cthread_count;
-                        enqueue_dlink(&global_kernel_state.ready_list, &ctx->wait_link);
+                        enqueue_AkDLink(&global_kernel_state.ready_list, &ctx->wait_link);
                         
                         // Complete operation
                         ctx->res = cqe->res;

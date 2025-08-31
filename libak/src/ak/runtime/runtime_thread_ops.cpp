@@ -14,17 +14,17 @@ namespace ak {
 
         CThread::Context* current_promise = &current_task.promise();
 
-        if constexpr (IS_DEBUG_MODE) {
+        if constexpr (AK_IS_DEBUG_MODE) {
             AK_ASSERT(global_kernel_state.current_cthread == current_task);
             AK_ASSERT(current_promise->state == CThread::State::RUNNING);
-            AK_ASSERT(is_dlink_detached(&current_promise->wait_link));
+            AK_ASSERT(is_AkDLink_detached(&current_promise->wait_link));
             check_invariants();
         }
 
         // Move the current task from RUNNINIG to READY
         current_promise->state = CThread::State::READY;
         ++global_kernel_state.ready_cthread_count;
-        enqueue_dlink(&global_kernel_state.ready_list, &current_promise->wait_link);
+        enqueue_AkDLink(&global_kernel_state.ready_list, &current_promise->wait_link);
         global_kernel_state.current_cthread.reset();
         check_invariants();
 
@@ -41,21 +41,21 @@ namespace ak {
 
         // Check the current Task
         CThread::Context* current_promise = get_context(global_kernel_state.current_cthread);
-        AK_ASSERT(is_dlink_detached(&current_promise->wait_link));
+        AK_ASSERT(is_AkDLink_detached(&current_promise->wait_link));
         AK_ASSERT(current_promise->state == CThread::State::RUNNING);
         check_invariants();
 
         // Suspend the current Task
         current_promise->state = CThread::State::READY;
         ++global_kernel_state.ready_cthread_count;
-        enqueue_dlink(&global_kernel_state.ready_list, &current_promise->wait_link);
+        enqueue_AkDLink(&global_kernel_state.ready_list, &current_promise->wait_link);
         global_kernel_state.current_cthread.reset();
         check_invariants();
 
         // Move the target task from READY to RUNNING
         CThread::Context* promise = &hdl.promise();
         promise->state = CThread::State::RUNNING;
-        detach_dlink(&promise->wait_link);
+        detach_AkDLink(&promise->wait_link);
         --global_kernel_state.ready_cthread_count;
         global_kernel_state.current_cthread = hdl;
         check_invariants();
@@ -75,7 +75,7 @@ namespace ak {
 
         // Check CurrentTask preconditions
         AK_ASSERT(current_task_ctx->state == CThread::State::RUNNING);
-        AK_ASSERT(is_dlink_detached(&current_task_ctx->wait_link));
+        AK_ASSERT(is_AkDLink_detached(&current_task_ctx->wait_link));
         AK_ASSERT(global_kernel_state.current_cthread == current_task_hdl);
         check_invariants();
 
@@ -88,14 +88,14 @@ namespace ak {
                 // Move current Task from READY to WAITING
                 current_task_ctx->state = CThread::State::WAITING;
                 ++global_kernel_state.waiting_cthread_count;
-                enqueue_dlink(&joined_task_ctx->awaiter_list, &current_task_ctx->wait_link); 
+                enqueue_AkDLink(&joined_task_ctx->awaiter_list, &current_task_ctx->wait_link); 
                 global_kernel_state.current_cthread.reset();
                 check_invariants();
                 dump_task_count();
 
                 // Move the joined TASK from READY to RUNNING
                 joined_task_ctx->state = CThread::State::RUNNING;
-                detach_dlink(&joined_task_ctx->wait_link);
+                detach_AkDLink(&joined_task_ctx->wait_link);
                 --global_kernel_state.ready_cthread_count;
                 global_kernel_state.current_cthread = hdl;
                 check_invariants();
@@ -109,7 +109,7 @@ namespace ak {
                  // Move current Task from READY to WAITING
                 current_task_ctx->state = CThread::State::WAITING;
                 ++global_kernel_state.waiting_cthread_count;
-                enqueue_dlink(&joined_task_ctx->awaiter_list, &current_task_ctx->wait_link); 
+                enqueue_AkDLink(&joined_task_ctx->awaiter_list, &current_task_ctx->wait_link); 
                 global_kernel_state.current_cthread.reset();
                 check_invariants();
                 dump_task_count();
@@ -118,7 +118,7 @@ namespace ak {
                 CThread::Context* sched_ctx = get_context(global_kernel_state.scheduler_cthread);
                 AK_ASSERT(sched_ctx->state == CThread::State::READY);
                 sched_ctx->state = CThread::State::RUNNING;
-                detach_dlink(&sched_ctx->wait_link);
+                detach_AkDLink(&sched_ctx->wait_link);
                 --global_kernel_state.ready_cthread_count;
                 global_kernel_state.current_cthread = global_kernel_state.scheduler_cthread;
                 check_invariants();

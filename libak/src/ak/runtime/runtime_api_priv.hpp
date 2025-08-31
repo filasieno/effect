@@ -9,11 +9,11 @@ namespace ak::priv {
     CThread::Hdl schedule_next_thread() noexcept;
 
     // Debug routines
-    Void check_invariants() noexcept;
-    Void dump_task_count() noexcept;
-    Void dump_io_uring_params(const io_uring_params* p);
-    Void dump_alloc_table() noexcept;
-    Void dump_alloc_block() noexcept;
+    AkVoid check_invariants() noexcept;
+    AkVoid dump_task_count() noexcept;
+    AkVoid dump_io_uring_params(const io_uring_params* p);
+    AkVoid dump_alloc_table() noexcept;
+    AkVoid dump_alloc_block() noexcept;
 
            
 }

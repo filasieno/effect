@@ -5,16 +5,16 @@ namespace ak { namespace priv {
     // Allocator Debug utils
     // ----------------------------------------------------------------------------------------------------------------
     
-    constexpr const Char* DEBUG_ALLOC_COLOR_RESET  = "\033[0m";
-    constexpr const Char* DEBUG_ALLOC_COLOR_WHITE  = "\033[37m"; 
-    constexpr const Char* DEBUG_ALLOC_COLOR_GREEN  = "\033[1;32m"; 
-    constexpr const Char* DEBUG_ALLOC_COLOR_YELLOW = "\033[1;33m"; 
-    constexpr const Char* DEBUG_ALLOC_COLOR_CYAN   = "\033[36m"; 
-    // constexpr const Char* DEBUG_ALLOC_COLOR_MAG    = "\033[35m"; 
-    constexpr const Char* DEBUG_ALLOC_COLOR_RED    = "\033[1;31m"; 
-    constexpr const Char* DEBUG_ALLOC_COLOR_HDR    = "\033[36m"; 
+    constexpr const AkChar* DEBUG_ALLOC_COLOR_RESET  = "\033[0m";
+    constexpr const AkChar* DEBUG_ALLOC_COLOR_WHITE  = "\033[37m"; 
+    constexpr const AkChar* DEBUG_ALLOC_COLOR_GREEN  = "\033[1;32m"; 
+    constexpr const AkChar* DEBUG_ALLOC_COLOR_YELLOW = "\033[1;33m"; 
+    constexpr const AkChar* DEBUG_ALLOC_COLOR_CYAN   = "\033[36m"; 
+    // constexpr const AkChar* DEBUG_ALLOC_COLOR_MAG    = "\033[35m"; 
+    constexpr const AkChar* DEBUG_ALLOC_COLOR_RED    = "\033[1;31m"; 
+    constexpr const AkChar* DEBUG_ALLOC_COLOR_HDR    = "\033[36m"; 
 
-    static inline constexpr const Char* StateColor(AllocBlockState s) {
+    static inline constexpr const AkChar* StateColor(AllocBlockState s) {
         switch (s) {
             case AllocBlockState::USED:               
                 return DEBUG_ALLOC_COLOR_CYAN;
@@ -41,11 +41,11 @@ namespace ak { namespace priv {
     constexpr int DEBUG_COL_W_FL_PREV = 18;
     constexpr int DEBUG_COL_W_FL_NEXT = 18;
 
-    static inline Void PrintRun(const Char* s, int n, const Char* color = DEBUG_ALLOC_COLOR_WHITE) {
+    static inline AkVoid PrintRun(const AkChar* s, int n, const AkChar* color = DEBUG_ALLOC_COLOR_WHITE) {
         for (int i = 0; i < n; ++i) std::print("{}{}", color, s);
     }
 
-    static inline Void PrintTopBorder() {
+    static inline AkVoid PrintTopBorder() {
         std::print("{}┌{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         PrintRun("─", DEBUG_COL_W_OFF + 2);
         std::print("{}┬{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
@@ -63,7 +63,7 @@ namespace ak { namespace priv {
         std::print("{}┐{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
 
-    static inline Void PrintHeaderSeparator() {
+    static inline AkVoid PrintHeaderSeparator() {
         std::print("{}├{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         PrintRun("─", DEBUG_COL_W_OFF + 2);
         std::print("{}┼{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
@@ -81,7 +81,7 @@ namespace ak { namespace priv {
         std::print("{}┤{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
 
-    static inline Void PrintBottomBorder() {
+    static inline AkVoid PrintBottomBorder() {
         std::print("{}└{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         PrintRun("─", DEBUG_COL_W_OFF + 2);
         std::print("{}┴{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
@@ -99,11 +99,11 @@ namespace ak { namespace priv {
         std::print("{}┘{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
 
-    static inline Void PrintHeader() {
+    static inline AkVoid PrintHeader() {
         std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         std::print("{} {:<18} "  , DEBUG_ALLOC_COLOR_HDR,   "Offset");
         std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
-        std::print("{} {:<12} "  , DEBUG_ALLOC_COLOR_HDR,   "Size");
+        std::print("{} {:<12} "  , DEBUG_ALLOC_COLOR_HDR,   "AkSize");
         std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         std::print("{} {:<10} "  , DEBUG_ALLOC_COLOR_HDR,   "State");
         std::print("{}│{}"       , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
@@ -117,7 +117,7 @@ namespace ak { namespace priv {
         std::print("{}│{}\n"     , DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
 
-    static inline Void PrintRow(const AllocTable* at, const AllocBlockHeader* h) {
+    static inline AkVoid PrintRow(const AllocTable* at, const AllocBlockHeader* h) {
         
         uintptr_t begin_addr = (uintptr_t)at->sentinel_begin;
         uintptr_t off = (uintptr_t)h - begin_addr;
@@ -126,9 +126,9 @@ namespace ak { namespace priv {
         AllocBlockState st = (AllocBlockState)h->this_desc.state;
         AllocBlockState pst = (AllocBlockState)h->prev_desc.state;
 
-        const Char* state_text = to_string(st);
-        const Char* previous_state_text = to_string(pst);
-        const Char* state_color = StateColor(st);
+        const AkChar* state_text = to_string(st);
+        const AkChar* previous_state_text = to_string(pst);
+        const AkChar* state_color = StateColor(st);
 
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         std::print("{} {:<18} ", state_color, (unsigned long long)off);
@@ -142,19 +142,19 @@ namespace ak { namespace priv {
         std::print("{} {:<10} ", state_color, previous_state_text);
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
         
-        Size bin_idx = get_alloc_freelist_index(h->this_desc.size);
+        AkSize bin_idx = get_alloc_freelist_index(h->this_desc.size);
 
-        // Print FreeListPrev (with DLink)
-        if (h->this_desc.state == (U32)AllocBlockState::FREE && h->this_desc.size <= 2048) {
-            const priv::DLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
-            const priv::DLink* prev = free_list_link->prev;
-            const priv::DLink* head = &at->freelist_head[bin_idx];
+        // Print FreeListPrev (with AkDLink)
+        if (h->this_desc.state == (AkU32)AllocBlockState::FREE && h->this_desc.size <= 2048) {
+            const priv::AkDLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
+            const priv::AkDLink* prev = free_list_link->prev;
+            const priv::AkDLink* head = &at->freelist_head[bin_idx];
             if (prev == head) {
                 std::print("{} {:<18} ", state_color, "HEAD");
             } else {
-                const Size link_off = AK_OFFSET(AllocPooledFreeBlockHeader, freelist_link);
-                AllocBlockHeader* prev_block = (AllocBlockHeader*)((Char*)prev - link_off);
-                Size offset = (Size)((Char*)prev_block - (Char*)at->sentinel_begin);
+                const AkSize link_off = AK_OFFSET(AllocPooledFreeBlockHeader, freelist_link);
+                AllocBlockHeader* prev_block = (AllocBlockHeader*)((AkChar*)prev - link_off);
+                AkSize offset = (AkSize)((AkChar*)prev_block - (AkChar*)at->sentinel_begin);
                 std::print("{} {:<18} ", state_color, offset);
             }
         } else {
@@ -163,17 +163,17 @@ namespace ak { namespace priv {
 
         std::print("{}│{}", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
 
-        // Print FreeList Next (with DLink)
-        if (h->this_desc.state == (U32)AllocBlockState::FREE && h->this_desc.size <= 2048) {
-            const priv::DLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
-            const priv::DLink* next = free_list_link->next;
-            const priv::DLink* head = &at->freelist_head[bin_idx];
+        // Print FreeList Next (with AkDLink)
+        if (h->this_desc.state == (AkU32)AllocBlockState::FREE && h->this_desc.size <= 2048) {
+            const priv::AkDLink* free_list_link = &((AllocPooledFreeBlockHeader*)h)->freelist_link;
+            const priv::AkDLink* next = free_list_link->next;
+            const priv::AkDLink* head = &at->freelist_head[bin_idx];
             if (next == head) {
                 std::print("{} {:<18} ", state_color, "HEAD");
             } else {
-                const Size link_off = AK_OFFSET(AllocPooledFreeBlockHeader, freelist_link);
-                AllocBlockHeader* next_block = (AllocBlockHeader*)((Char*)next - link_off);
-                Size offset = (Size)((Char*)next_block - (Char*)at->sentinel_begin);
+                const AkSize link_off = AK_OFFSET(AllocPooledFreeBlockHeader, freelist_link);
+                AllocBlockHeader* next_block = (AllocBlockHeader*)((AkChar*)next - link_off);
+                AkSize offset = (AkSize)((AkChar*)next_block - (AkChar*)at->sentinel_begin);
                 std::print("{} {:<18} ", state_color, offset);
             }
         } else {
@@ -183,15 +183,15 @@ namespace ak { namespace priv {
         std::print("{}│{}\n", DEBUG_ALLOC_COLOR_WHITE, DEBUG_ALLOC_COLOR_RESET);
     }
 
-    Void dump_alloc_table(const AllocTable* at) noexcept {
+    AkVoid dump_alloc_table(const AllocTable* at) noexcept {
         
         // Basic layout and sizes
-        std::print("AllocTable: {}\n", (Void*)at);
+        std::print("AllocTable: {}\n", (AkVoid*)at);
         
-        std::print("  heapBegin        : {}\n", (Void*)at->heap_begin);
-        std::print("  heapEnd          : {}; size: {}\n", (Void*)at->heap_end, (intptr_t)(at->heap_end - at->heap_begin));
-        std::print("  memBegin         : {}\n", (Void*)at->mem_begin);
-        std::print("  memEnd           : {}; size: {}\n", (Void*)at->mem_end,  (intptr_t)(at->mem_end  - at->mem_begin));
+        std::print("  heapBegin        : {}\n", (AkVoid*)at->heap_begin);
+        std::print("  heapEnd          : {}; size: {}\n", (AkVoid*)at->heap_end, (intptr_t)(at->heap_end - at->heap_begin));
+        std::print("  memBegin         : {}\n", (AkVoid*)at->mem_begin);
+        std::print("  memEnd           : {}; size: {}\n", (AkVoid*)at->mem_end,  (intptr_t)(at->mem_end  - at->mem_begin));
         std::print("  memSize          : {}\n", at->mem_size);
         std::print("  freeMemSize      : {}\n", at->free_mem_size);
     
@@ -203,7 +203,7 @@ namespace ak { namespace priv {
     
         // Free list availability mask (64 bits)
         std::print("  FreeListbinMask:\n    ");
-        U64 mask = at->freelist_mask;
+        AkU64 mask = at->freelist_mask;
         for (unsigned i = 0; i < 64; ++i) {
             std::print("{}", (mask >> i) & 1ull);
         }
@@ -221,7 +221,7 @@ namespace ak { namespace priv {
         std::print("\n");
     }
 
-    Void dump_alloc_block(const AllocTable* at) noexcept 
+    AkVoid dump_alloc_block(const AllocTable* at) noexcept 
     {
         using namespace priv;
         

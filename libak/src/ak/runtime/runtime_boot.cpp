@@ -4,9 +4,9 @@
 
 namespace ak { 
    
-    Void* BootCThread::Context::operator new(std::size_t n) noexcept {
+    AkVoid* BootCThread::Context::operator new(std::size_t n) noexcept {
         AK_ASSERT(n <= sizeof(global_kernel_state.boot_cthread_frame_buffer));
-        return (Void*)global_kernel_state.boot_cthread_frame_buffer;
+        return (AkVoid*)global_kernel_state.boot_cthread_frame_buffer;
     }    
 
 }
@@ -22,7 +22,7 @@ namespace ak::priv {
     CThread::Hdl RunSchedulerOp::await_suspend(BootCThread::Hdl current_task_hdl) const noexcept {
         using namespace priv;
 
-        (Void)current_task_hdl;
+        (AkVoid)current_task_hdl;
         CThread::Context* scheduler_ctx = get_context(global_kernel_state.scheduler_cthread);
 
         // Check expected state post scheduler construction
@@ -30,13 +30,13 @@ namespace ak::priv {
         AK_ASSERT(global_kernel_state.cthread_count == 1);
         AK_ASSERT(global_kernel_state.ready_cthread_count == 1);
         AK_ASSERT(scheduler_ctx->state == CThread::State::READY);
-        AK_ASSERT(!is_dlink_detached(&scheduler_ctx->wait_link));
+        AK_ASSERT(!is_AkDLink_detached(&scheduler_ctx->wait_link));
         AK_ASSERT(global_kernel_state.current_cthread == CThread::Hdl());
 
         // Setup SchedulerTask for execution (from READY -> RUNNING)
         global_kernel_state.current_cthread = global_kernel_state.scheduler_cthread;
         scheduler_ctx->state = CThread::State::RUNNING;
-        detach_dlink(&scheduler_ctx->wait_link);
+        detach_AkDLink(&scheduler_ctx->wait_link);
         --global_kernel_state.ready_cthread_count;
 
         // Check expected state post task system bootstrap
@@ -55,11 +55,11 @@ namespace ak::priv {
 
         auto* scheduler_context = get_context(global_kernel_state.scheduler_cthread);
         AK_ASSERT(scheduler_context->state == CThread::State::RUNNING);
-        AK_ASSERT(is_dlink_detached(&scheduler_context->wait_link));
+        AK_ASSERT(is_AkDLink_detached(&scheduler_context->wait_link));
 
         scheduler_context->state = CThread::State::ZOMBIE;
         global_kernel_state.current_cthread.reset();
-        enqueue_dlink(&global_kernel_state.zombie_list, &scheduler_context->wait_link);
+        enqueue_AkDLink(&global_kernel_state.zombie_list, &scheduler_context->wait_link);
         ++global_kernel_state.zombie_cthread_count;
 
         return global_kernel_state.boot_cthread;
@@ -68,16 +68,16 @@ namespace ak::priv {
     // Boot implementation
     // ----------------------------------------------------------------------------------------------------------------
 
-    Void destroy_scheduler(CThread ct) noexcept {
+    AkVoid destroy_scheduler(CThread ct) noexcept {
         using namespace priv;
         auto* context = get_context(ct);
 
         // Remove from Task list
-        detach_dlink(&context->tasklist_link);
+        detach_AkDLink(&context->tasklist_link);
         --global_kernel_state.cthread_count;
 
         // Remove from Zombie List
-        detach_dlink(&context->wait_link);
+        detach_AkDLink(&context->wait_link);
         --global_kernel_state.zombie_cthread_count;
 
         context->state = CThread::State::DELETING;
@@ -100,7 +100,7 @@ namespace ak::priv {
         // If we have a ready task, resume it
         while (true) {
             if (global_kernel_state.ready_cthread_count > 0) {
-                priv::DLink* link = dequeue_dlink(&global_kernel_state.ready_list);
+                priv::AkDLink* link = dequeue_AkDLink(&global_kernel_state.ready_list);
                 CThread::Context* ctx = get_linked_cthread_context(link);
                 CThread::Hdl task = CThread::Hdl::from_promise(*ctx);
                 AK_ASSERT(ctx->state == CThread::State::READY);
@@ -136,7 +136,7 @@ namespace ak::priv {
                     --global_kernel_state.iowaiting_cthread_count;
                     ctx->state = CThread::State::READY;
                     ++global_kernel_state.ready_cthread_count;
-                    enqueue_dlink(&global_kernel_state.ready_list, &ctx->wait_link);
+                    enqueue_AkDLink(&global_kernel_state.ready_list, &ctx->wait_link);
                     
                     // Complete operation
                     ctx->res = cqe->res;
@@ -153,16 +153,16 @@ namespace ak::priv {
             while (global_kernel_state.zombie_cthread_count > 0) {
                 //dump_task_count();
 
-                priv::DLink* zombie_node = dequeue_dlink(&global_kernel_state.zombie_list);
+                priv::AkDLink* zombie_node = dequeue_AkDLink(&global_kernel_state.zombie_list);
                 CThread::Context& zombie_promise = *get_linked_cthread_context(zombie_node);
                 AK_ASSERT(zombie_promise.state == CThread::State::ZOMBIE);
 
                 // Remove from zombie list
                 --global_kernel_state.zombie_cthread_count;
-                detach_dlink(&zombie_promise.wait_link);
+                detach_AkDLink(&zombie_promise.wait_link);
 
                 // Remove from task list
-                detach_dlink(&zombie_promise.tasklist_link);
+                detach_AkDLink(&zombie_promise.tasklist_link);
                 --global_kernel_state.cthread_count;
 
                 // Delete

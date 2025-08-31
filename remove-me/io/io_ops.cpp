@@ -20,7 +20,7 @@
 //         auto* sched_ctx = get_context(global_kernel_state.scheduler_cthread);
 //         AK_ASSERT(sched_ctx->state == CThread::State::READY);
 //         sched_ctx->state = CThread::State::RUNNING;
-//         detach_dlink(&sched_ctx->wait_link);
+//         detach_AkDLink(&sched_ctx->wait_link);
 //         --global_kernel_state.ready_cthread_count;
 //         global_kernel_state.current_cthread = global_kernel_state.scheduler_cthread;
 //         check_invariants();
@@ -52,7 +52,7 @@
     
 //             // Enqueue operation
 //             io_uring_sqe* sqe = io_uring_get_sqe(&global_kernel_state.io_uring_state);
-//             io_uring_sqe_set_data(sqe, (Void*) ctx);
+//             io_uring_sqe_set_data(sqe, (AkVoid*) ctx);
 //             prep_fn(sqe);  // Call the preparation function
 //             ctx->res = 0;
 //             ++ctx->prepared_io;

@@ -14,7 +14,7 @@ namespace ak {
         LARGE_BLOCK_SENTINEL = 0b0110,
         END_SENTINEL         = 0b1100,
     };
-    const Char* to_string(AllocBlockState) noexcept;
+    const AkChar* to_string(AllocBlockState) noexcept;
 
     enum class AllocKind 
     {
@@ -28,9 +28,9 @@ namespace ak {
 
     struct AllocBlockDesc 
     { 
-        U64 size:48; 
-        U64 state:4; 
-        U64 kind:12; 
+        AkU64 size:48; 
+        AkU64 state:4; 
+        AkU64 kind:12; 
     };
     
     struct AllocBlockHeader 
@@ -41,19 +41,19 @@ namespace ak {
 
     struct AllocPooledFreeBlockHeader : public AllocBlockHeader 
     { 
-        priv::DLink freelist_link; 
+        priv::AkDLink freelist_link; 
     };
     static_assert(sizeof(AllocPooledFreeBlockHeader) == 32);
 
 
     struct AllocFreeBlockHeader : public AllocBlockHeader 
     {
-        priv::DLink            multimap_link;
+        priv::AkDLink          multimap_link;
         AllocFreeBlockHeader*  parent;
         AllocFreeBlockHeader*  left;
         AllocFreeBlockHeader*  right;
-        I32                    height;
-        I32                    balance;
+        AkI32                  height;
+        AkI32                  balance;
     };
     static_assert(sizeof(AllocFreeBlockHeader) == 64, "AllocFreeBlockHeader size is not 64 bytes");
 
@@ -65,42 +65,42 @@ namespace ak {
         static constexpr int STATS_IDX_TREE = 64;
         static constexpr int STATS_IDX_WILD = 65;
 
-        Size alloc_counter[STATS_BIN_COUNT];
-        Size realloc_counter[STATS_BIN_COUNT];
-        Size free_counter[STATS_BIN_COUNT];
-        Size failed_counter[STATS_BIN_COUNT];
-        Size split_counter[STATS_BIN_COUNT];
-        Size merged_counter[STATS_BIN_COUNT];
-        Size reused_counter[STATS_BIN_COUNT];
-        Size pooled_counter[STATS_BIN_COUNT];
+        AkSize alloc_counter[STATS_BIN_COUNT];
+        AkSize realloc_counter[STATS_BIN_COUNT];
+        AkSize free_counter[STATS_BIN_COUNT];
+        AkSize failed_counter[STATS_BIN_COUNT];
+        AkSize split_counter[STATS_BIN_COUNT];
+        AkSize merged_counter[STATS_BIN_COUNT];
+        AkSize reused_counter[STATS_BIN_COUNT];
+        AkSize pooled_counter[STATS_BIN_COUNT];
     };
 
     struct AllocTable 
     {
         static constexpr int ALLOCATOR_BIN_COUNT = AllocStats::ALLOCATOR_BIN_COUNT;
 
-        alignas(8)  U64         freelist_mask;
-        alignas(64) priv::DLink freelist_head[ALLOCATOR_BIN_COUNT];
-        alignas(64) U32         freelist_count[ALLOCATOR_BIN_COUNT];
-        alignas(8) Char* heap_begin;
-        alignas(8) Char* heap_end;
-        alignas(8) Char* mem_begin;
-        alignas(8) Char* mem_end;
-        Size       mem_size;
-        Size       free_mem_size;
-        Size       max_free_block_size;
-        AllocStats stats;
-        alignas(8) AllocPooledFreeBlockHeader* sentinel_begin;
-        alignas(8) AllocPooledFreeBlockHeader* sentinel_end;
-        alignas(8) AllocPooledFreeBlockHeader* wild_block;
-        alignas(8) AllocFreeBlockHeader*       root_free_block;
+        alignas(8)  AkU64                       freelist_mask;
+        alignas(64) priv::AkDLink               freelist_head[ALLOCATOR_BIN_COUNT];
+        alignas(64) AkU32                       freelist_count[ALLOCATOR_BIN_COUNT];
+        alignas(8)  AkChar*                     heap_begin;
+        alignas(8)  AkChar*                     heap_end;
+        alignas(8)  AkChar*                     mem_begin;
+        alignas(8)  AkChar*                     mem_end;
+        alignas(8)  AkSize                      mem_size;
+        alignas(8)  AkSize                      free_mem_size;
+        alignas(8)  AkSize                      max_free_block_size;
+        alignas(8)  AllocStats                  stats;
+        alignas(8)  AllocPooledFreeBlockHeader* sentinel_begin;
+        alignas(8)  AllocPooledFreeBlockHeader* sentinel_end;
+        alignas(8)  AllocPooledFreeBlockHeader* wild_block;
+        alignas(8)  AllocFreeBlockHeader*       root_free_block;
     };
 
     namespace priv 
     {
-        constexpr U64 ALLOC_STATE_IS_USED_MASK     = 0;
-        constexpr U64 ALLOC_STATE_IS_FREE_MASK     = 1;
-        constexpr U64 ALLOC_STATE_IS_SENTINEL_MASK = 4;
+        constexpr AkU64 ALLOC_STATE_IS_USED_MASK     = 0;
+        constexpr AkU64 ALLOC_STATE_IS_FREE_MASK     = 1;
+        constexpr AkU64 ALLOC_STATE_IS_SENTINEL_MASK = 4;
     }
 
 } // namespace ak

@@ -12,13 +12,13 @@ using namespace ak::priv;
 namespace {
 
 struct MockBlock : public AllocFreeBlockHeader {
-    MockBlock(U64 size) {
+    MockBlock(AkU64 size) {
         this->this_desc.size = size;
-        this->this_desc.state = static_cast<U32>(AllocBlockState::FREE);
+        this->this_desc.state = static_cast<AkU32>(AllocBlockState::FREE);
     }
 };
 
-MockBlock* create_mock_block(U64 size) {
+MockBlock* create_mock_block(AkU64 size) {
     void* mem = std::malloc(sizeof(MockBlock));
     if (!mem) {
         ADD_FAILURE() << "Malloc failed";
@@ -42,7 +42,7 @@ int compute_balance(const AllocFreeBlockHeader* node) {
     return compute_height(node->left) - compute_height(node->right);
 }
 
-void verify_tree(const AllocFreeBlockHeader* node, U64 min_key = 0, U64 max_key = UINT64_MAX) {
+void verify_tree(const AllocFreeBlockHeader* node, AkU64 min_key = 0, AkU64 max_key = UINT64_MAX) {
     if (!node) return;
 
     if (!is_tree_node(node)) {
@@ -77,8 +77,8 @@ void verify_tree(const AllocFreeBlockHeader* node, U64 min_key = 0, U64 max_key 
             if (!is_tree_node(current)) {
                 verify_tree(current);
             }
-            priv::DLink* nl = current->multimap_link.next;
-            current = (const AllocFreeBlockHeader*)((const Char*)nl - AK_OFFSET(AllocFreeBlockHeader, multimap_link));
+            priv::AkDLink* nl = current->multimap_link.next;
+            current = (const AllocFreeBlockHeader*)((const AkChar*)nl - AK_OFFSET(AllocFreeBlockHeader, multimap_link));
             ++count;
             ASSERT_LT(count, 1000) << "Infinite list loop";
         } while (current != node);
@@ -588,8 +588,8 @@ TEST(AllocFreeBlockHeaderTest, Clear) {
     EXPECT_EQ(b->multimap_link.next, nullptr);
     EXPECT_EQ(b->multimap_link.prev, nullptr);
 
-    EXPECT_EQ((U64)b->this_desc.size, (U64)8192);
-    EXPECT_EQ(b->this_desc.state, static_cast<U32>(AllocBlockState::FREE));
+    EXPECT_EQ((AkU64)b->this_desc.size, (AkU64)8192);
+    EXPECT_EQ(b->this_desc.state, static_cast<AkU32>(AllocBlockState::FREE));
 
     std::free(b);
 }
@@ -600,10 +600,10 @@ TEST(AllocFreeBlockHeaderTest, IsDetached) {
     b->multimap_link.prev = &b->multimap_link;
     EXPECT_TRUE(is_detached(b));
 
-    b->multimap_link.next = reinterpret_cast<priv::DLink*>(0x1);
+    b->multimap_link.next = reinterpret_cast<priv::AkDLink*>(0x1);
     EXPECT_FALSE(is_detached(b));
 
-    b->multimap_link.prev = reinterpret_cast<priv::DLink*>(0x2);
+    b->multimap_link.prev = reinterpret_cast<priv::AkDLink*>(0x2);
     EXPECT_FALSE(is_detached(b));
 
     b->multimap_link.next = &b->multimap_link;
@@ -712,9 +712,9 @@ TEST(AllocFreeBlockHeaderTest, LargeTreeMultipleOperations) {
     std::vector<MockBlock*> blocks;
     AllocFreeBlockHeader* root = nullptr;
 
-    std::vector<U64> sizes = {8192, 16384, 24576, 16384, 24576, 32768, 40960, 16384, 24576, 8192, 8192, 24576};
+    std::vector<AkU64> sizes = {8192, 16384, 24576, 16384, 24576, 32768, 40960, 16384, 24576, 8192, 8192, 24576};
 
-    for (U64 s : sizes) {
+    for (AkU64 s : sizes) {
         MockBlock* b = create_mock_block(s);
         blocks.push_back(b);
         put_free_block(&root, reinterpret_cast<AllocBlockHeader*>(b));

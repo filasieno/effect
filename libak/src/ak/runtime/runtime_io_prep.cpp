@@ -22,7 +22,7 @@ namespace ak {
         auto* sched_ctx = get_context(global_kernel_state.scheduler_cthread);
         AK_ASSERT(sched_ctx->state == CThread::State::READY);
         sched_ctx->state = CThread::State::RUNNING;
-        detach_dlink(&sched_ctx->wait_link);
+        detach_AkDLink(&sched_ctx->wait_link);
         --global_kernel_state.ready_cthread_count;
         global_kernel_state.current_cthread = global_kernel_state.scheduler_cthread;
         check_invariants();
@@ -49,7 +49,7 @@ namespace ak::priv {
             free_slots = io_uring_sq_space_left(&global_kernel_state.io_uring_state);
         }
         io_uring_sqe* sqe = io_uring_get_sqe(&global_kernel_state.io_uring_state);
-        io_uring_sqe_set_data(sqe, (Void*) ctx);
+        io_uring_sqe_set_data(sqe, (AkVoid*) ctx);
         prep_fn(sqe);
         ctx->res = 0;
         ++ctx->prepared_io;
@@ -94,7 +94,7 @@ namespace ak {
     }
 
     // Read Operations (definitions)
-    op::ExecIO io_read(int fd, Void* buf, unsigned nbytes, __u64 offset) noexcept {
+    op::ExecIO io_read(int fd, AkVoid* buf, unsigned nbytes, __u64 offset) noexcept {
         return priv::prep_io([=](io_uring_sqe* sqe) {
             io_uring_prep_read(sqe, fd, buf, nbytes, offset);
         });
@@ -106,7 +106,7 @@ namespace ak {
         });
     }
 
-    op::ExecIO io_read_fixed(int fd, Void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
+    op::ExecIO io_read_fixed(int fd, AkVoid* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
         return priv::prep_io([=](io_uring_sqe* sqe) {
             io_uring_prep_read_fixed(sqe, fd, buf, nbytes, offset, buf_index);
         });
@@ -131,13 +131,13 @@ namespace ak {
     }
 
     // Write Operations (definitions)
-    op::ExecIO io_write(int fd, const Void* buf, unsigned nbytes, __u64 offset) noexcept {
+    op::ExecIO io_write(int fd, const AkVoid* buf, unsigned nbytes, __u64 offset) noexcept {
         return priv::prep_io([=](io_uring_sqe* sqe) {
             io_uring_prep_write(sqe, fd, buf, nbytes, offset);
         });
     }
 
-    op::ExecIO io_write_fixed(int fd, const Void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
+    op::ExecIO io_write_fixed(int fd, const AkVoid* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
         return priv::prep_io([=](io_uring_sqe* sqe) {
             io_uring_prep_write_fixed(sqe, fd, buf, nbytes, offset, buf_index);
         });
@@ -192,19 +192,19 @@ namespace ak {
         });
     }
 
-    op::ExecIO io_send(int sockfd, const Void* buf, size_t len, int flags) noexcept {
+    op::ExecIO io_send(int sockfd, const AkVoid* buf, size_t len, int flags) noexcept {
         return priv::prep_io([=](io_uring_sqe* sqe) {
             io_uring_prep_send(sqe, sockfd, buf, len, flags);
         });
     }
 
-    op::ExecIO io_send_zc(int sockfd, const Void* buf, size_t len, int flags, unsigned zc_flags) noexcept {
+    op::ExecIO io_send_zc(int sockfd, const AkVoid* buf, size_t len, int flags, unsigned zc_flags) noexcept {
         return priv::prep_io([=](io_uring_sqe* sqe) {
             io_uring_prep_send_zc(sqe, sockfd, buf, len, flags, zc_flags);
         });
     }
 
-    op::ExecIO io_send_zc_fixed(int sockfd, const Void* buf, size_t len, int flags, unsigned zc_flags, unsigned buf_index) noexcept {
+    op::ExecIO io_send_zc_fixed(int sockfd, const AkVoid* buf, size_t len, int flags, unsigned zc_flags, unsigned buf_index) noexcept {
         return priv::prep_io([=](io_uring_sqe* sqe) {
             io_uring_prep_send_zc_fixed(sqe, sockfd, buf, len, flags, zc_flags, buf_index);
         });
@@ -228,13 +228,13 @@ namespace ak {
         });
     }
 
-    op::ExecIO io_recv(int sockfd, Void* buf, size_t len, int flags) noexcept {
+    op::ExecIO io_recv(int sockfd, AkVoid* buf, size_t len, int flags) noexcept {
         return priv::prep_io([=](io_uring_sqe* sqe) {
             io_uring_prep_recv(sqe, sockfd, buf, len, flags);
         });
     }
 
-    op::ExecIO io_recv_multishot(int sockfd, Void* buf, size_t len, int flags) noexcept {
+    op::ExecIO io_recv_multishot(int sockfd, AkVoid* buf, size_t len, int flags) noexcept {
         return priv::prep_io([=](io_uring_sqe* sqe) {
             io_uring_prep_recv_multishot(sqe, sockfd, buf, len, flags);
         });
@@ -373,13 +373,13 @@ namespace ak {
         });
     }
 
-    op::ExecIO io_madvise(Void* addr, __u32 length, int advice) noexcept {
+    op::ExecIO io_madvise(AkVoid* addr, __u32 length, int advice) noexcept {
         return priv::prep_io([=](io_uring_sqe* sqe) {
             io_uring_prep_madvise(sqe, addr, length, advice);
         });
     }
 
-    op::ExecIO io_madvise64(Void* addr, off_t length, int advice) noexcept {
+    op::ExecIO io_madvise64(AkVoid* addr, off_t length, int advice) noexcept {
         return priv::prep_io([=](io_uring_sqe* sqe) {
             io_uring_prep_madvise64(sqe, addr, length, advice);
         });
@@ -411,7 +411,7 @@ namespace ak {
     }
 
     // Buffer Operations
-    op::ExecIO io_provide_buffers(Void* addr, int len, int nr, int bgid, int bid) noexcept {
+    op::ExecIO io_provide_buffers(AkVoid* addr, int len, int nr, int bgid, int bid) noexcept {
         return priv::prep_io([=](io_uring_sqe* sqe) {
             io_uring_prep_provide_buffers(sqe, addr, len, nr, bgid, bid);
         });
@@ -564,7 +564,7 @@ namespace ak {
     }
 
     // Command Operations
-    op::ExecIO io_cmd_sock(int cmd_op, int fd, int level, int optname, Void* optval, int optlen) noexcept {
+    op::ExecIO io_cmd_sock(int cmd_op, int fd, int level, int optname, AkVoid* optval, int optlen) noexcept {
         return priv::prep_io([=](io_uring_sqe* sqe) {
             io_uring_prep_cmd_sock(sqe, cmd_op, fd, level, optname, optval, optlen);
         });
@@ -604,7 +604,7 @@ namespace ak {
         });
     }
 
-    op::ExecIO io_cancel(Void* user_data, int flags) noexcept {
+    op::ExecIO io_cancel(AkVoid* user_data, int flags) noexcept {
         return priv::prep_io([=](io_uring_sqe* sqe) {
             io_uring_prep_cancel(sqe, user_data, flags);
         });
@@ -629,7 +629,7 @@ namespace ak {
         });
     }
 
-    op::ExecIO io_sendto(int sockfd, const Void* buf, size_t len, int flags, const struct sockaddr* addr, socklen_t addrlen) noexcept {
+    op::ExecIO io_sendto(int sockfd, const AkVoid* buf, size_t len, int flags, const struct sockaddr* addr, socklen_t addrlen) noexcept {
         return priv::prep_io([=](io_uring_sqe* sqe) {
             io_uring_prep_sendto(sqe, sockfd, buf, len, flags, addr, addrlen);
         });

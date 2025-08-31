@@ -6,8 +6,8 @@ using namespace ak;
 
 class KernelEventTest : public ::testing::Test {
 protected:
-	Void* buffer = nullptr;
-	U64   buffer_size = 8192;
+	AkVoid* buffer = nullptr;
+	AkU64   buffer_size = 8192;
 	void SetUp() override {
 		buffer = std::malloc(buffer_size);
 		ASSERT_NE(buffer, nullptr);

@@ -4,7 +4,7 @@
 
 using namespace ak;
 
-I32 on_parse_event(JSONParseSession* session, JSONEvent event, const JSONEventData* data, U64 more) noexcept {
+AkI32 on_parse_event(JSONParseSession* session, JSONEvent event, const JSONEventData* data, AkU64 more) noexcept {
     (void) session;
     (void) data;
     (void) more;
@@ -56,7 +56,7 @@ I32 on_parse_event(JSONParseSession* session, JSONEvent event, const JSONEventDa
         }
         case JSONEvent::PARSE_STATE_CHANGED:
         {
-            std::print("PARSE_STATE_CHANGED '{}'\n", (U32)data->state_data.state);
+            std::print("PARSE_STATE_CHANGED '{}'\n", (AkU32)data->state_data.state);
             return 0;
         }
         case JSONEvent::PARSE_EOF:
@@ -72,8 +72,8 @@ I32 on_parse_event(JSONParseSession* session, JSONEvent event, const JSONEventDa
 char buffer[1024 * 1024];
 
 TEST(JSONParserTest, ReaderWriterHandshake) {
-    const Char json[] = R"({"name": "John", "age": 30})";
-    const U64 json_size = sizeof(json);
+    const AkChar json[] = R"({"name": "John", "age": 30})";
+    const AkU64 json_size = sizeof(json);
 
     JSONParseSessionConfig cfg = { };
     cfg.max_depth = 32;
@@ -86,7 +86,7 @@ TEST(JSONParserTest, ReaderWriterHandshake) {
 
 
     JSONParserState state;
-    state = ak::run_json_parser(session, (Void*)json, json_size);
+    state = ak::run_json_parser(session, (AkVoid*)json, json_size);
     ASSERT_EQ(state, JSONParserState::DONE);
     state = ak::eof_json_parser(session);
     ASSERT_EQ(state, JSONParserState::DONE);

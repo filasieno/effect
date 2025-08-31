@@ -6,8 +6,8 @@ using namespace ak;
 
 class KernelFileIOTest : public ::testing::Test {
 protected:
-	Void* buffer = nullptr;
-	U64   buffer_size = 8192;
+	AkVoid* buffer = nullptr;
+	AkU64   buffer_size = 8192;
 	void SetUp() override {
 		buffer = std::malloc(buffer_size);
 		ASSERT_NE(buffer, nullptr);
@@ -21,7 +21,7 @@ protected:
 	}
 };
 
-static CThread io_sequence(const Char* p) noexcept {
+static CThread io_sequence(const AkChar* p) noexcept {
 	int fd = co_await io_open(p, O_RDWR | O_CREAT | O_TRUNC | O_NONBLOCK, 0666);
 	std::print("open fd: {}\n", fd);
 	EXPECT_GE(fd, 0);
@@ -38,7 +38,7 @@ static CThread io_sequence(const Char* p) noexcept {
 }
 
 TEST_F(KernelFileIOTest, BasicOpenWriteCloseUnlink) {
-	const Char* path = "test_file_io.txt";
+	const AkChar* path = "test_file_io.txt";
 	int res = run_main(io_sequence, path);
 	EXPECT_EQ(res, 0);
 }

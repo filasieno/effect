@@ -32,14 +32,14 @@ namespace ak {
         global_kernel_state.current_cthread.reset();
         global_kernel_state.scheduler_cthread.reset();
 
-        init_dlink(&global_kernel_state.zombie_list);
-        init_dlink(&global_kernel_state.ready_list);
-        init_dlink(&global_kernel_state.cthread_list);
+        init_AkDLink(&global_kernel_state.zombie_list);
+        init_AkDLink(&global_kernel_state.ready_list);
+        init_AkDLink(&global_kernel_state.cthread_list);
         
         return 0;
     }
 
-    Void fini_kernel() noexcept {
+    AkVoid fini_kernel() noexcept {
         io_uring_queue_exit(&global_kernel_state.io_uring_state);
     }
 }

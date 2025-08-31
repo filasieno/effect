@@ -7,8 +7,8 @@ using namespace ak;
 
 class KernelFreeListTest : public ::testing::Test {
 protected:
-	Void* buffer = nullptr;
-	U64   buffer_size = 1024 * 1024;
+	AkVoid* buffer = nullptr;
+	AkU64   buffer_size = 1024 * 1024;
 	AllocTable table{};
 	void SetUp() override {
 		buffer = std::malloc(buffer_size);
@@ -22,10 +22,10 @@ protected:
 };
 
 TEST_F(KernelFreeListTest, WalkBinsAllocateAndFree) {
-	Size bins = 64;
-	Size max_size = bins * 32 - 16;
-	for (U64 size = 16; size <= max_size; size += 32) {
-		Void* buff = ak::priv::try_alloc_table_malloc(&table, size);
+	AkSize bins = 64;
+	AkSize max_size = bins * 32 - 16;
+	for (AkU64 size = 16; size <= max_size; size += 32) {
+		AkVoid* buff = ak::priv::try_alloc_table_malloc(&table, size);
 		ASSERT_NE(buff, nullptr) << "size=" << size;
 		ak::priv::alloc_table_free(&table, buff, /*side_coalescing*/ 0);
 	}

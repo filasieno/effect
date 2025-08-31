@@ -9,7 +9,7 @@ namespace ak::priv {
     // IO Uring Debug utils
     // ----------------------------------------------------------------------------------------------------------------
     
-    Void dump_io_uring_features(const unsigned int features) {
+    AkVoid dump_io_uring_features(const unsigned int features) {
         std::print("IO uring features:\n");
         if (features & IORING_FEAT_SINGLE_MMAP)     std::print("  SINGLE_MMAP\n");
         if (features & IORING_FEAT_NODROP)          std::print("  NODROP\n");
@@ -23,7 +23,7 @@ namespace ak::priv {
         if (features & IORING_FEAT_NATIVE_WORKERS)  std::print("  NATIVE_WORKERS\n");
     }
 
-    Void dump_io_uring_setup_flags(const unsigned int flags) {
+    AkVoid dump_io_uring_setup_flags(const unsigned int flags) {
         std::print("IO uring flags:\n");
         if (flags & IORING_SETUP_IOPOLL)    std::print("  IOPOLL\n");
         if (flags & IORING_SETUP_SQPOLL)    std::print("  SQPOLL\n");
@@ -33,7 +33,7 @@ namespace ak::priv {
         if (flags & IORING_SETUP_ATTACH_WQ) std::print("  ATTACH_WQ\n");
     }
 
-    Void dump_io_uring_params(const io_uring_params* params) {
+    AkVoid dump_io_uring_params(const io_uring_params* params) {
         std::print("IO uring parameters:\n");
         
         // Main parameters

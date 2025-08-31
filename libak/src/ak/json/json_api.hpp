@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ak/base/base_api.hpp> // Assuming this includes necessary types like Void, Size, Bool, etc.
+#include <ak/base/base_api.hpp> // Assuming this includes necessary types like AkVoid, AkSize, AkBool, etc.
 
 namespace ak {
     struct JSONParseSession;
@@ -23,7 +23,7 @@ namespace ak {
     // 260-269: Numbers
     // 270-279: Keywords (true/false/null)
     // 290-299: Limits and overflow
-    enum class JSONErrorCode : U32 {
+    enum class JSONErrorCode : AkU32 {
         NONE                                 = 0,
         FATAL_STACK_OOB                      = 200,
         STACK_OVERFLOW_ON_SUSPEND            = 201,
@@ -80,58 +80,58 @@ namespace ak {
 
     union JSONEventData {
         struct {
-            const Char* str;
-            Size len;
+            const AkChar* str;
+            AkSize len;
         } string_data;
 
-        Bool bool_value;
-        I64 int_value;
-        F64 float_value;
+        AkBool bool_value;
+        AkI64 int_value;
+        AkF64 float_value;
 
         struct {
             JSONParserState state;
-            U32 err_code;
+            AkU32 err_code;
         } state_data;
     };
 
     ///\brief Define the Continuation state routine
-    using JSONParserStateFn = JSONParserState(JSONParseSession* session, U32 sub_state, Char* head, Char* end, U64 json_size, U64 string_size) noexcept;
+    using JSONParserStateFn = JSONParserState(JSONParseSession* session, AkU32 sub_state, AkChar* head, AkChar* end, AkU64 json_size, AkU64 string_size) noexcept;
 
     ///\brief Unified event callback function type
     ///\details Returns 0 to continue parsing; non-zero to abort with USER_ABORTED error.
-    using JSONParserCallbackFn = int(JSONParseSession* session, JSONEvent event, const JSONEventData* data, U64 more) noexcept;
+    using JSONParserCallbackFn = int(JSONParseSession* session, JSONEvent event, const JSONEventData* data, AkU64 more) noexcept;
 
     ///\brief The JSON parse context
     struct JSONParseContext {
         JSONParserStateFn* continuation;                
         void*   user_data;
-        U32     sub_state;        
-        U32     _reserved;
+        AkU32     sub_state;        
+        AkU32     _reserved;
     };
     static_assert(sizeof(JSONParseContext) == 24, "JSONParseContext must be 32 bytes");
     
     ///\brief Configuration for the JSON parse session
     struct JSONParseSessionConfig {
-        U64 max_json_size   = 1024 * 1024;  ///< Maximum size of the JSON data (defaults to 1Mb)
-        U64 max_string_size = 2048;         ///< Maximum size of the string (defaults to 2048)
-        U32 max_depth       = 32;           ///< Maximum depth of the JSON structure
+        AkU64 max_json_size   = 1024 * 1024;  ///< Maximum size of the JSON data (defaults to 1Mb)
+        AkU64 max_string_size = 2048;         ///< Maximum size of the string (defaults to 2048)
+        AkU32 max_depth       = 32;           ///< Maximum depth of the JSON structure
     };
 
     ///\brief The JSON parse session
     struct JSONParseSession {
         JSONParseSessionConfig config;              ///< Contains the users configuration parameters
-        Void*                  user_data;           ///< Original user session context
+        AkVoid*                  user_data;           ///< Original user session context
         JSONParserCallbackFn*  on_event;            ///< Unified event callback
         void*                  parser_buffer;       ///< The buffer that holds the unaligned parser
-        U64                    parser_buffer_size;  ///< The size of the buffer that holds the unaligned parser
+        AkU64                    parser_buffer_size;  ///< The size of the buffer that holds the unaligned parser
         
-        Char*                  buffer;              ///< Current input buffer
-        Size                   buffer_len;          ///< Length of the current input buffer
+        AkChar*                  buffer;              ///< Current input buffer
+        AkSize                   buffer_len;          ///< Length of the current input buffer
         JSONParserState        state;               ///< The current state of the parser
-        U32                    sub_state;           ///< The current sub-state of the parser
-        U64                    json_offset;         ///< Number of bytes parsed in the JSON data
-        U64                    string_offset;       ///< Number of bytes parsed in a string
-        U32                    err_code;            ///< Numeric error code when state==ERROR
+        AkU32                    sub_state;           ///< The current sub-state of the parser
+        AkU64                    json_offset;         ///< Number of bytes parsed in the JSON data
+        AkU64                    string_offset;       ///< Number of bytes parsed in a string
+        AkU32                    err_code;            ///< Numeric error code when state==ERROR
 
         JSONParseContext*      stack_begin;         ///< Points to the first element of the stack
         JSONParseContext*      stack_end;           ///< Points past the last element of the stack
@@ -140,14 +140,14 @@ namespace ak {
         ///\brief Partial parse buffer used to save partial number values for instance.
         ///\details if the suspend buffer is 
         char                   suspend_buffer[128]; 
-        U64                    suspend_buffer_size;
+        AkU64                    suspend_buffer_size;
 
     };
 
     ///\brief Get the required buffer size for the JSON parse session
     ///\param cfg Configuration for the JSON parse session
     ///\return The required buffer size
-    U64 get_required_parse_session_buffer_size(JSONParseSessionConfig* cfg) noexcept;
+    AkU64 get_required_parse_session_buffer_size(JSONParseSessionConfig* cfg) noexcept;
 
     ///\brief Initialize the JSON parse session
     ///\param parser_buffer      the block of memory that will hold parser
@@ -156,12 +156,12 @@ namespace ak {
     ///\param on_event           the event callback function
     ///\param user_data          the initial user data    
     ///\return The Initialized parse session or nullptr if the session could not be initialized
-    JSONParseSession* init_json_parser(Void* parser_buffer, U64 parser_buffer_size, const JSONParseSessionConfig* cfg, JSONParserCallbackFn* on_event, Void* user_data) noexcept;
+    JSONParseSession* init_json_parser(AkVoid* parser_buffer, AkU64 parser_buffer_size, const JSONParseSessionConfig* cfg, JSONParserCallbackFn* on_event, AkVoid* user_data) noexcept;
 
     ///\brief Parse the JSON data
     ///\param session The session to parse
     ///\return The parser state
-    JSONParserState run_json_parser(JSONParseSession* session, Void* buffer, U64 buffer_size) noexcept;
+    JSONParserState run_json_parser(JSONParseSession* session, AkVoid* buffer, AkU64 buffer_size) noexcept;
 
     ///\brief Marks the end of file for the JSON data
     ///\param session the active parse session
@@ -170,7 +170,7 @@ namespace ak {
 
     ///\brief Reset the JSON parser
     ///\param session The parser to reset
-    Void reset_json_parse_session(JSONParseSession* session) noexcept;
+    AkVoid reset_json_parse_session(JSONParseSession* session) noexcept;
 
 } // namespace ak
 

@@ -4,11 +4,11 @@
 using namespace ak;
 using namespace ak::priv;
 
-static inline void reset_mask(U64* mask) { *mask = 0ull; }
-static inline U32  bin_of(Size s) { if (s==0) return 0; U64 b = (U64)((s-1) >> 5); return (U32)(b > 63 ? 63 : b); }
+static inline void reset_mask(AkU64* mask) { *mask = 0ull; }
+static inline AkU32  bin_of(AkSize s) { if (s==0) return 0; AkU64 b = (AkU64)((s-1) >> 5); return (AkU32)(b > 63 ? 63 : b); }
 
 TEST(AllocFreelistMaskTest, IndexingAndMaskOps) {
-    alignas(64) U64 m = 0;
+    alignas(64) AkU64 m = 0;
 
     EXPECT_EQ(bin_of(1u), 0u);
     EXPECT_EQ(bin_of(32u), 0u);

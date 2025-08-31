@@ -7,8 +7,8 @@ using namespace ak;
 
 class KernelAllocSplitTest : public ::testing::Test {
 protected:
-	Void* buffer = nullptr;
-	U64   buffer_size = 1024 * 1024;
+	AkVoid* buffer = nullptr;
+	AkU64   buffer_size = 1024 * 1024;
 	AllocTable table{};
 	void SetUp() override {
 		buffer = std::malloc(buffer_size);
@@ -22,13 +22,13 @@ protected:
 };
 
 TEST_F(KernelAllocSplitTest, SplitAndReuse) {
-	U64 memSize01 = 8096;
-	Void* buff01 = ak::priv::try_alloc_table_malloc(&table, memSize01);
+	AkU64 memSize01 = 8096;
+	AkVoid* buff01 = ak::priv::try_alloc_table_malloc(&table, memSize01);
 	ASSERT_NE(buff01, nullptr);
 	ak::priv::alloc_table_free(&table, buff01, 0);
 
-	U64 memSize02 = 16;
-	Void* buff02 = ak::priv::try_alloc_table_malloc(&table, memSize02);
+	AkU64 memSize02 = 16;
+	AkVoid* buff02 = ak::priv::try_alloc_table_malloc(&table, memSize02);
 	ASSERT_NE(buff02, nullptr);
 	ak::priv::alloc_table_free(&table, buff02, 0);
 }

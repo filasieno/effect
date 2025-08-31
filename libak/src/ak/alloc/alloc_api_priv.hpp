@@ -10,43 +10,43 @@
 
 #include <source_location>
 
-namespace ak { namespace priv {
+namespace ak::priv {
 
     // Allocator Table
-    I32   init_alloc_table(AllocTable* at, Void* mem, Size size) noexcept;
-    Void* try_alloc_table_malloc(AllocTable* at, Size size) noexcept;
-    Void  alloc_table_free(AllocTable* at, Void* ptr, U32 side_coalescing) noexcept;
-    I32   defrag_alloc_table_mem(AllocTable* at, U64 millis_budget) noexcept;
-    Void  check_alloc_table_invariants(AllocTable* at, std::source_location loc = std::source_location::current()) noexcept;
-    I64   coalesce_alloc_table_right(AllocTable* at, AllocBlockHeader** out_block, U32 max_merges) noexcept;
-    I64   coalesce_alloc_table_left(AllocTable* at, AllocBlockHeader** out_block, U32 max_merges) noexcept;
+    AkI32   init_alloc_table(AllocTable* at, AkVoid* mem, AkSize size) noexcept;
+    AkVoid* try_alloc_table_malloc(AllocTable* at, AkSize size) noexcept;
+    AkVoid  alloc_table_free(AllocTable* at, AkVoid* ptr, AkU32 side_coalescing) noexcept;
+    AkI32   defrag_alloc_table_mem(AllocTable* at, AkU64 millis_budget) noexcept;
+    AkVoid  check_alloc_table_invariants(AllocTable* at, std::source_location loc = std::source_location::current()) noexcept;
+    AkI64   coalesce_alloc_table_right(AllocTable* at, AllocBlockHeader** out_block, AkU32 max_merges) noexcept;
+    AkI64   coalesce_alloc_table_left(AllocTable* at, AllocBlockHeader** out_block, AkU32 max_merges) noexcept;
 
     // Free block Tree
-    Void                  init_free_block_tree_root(AllocFreeBlockHeader** root) noexcept;
-    Void                  put_free_block(AllocFreeBlockHeader** root, AllocBlockHeader* block) noexcept;
-    AllocFreeBlockHeader* find_gte_free_block(AllocFreeBlockHeader* root, U64 block_size) noexcept;
-    Void                  detach_free_block(AllocFreeBlockHeader** root, AllocFreeBlockHeader* node) noexcept;
-    Bool                  is_detached(const AllocFreeBlockHeader* link) noexcept;
-    Void                  clear(AllocFreeBlockHeader* link) noexcept;
+    AkVoid                init_free_block_tree_root(AllocFreeBlockHeader** root) noexcept;
+    AkVoid                put_free_block(AllocFreeBlockHeader** root, AllocBlockHeader* block) noexcept;
+    AllocFreeBlockHeader* find_gte_free_block(AllocFreeBlockHeader* root, AkU64 block_size) noexcept;
+    AkVoid                detach_free_block(AllocFreeBlockHeader** root, AllocFreeBlockHeader* node) noexcept;
+    AkBool                is_detached(const AllocFreeBlockHeader* link) noexcept;
+    AkVoid                clear(AllocFreeBlockHeader* link) noexcept;
     
     // Freeblock list bitmask utilities
-    Void set_alloc_freelist_mask(U64* bit_field, U64 bin_idx) noexcept;
-    Bool get_alloc_freelist_mask(const U64* bit_field, U64 bin_idx) noexcept;
-    Void clear_alloc_freelist_mask(U64* bit_field, U64 bin_idx) noexcept;
-    I32  find_alloc_freelist_index(const U64* bit_field, Size alloc_size) noexcept;
-    U32  get_alloc_freelist_index(const AllocBlockHeader* header) noexcept;
-    U64  get_alloc_freelist_index(U64 sz) noexcept;
+    AkVoid set_alloc_freelist_mask(AkU64* bit_field, AkU64 bin_idx) noexcept;
+    AkBool get_alloc_freelist_mask(const AkU64* bit_field, AkU64 bin_idx) noexcept;
+    AkVoid clear_alloc_freelist_mask(AkU64* bit_field, AkU64 bin_idx) noexcept;
+    AkI32  find_alloc_freelist_index(const AkU64* bit_field, AkSize alloc_size) noexcept;
+    AkU32  get_alloc_freelist_index(const AllocBlockHeader* header) noexcept;
+    AkU64  get_alloc_freelist_index(AkU64 sz) noexcept;
 
     
     // Iteration
     AllocBlockHeader* next(AllocBlockHeader* header) noexcept;
     AllocBlockHeader* prev(AllocBlockHeader* header) noexcept;    
-}}
+}
 
 // Allocator convenience wrappers used by runtime
 namespace ak {
-    Void* try_alloc_mem(Size sz) noexcept;
-    Void  free_mem(Void* ptr, U32 side_coalesching = (U32)~0) noexcept;
-    I32   defragment_mem(U64 millis_time_budget = ~0ull) noexcept;
+    AkVoid* try_alloc_mem(AkSize sz) noexcept;
+    AkVoid  free_mem(AkVoid* ptr, AkU32 side_coalesching = (AkU32)~0) noexcept;
+    AkI32   defragment_mem(AkU64 millis_time_budget = ~0ull) noexcept;
 }
 

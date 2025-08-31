@@ -19,7 +19,7 @@ enum ParseMode {
 };
 
 // Internal tail-recursive parse step
-JSONParserState parse_step(const Char* buffer, Size remaining, Size pos, int mode, JSONParseContext* ctx);
+JSONParserState parse_step(const AkChar* buffer, AkSize remaining, AkSize pos, int mode, JSONParseContext* ctx);
 
 // Other internal helpers if needed
 

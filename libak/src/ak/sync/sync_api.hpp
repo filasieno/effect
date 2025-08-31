@@ -4,7 +4,7 @@
 
 namespace ak {
     struct Event {  
-        priv::DLink wait_list;
+        priv::AkDLink wait_list;
     };
 
     namespace op {
@@ -12,8 +12,8 @@ namespace ak {
         struct WaitEvent {
             explicit WaitEvent(Event* event) : evt(event) {}
 
-            constexpr Bool await_ready() const noexcept  { return false; }
-            constexpr Void await_resume() const noexcept { }
+            constexpr AkBool await_ready() const noexcept  { return false; }
+            constexpr AkVoid await_resume() const noexcept { }
             CThread::Hdl   await_suspend(CThread::Hdl hdl) const noexcept;
             
 
@@ -23,10 +23,10 @@ namespace ak {
 
     // Concurrency Tools
 
-    Void          init_event(Event* event);
-    I32           signal(Event* event);
-    I32           signal_n(Event* event, int n);
-    I32           signal_all(Event* event);
+    AkVoid          init_event(Event* event);
+    AkI32           signal(Event* event);
+    AkI32           signal_n(Event* event, int n);
+    AkI32           signal_all(Event* event);
     op::WaitEvent wait(Event* event);
 
 }

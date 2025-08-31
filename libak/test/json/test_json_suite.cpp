@@ -51,11 +51,11 @@ struct JSONCaseParam { std::string name; fs::path input; fs::path expected; };
 // Sink that accumulates serialized events and per-buffer snapshots.
 struct SerializedSink {
     std::vector<std::string> lines;
-    U32 last_err_code = 0;
+    AkU32 last_err_code = 0;
     // For multi-buffer tests, store intermediate results
     std::vector<std::vector<std::string>> buffer_results;
     std::vector<JSONParserState> buffer_states;
-    std::vector<U32> buffer_error_codes;
+    std::vector<AkU32> buffer_error_codes;
 };
 
 // gtest typed fixture
@@ -64,7 +64,7 @@ struct JSONParser : public ::testing::TestWithParam<JSONCaseParam> {};
 // on_json_event
 //  Unified callback invoked by the parser. Translates events into textual
 //  lines appended to the SerializedSink. Returns 0 to let parsing continue.
-static int on_json_event(JSONParseSession *session, ak::JSONEvent event, const JSONEventData *data, U64 more) noexcept {
+static int on_json_event(JSONParseSession *session, ak::JSONEvent event, const JSONEventData *data, AkU64 more) noexcept {
     auto *sink = static_cast<SerializedSink *>(session->user_data);
     if (!sink) return 0;
     switch (event) {
@@ -123,34 +123,34 @@ static int on_json_event(JSONParseSession *session, ak::JSONEvent event, const J
 //  Returns the final JSONParserState and sets out_err_code on error.
 static JSONParserState parse_json_chunks(const std::vector<std::pair<std::string,std::string>> &kv,
                                          const std::vector<std::string> &chunks,
-                                         SerializedSink &sink, U32 &out_err_code, std::ostream &log_stream) {
+                                         SerializedSink &sink, AkU32 &out_err_code, std::ostream &log_stream) {
     // Defaults; may be overridden by key/values in the test input header
     JSONParseSessionConfig cfg = { };
     // Apply key/value configuration
     for (const auto &p : kv) {
         if (p.first == "max_depth") {
             unsigned long long v = std::strtoull(p.second.c_str(), nullptr, 10);
-            if (v > 0 && v <= std::numeric_limits<U32>::max()) cfg.max_depth = (U32)v;
+            if (v > 0 && v <= std::numeric_limits<AkU32>::max()) cfg.max_depth = (AkU32)v;
         } else if (p.first == "max_string_size") {
             unsigned long long v = std::strtoull(p.second.c_str(), nullptr, 10);
-            if (v > 0) cfg.max_string_size = (U64)v;
+            if (v > 0) cfg.max_string_size = (AkU64)v;
         } else if (p.first == "max_json_size") {
             unsigned long long v = std::strtoull(p.second.c_str(), nullptr, 10);
-            if (v > 0) cfg.max_json_size = (U64)v;
+            if (v > 0) cfg.max_json_size = (AkU64)v;
         }
     }
 
     // Determine required parser buffer size and allocate dynamically
-    U64 required_size = get_required_parse_session_buffer_size(&cfg);
+    AkU64 required_size = get_required_parse_session_buffer_size(&cfg);
     log_stream << "INFO: Required parser buffer size: " << required_size << " bytes\n";
     void *parser_mem = std::malloc((size_t)required_size);
     if (!parser_mem) {
         log_stream << "ERROR: Failed to allocate parser buffer of size " << required_size << "\n";
-        out_err_code = (U32)JSONErrorCode::FATAL_STACK_OOB; // generic internal error for OOM in tests
+        out_err_code = (AkU32)JSONErrorCode::FATAL_STACK_OOB; // generic internal error for OOM in tests
         return JSONParserState::ERROR;
     }
     std::memset(parser_mem, 0, (size_t)required_size);
-    JSONParseSession *session = init_json_parser(parser_mem, required_size, &cfg, on_json_event, (Void *)&sink);
+    JSONParseSession *session = init_json_parser(parser_mem, required_size, &cfg, on_json_event, (AkVoid *)&sink);
     if (!session) {
         log_stream << "ERROR: Failed to initialize JSON parser session\n";
         std::free(parser_mem);
@@ -165,7 +165,7 @@ static JSONParserState parse_json_chunks(const std::vector<std::pair<std::string
         // Capture lines before this chunk for intermediate results
         size_t chunk_start_lines = sink.lines.size();
 
-        st = run_json_parser(session, (void *)chunks[i].data(), (U64)chunks[i].size());
+        st = run_json_parser(session, (void *)chunks[i].data(), (AkU64)chunks[i].size());
         log_stream << "INFO: Chunk " << (i + 1) << " processing result: " << (st == JSONParserState::DONE ? "DONE" :
                                                                                st == JSONParserState::CONTINUE ? "CONTINUE" :
                                                                                st == JSONParserState::ERROR ? "ERROR" : "INVALID") << "\n";
@@ -340,7 +340,7 @@ TEST_P(JSONParser, Case) {
     log_stream << "Output directory: " << (out_dir / param.name) << "\n\n";
 
     SerializedSink sink;
-    U32 err_code = 0;
+    AkU32 err_code = 0;
     // Run the parser over the input chunks and collect output
     (void)parse_json_chunks(kv, chunks, sink, err_code, log_stream);
 
