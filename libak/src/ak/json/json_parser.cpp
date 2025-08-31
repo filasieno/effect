@@ -154,6 +154,11 @@ static Void notify_event(JSONParseSession *session, JSONEvent event_type, const 
 // Constants and Tables
 // ==========================================
 
+// Configurable policy: maximum significant decimal digits accepted for floats before erroring
+// Rationale: controls mantissa precision to avoid overlong textual inputs creating surprising
+// rounding; adjust as needed for your application. Kept in this .cpp for easy tuning.
+static constexpr U32 MAX_FLOAT_SIGNIFICANT_DIGITS = 16;
+
 // UTF-8 encoding constants
 static constexpr U32 UTF8_1_MAX           = 0x80U;
 static constexpr U32 UTF8_2_MAX           = 0x800U;
@@ -538,7 +543,8 @@ static JSONParserState state_object_first_attr(JSONParseSession *session, U32 su
         return suspend_parser(session, state_object_first_attr, sub_state, json_size, string_size);
     CharClass cls = classify_char(*head);
     if (cls == CHAR_RBRACE) {
-        ++head; ++json_size;
+        ++head; 
+        ++json_size;
         notify_object_end(session);
         AK_MUST_TAIL return resume_parse_context(session, sub_state, head, end, json_size, string_size);
     }
@@ -551,12 +557,14 @@ static JSONParserState state_object_rest_attrs(JSONParseSession *session, U32 su
         return suspend_parser(session, state_object_rest_attrs, sub_state, json_size, string_size);
     CharClass cls = classify_char(*head);
     if (cls == CHAR_RBRACE) {
-        ++head; ++json_size;
+        ++head; 
+        ++json_size;
         notify_object_end(session);
         AK_MUST_TAIL return resume_parse_context(session, sub_state, head, end, json_size, string_size);
     }
     if (cls == CHAR_COMMA) {
-        ++head; ++json_size;
+        ++head; 
+        ++json_size;
         AK_MUST_TAIL return state_attr_begin_key(session, sub_state, head, end, json_size, string_size);
     }
     return raise_error(session, JSONErrorCode::EXPECTED_COMMA_OR_CLOSING_BRACE);
@@ -918,7 +926,7 @@ static JSONParserState state_number_head(JSONParseSession *session, U32 sub_stat
             ++p;
     }
     bool is_float = false;
-    // Count significant digits to enforce at most 16 significant digits for floats
+    // Count significant digits to enforce at most MAX_FLOAT_SIGNIFICANT_DIGITS for floats
     U32 significant_digits = 0;
     U64 q = 0;
     // Re-scan to count significant digits (ignore sign, decimal point, exponent sign)
@@ -987,7 +995,7 @@ static JSONParserState state_number_head(JSONParseSession *session, U32 sub_stat
             val = -val;
         notify_value_number_int(session, val);
     } else {
-        if (significant_digits > 16) {
+        if (significant_digits > MAX_FLOAT_SIGNIFICANT_DIGITS) {
             return raise_error(session, JSONErrorCode::FLOAT_TOO_MANY_DIGITS);
         }
         // Parse float using locale-independent from_chars if available
