@@ -287,8 +287,8 @@ static bool read_input_case(const fs::path &p, std::vector<std::pair<std::string
 }
 
 // discover_cases
-//  Enumerate <name>.txt inputs and pair them with existing <name>_exp.txt
-//  expected files.
+//  Enumerate <name>.txt inputs and pair them with existing <name>.expected.txt
+//  expected files. Skip files that are themselves expected files.
 static std::vector<JSONCaseParam> discover_cases(const fs::path &data_root) {
     std::vector<JSONCaseParam> out;
     if (!fs::exists(data_root)) return out;
@@ -296,18 +296,13 @@ static std::vector<JSONCaseParam> discover_cases(const fs::path &data_root) {
         if (!entry.is_regular_file()) continue;
         fs::path in_path = entry.path();
         std::string name = in_path.filename().string();
-        // Skip expected files: names whose stem ends with "_exp" and where the
-        // corresponding <stem_without__exp>.txt exists alongside.
-        std::string stem = in_path.stem().string();
-        if (stem.size() > 4 && stem.rfind("_exp") == stem.size() - 4) {
-            std::string base = stem.substr(0, stem.size() - 4);
-            fs::path maybe_input = data_root / (base + ".txt");
-            if (fs::exists(maybe_input) && fs::is_regular_file(maybe_input)) {
-                continue; // this is an expected file; skip
-            }
+        // Skip any file that is already an expected output
+        if (name.size() > 13 && name.rfind(".expected.txt") == name.size() - 13) {
+            continue;
         }
 
-        fs::path expected = data_root / (in_path.stem().string() + "_exp.txt");
+        // New expected suffix: .expected.txt
+        fs::path expected = data_root / (in_path.stem().string() + ".expected.txt");
         if (fs::exists(expected) && fs::is_regular_file(expected)) {
             out.push_back(JSONCaseParam{name, in_path, expected});
         }
