@@ -22,16 +22,16 @@ protected:
 };
 
 static AkTask io_sequence(const AkChar* p) noexcept {
-	int fd = co_await io_open(p, O_RDWR | O_CREAT | O_TRUNC | O_NONBLOCK, 0666);
+	int fd = co_await ak_os_io_open(p, O_RDWR | O_CREAT | O_TRUNC | O_NONBLOCK, 0666);
 	std::print("open fd: {}\n", fd);
 	EXPECT_GE(fd, 0);
-	int wr = co_await io_write(fd, "hello world!\n", 13, 0);
+	int wr = co_await ak_os_io_write(fd, "hello world!\n", 13, 0);
 	std::print("written : {}\n", wr);
 	EXPECT_GE(wr, 0);
-	int cl = co_await io_close(fd);
+	int cl = co_await ak_os_io_close(fd);
 	std::print("close res: {}\n", cl);
 	EXPECT_GE(cl, 0);
-	int ul = co_await io_unlink(p, 0);
+	int ul = co_await ak_os_io_unlink(p, 0);
 	std::print("unlink res: {}\n", ul);
 	EXPECT_GE(ul, 0);
 	co_return 0;
@@ -39,6 +39,6 @@ static AkTask io_sequence(const AkChar* p) noexcept {
 
 TEST_F(KernelFileIOTest, BasicOpenWriteCloseUnlink) {
 	const AkChar* path = "test_file_io.txt";
-	int res = run_main(io_sequence, path);
+	int res = ak_run_main(io_sequence, path);
 	EXPECT_EQ(res, 0);
 }

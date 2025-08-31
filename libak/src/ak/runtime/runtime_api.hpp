@@ -63,8 +63,6 @@ struct AkPromise {
     AkDLink          awaiter_list;  //< The list of all tasks waiting for this task
 };
 
-
-
 /// \brief A handle to a cooperative thread (C++20 coroutine)
 /// \ingroup CThread
 struct AkTask {
@@ -94,18 +92,8 @@ struct AkTask {
 };
 
 
-inline AkCoroutineHandle to_handle(AkPromise* cthread_context) noexcept {
-    return AkCoroutineHandle::from_promise(*cthread_context);        
-}
-
-inline AkTask AkPromise::get_return_object_on_allocation_failure() noexcept { return {}; }
-inline AkTask AkPromise::get_return_object() noexcept { return { AkCoroutineHandle::from_promise(*this) }; }
-
 namespace ak { 
  
-    // Kernel
-    // ----------------------------------------------------------------------------------------------------------------
-    
     struct BootCThread {
         struct Context {
             using InitialSuspend = std::suspend_always;
@@ -150,30 +138,30 @@ struct AkKernel {
     AkAllocTable alloc_table;
     
     // Task management
-    char            boot_cthread_frame_buffer[64];
-    ak::BootCThread boot_cthread;
-    AkTask          current_cthread;
-    AkTask          scheduler_cthread;
-    AkTask          main_cthread;
+    char            boot_task_frame_buffer[64];
+    ak::BootCThread boot_task;
+    AkTask          current_task;
+    AkTask          scheduler_task;
+    AkTask          main_task;
     
-    AkDLink       zombie_list;
-    AkDLink       ready_list;
-    AkDLink       cthread_list;
-    AkVoid*       mem;
-    AkSize        mem_size; // remove mem begin+end
-    AkI32         main_cthread_exit_code;
+    AkDLink         zombie_list;
+    AkDLink         ready_list;
+    AkDLink         task_list;
+    AkVoid*         mem_buffer;
+    AkSize          mem_buffer_size; // remove mem begin+end
+    AkI32           main_task_exit_code;
 
     // Count state variables
-    AkI32         cthread_count;
-    AkI32         ready_cthread_count;
-    AkI32         waiting_cthread_count;
-    AkI32         iowaiting_cthread_count;
-    AkI32         zombie_cthread_count;
-    AkI32         interrupted;
+    AkI32           task_count;
+    AkI32           ready_task_count;
+    AkI32           waiting_task_count;
+    AkI32           iowaiting_task_count;
+    AkI32           zombie_task_count;
+    AkI32           interrupted;
     
     // IOManagement
-    io_uring      io_uring_state;
-    AkU32         io_uring_entry_count;
+    io_uring        io_uring_state;
+    AkU32           io_uring_entry_count;
 };
 extern AkKernel global_kernel_state;
 
@@ -183,191 +171,184 @@ struct AkKernelConfig {
     unsigned   io_uring_entry_count;
 };
 
+struct AkResumeTaskOp {
+    explicit AkResumeTaskOp(AkTask ct) : hdl(ct.hdl) {};
+
+    constexpr AkBool  await_ready() const noexcept { return false; }
+    constexpr AkVoid  await_resume() const noexcept {}
+
+    AkCoroutineHandle await_suspend(AkCoroutineHandle hdl) const noexcept;
+
+    AkCoroutineHandle hdl;
+};
+
+struct AkJoinTaskOp {
+    
+    explicit AkJoinTaskOp(AkCoroutineHandle hdl) : hdl(hdl) {};
+
+    constexpr AkBool  await_ready() const noexcept  { return false; }
+    constexpr int     await_resume() const noexcept { return hdl.promise().res; }
+
+    AkCoroutineHandle await_suspend(AkCoroutineHandle hdl) const noexcept;
+
+    AkCoroutineHandle hdl;
+};
+
+struct AkSuspendTaskOp {
+    constexpr AkBool  await_ready() const noexcept  { return false; }
+    constexpr AkVoid  await_resume() const noexcept { }
+
+    AkCoroutineHandle await_suspend(AkCoroutineHandle hdl) const noexcept;
+};
+
+struct AkGetCurrentTaskOp {
+    constexpr AkBool            await_ready() const noexcept  { return false; }
+    constexpr AkCoroutineHandle await_resume() const noexcept { return hdl; }
+
+    constexpr AkCoroutineHandle await_suspend(AkCoroutineHandle hdl) noexcept;
+
+    AkCoroutineHandle hdl;
+};
+
+struct AkIOOp {
+    constexpr AkBool  await_ready()  const noexcept { return false; }
+    constexpr AkI32   await_resume() const noexcept { return global_kernel_state.current_task.hdl.promise().res; }
+
+    AkCoroutineHandle await_suspend(AkCoroutineHandle hdl) noexcept;
+};
+
+namespace ak {
+
+    template <typename... Args>
+    int ak_run_main(AkTask (*co_main)(Args ...) noexcept, Args... args) noexcept;
+
+    // CThread routines
+    AkBool           is_valid(AkTask task) noexcept;
+    AkBool           is_done(AkTask task) noexcept;
+    AkPromise*       get_context() noexcept;
+    AkPromise*       get_context(AkTask task) noexcept;
+    AkCoroutineState get_state(AkTask task) noexcept;
+    AkJoinTaskOp     join(AkTask task) noexcept;
+    AkJoinTaskOp     operator co_await(AkTask task) noexcept;
+    AkResumeTaskOp   resume(AkTask task) noexcept;
+    
+    constexpr AkSuspendTaskOp suspend() noexcept;
+
+    // Remove
+    constexpr AkGetCurrentTaskOp get_cthread_context_async() noexcept; //< Duplicated remove.
+
+}
+
+
 AkI32  ak_init_kernel(AkKernelConfig* config) noexcept;
 AkVoid ak_fini_kernel() noexcept;
 
-namespace ak {
-    
-
-    template <typename... Args>
-    int run_main(AkTask (*co_main)(Args ...) noexcept, Args... args) noexcept;
-    
-    //struct Event { AkDLink wait_list; };
-    //
-    // Declarations for ops 
-    namespace op {
-        struct ResumeCThread {
-            explicit ResumeCThread(AkTask ct) : hdl(ct.hdl) {};
-    
-            constexpr AkBool  await_ready() const noexcept { return false; }
-            constexpr AkVoid  await_resume() const noexcept {}
-
-            AkCoroutineHandle await_suspend(AkCoroutineHandle hdl) const noexcept;
-    
-            AkCoroutineHandle hdl;
-        };
-
-        struct JoinCThread {
-            
-            explicit JoinCThread(AkCoroutineHandle hdl) : hdl(hdl) {};
-    
-            constexpr AkBool  await_ready() const noexcept  { return false; }
-            constexpr int     await_resume() const noexcept { return hdl.promise().res; }
-
-            AkCoroutineHandle await_suspend(AkCoroutineHandle hdl) const noexcept;
-
-            AkCoroutineHandle hdl;
-        };
-
-        struct Suspend {
-            constexpr AkBool  await_ready() const noexcept { return false; }
-            AkCoroutineHandle await_suspend(AkCoroutineHandle hdl) const noexcept;
-            constexpr AkVoid  await_resume() const noexcept {}
-        };
-
-        struct GetCurrentTask {
-            constexpr AkBool             await_ready() const noexcept { return false; }
-            constexpr AkCoroutineHandle  await_suspend(AkCoroutineHandle hdl) noexcept;
-            constexpr AkCoroutineHandle  await_resume() const noexcept { return hdl; }
-
-            AkCoroutineHandle hdl;
-        };
-    }
-    // Declarations for ops 
-
-    // CThread routines
-    AkBool              is_valid(AkTask thread) noexcept;
-    AkBool              is_done(AkTask thread) noexcept;
-    AkPromise*          get_context() noexcept;
-    AkPromise*          get_context(AkTask thread) noexcept;
-    AkCoroutineState    get_state(AkTask thread) noexcept;
-    op::JoinCThread     join(AkTask thread) noexcept;
-    op::JoinCThread     operator co_await(AkTask thread) noexcept;
-    op::ResumeCThread   resume(AkTask thread) noexcept;
-    
-    constexpr op::Suspend suspend() noexcept;
-
-    // Remove
-    constexpr op::GetCurrentTask get_cthread_context_async() noexcept; //< Duplicated remove.
-
-    // IO API (moved from ak/io)
-    namespace op {
-        struct ExecIO {
-            using Hdl = AkCoroutineHandle;
-            constexpr AkBool await_ready() const noexcept  { return false; }
-            constexpr AkI32  await_resume() const noexcept { return global_kernel_state.current_cthread.hdl.promise().res; }
-            Hdl await_suspend(Hdl hdl) noexcept;
-        };
-    }
-
-    // IO Routines
-    op::ExecIO io_open(const char* path, int flags, mode_t mode) noexcept;
-    op::ExecIO io_open_at(int dfd, const char* path, int flags, mode_t mode) noexcept;
-    op::ExecIO io_open_at_direct(int dfd, const char* path, int flags, mode_t mode, unsigned file_index) noexcept;
-    op::ExecIO io_open_at2(int dfd, const char* path, struct open_how* how) noexcept;
-    op::ExecIO io_open_at2_direct(int dfd, const char* path, struct open_how* how, unsigned file_index) noexcept;
-    op::ExecIO io_open_direct(const char* path, int flags, mode_t mode, unsigned file_index) noexcept;
-    op::ExecIO io_close(int fd) noexcept;
-    op::ExecIO io_close_direct(unsigned file_index) noexcept;
-    op::ExecIO io_read(int fd, AkVoid* buf, unsigned nbytes, __u64 offset) noexcept;
-    op::ExecIO io_read_multishot(int fd, unsigned nbytes, __u64 offset, int buf_group) noexcept;
-    op::ExecIO io_read_fixed(int fd, AkVoid* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept;
-    op::ExecIO io_readv(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept;
-    op::ExecIO io_readv2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept;
-    op::ExecIO io_readv_fixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept;
-    op::ExecIO io_write(int fd, const AkVoid* buf, unsigned nbytes, __u64 offset) noexcept;
-    op::ExecIO io_write_fixed(int fd, const AkVoid* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept;
-    op::ExecIO io_writev(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept;
-    op::ExecIO io_writev2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept;
-    op::ExecIO io_writev_fixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept;
-    op::ExecIO io_accept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept;
-    op::ExecIO io_accept_direct(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags, unsigned int file_index) noexcept;
-    op::ExecIO io_multishot_accept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept;
-    op::ExecIO io_multishot_accept_direct(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept;
-    op::ExecIO io_connect(int fd, const struct sockaddr* addr, socklen_t addrlen) noexcept;
+// IO Routines
+AkIOOp ak_os_io_open(const char* path, int flags, mode_t mode) noexcept;
+AkIOOp ak_os_io_open_at(int dfd, const char* path, int flags, mode_t mode) noexcept;
+AkIOOp ak_os_io_open_at_direct(int dfd, const char* path, int flags, mode_t mode, unsigned file_index) noexcept;
+AkIOOp ak_os_io_open_at2(int dfd, const char* path, struct open_how* how) noexcept;
+AkIOOp ak_os_io_open_at2_direct(int dfd, const char* path, struct open_how* how, unsigned file_index) noexcept;
+AkIOOp ak_os_io_open_direct(const char* path, int flags, mode_t mode, unsigned file_index) noexcept;
+AkIOOp ak_os_io_close(int fd) noexcept;
+AkIOOp ak_os_io_close_direct(unsigned file_index) noexcept;
+AkIOOp ak_os_io_read(int fd, AkVoid* buf, unsigned nbytes, __u64 offset) noexcept;
+AkIOOp ak_os_io_read_multishot(int fd, unsigned nbytes, __u64 offset, int buf_group) noexcept;
+AkIOOp ak_os_io_read_fixed(int fd, AkVoid* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept;
+AkIOOp ak_os_io_readv(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept;
+AkIOOp ak_os_io_readv2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept;
+AkIOOp ak_os_io_readv_fixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept;
+AkIOOp ak_os_io_write(int fd, const AkVoid* buf, unsigned nbytes, __u64 offset) noexcept;
+AkIOOp ak_os_io_write_fixed(int fd, const AkVoid* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept;
+AkIOOp ak_os_io_writev(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset) noexcept;
+AkIOOp ak_os_io_writev2(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags) noexcept;
+AkIOOp ak_os_io_writev_fixed(int fd, const struct iovec* iovecs, unsigned nr_vecs, __u64 offset, int flags, int buf_index) noexcept;
+AkIOOp ak_os_io_accept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept;
+AkIOOp ak_os_io_accept_direct(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags, unsigned int file_index) noexcept;
+AkIOOp ak_os_io_multishot_accept(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept;
+AkIOOp ak_os_io_multishot_accept_direct(int fd, struct sockaddr* addr, socklen_t* addrlen, int flags) noexcept;
+AkIOOp ak_os_io_connect(int fd, const struct sockaddr* addr, socklen_t addrlen) noexcept;
 #if defined(IORING_OP_BIND)
-    op::ExecIO io_bind(int fd, const struct sockaddr* addr, socklen_t addrlen) noexcept;
+AkIOOp ak_os_io_bind(int fd, const struct sockaddr* addr, socklen_t addrlen) noexcept;
 #endif
 #if defined(IORING_OP_LISTEN)
-    op::ExecIO io_listen(int fd, int backlog) noexcept;
+AkIOOp ak_os_io_listen(int fd, int backlog) noexcept;
 #endif
-    op::ExecIO io_send(int sockfd, const AkVoid* buf, size_t len, int flags) noexcept;
-    op::ExecIO io_send_bundle(int sockfd, size_t len, int flags) noexcept;
-    op::ExecIO io_sendto(int sockfd, const AkVoid* buf, size_t len, int flags, const struct sockaddr* addr, socklen_t addrlen) noexcept;
-    op::ExecIO io_send_zc(int sockfd, const AkVoid* buf, size_t len, int flags, unsigned zc_flags) noexcept;
-    op::ExecIO io_send_zc_fixed(int sockfd, const AkVoid* buf, size_t len, int flags, unsigned zc_flags, unsigned buf_index) noexcept;
-    op::ExecIO io_send_msg(int fd, const struct msghdr* msg, unsigned flags) noexcept;
-    op::ExecIO io_send_msg_zc(int fd, const struct msghdr* msg, unsigned flags) noexcept;
-    op::ExecIO io_send_msg_zc_fixed(int fd, const struct msghdr* msg, unsigned flags, unsigned buf_index) noexcept;
-    op::ExecIO io_recv(int sockfd, AkVoid* buf, size_t len, int flags) noexcept;
-    op::ExecIO io_recv_multishot(int sockfd, AkVoid* buf, size_t len, int flags) noexcept;
-    op::ExecIO io_recv_msg(int fd, struct msghdr* msg, unsigned flags) noexcept;
-    op::ExecIO io_recv_msg_multishot(int fd, struct msghdr* msg, unsigned flags) noexcept;
-    op::ExecIO io_socket(int domain, int type, int protocol, unsigned int flags) noexcept;
-    op::ExecIO io_socket_direct(int domain, int type, int protocol, unsigned file_index, unsigned int flags) noexcept;
+AkIOOp ak_os_io_send(int sockfd, const AkVoid* buf, size_t len, int flags) noexcept;
+AkIOOp ak_os_io_send_bundle(int sockfd, size_t len, int flags) noexcept;
+AkIOOp ak_os_io_sendto(int sockfd, const AkVoid* buf, size_t len, int flags, const struct sockaddr* addr, socklen_t addrlen) noexcept;
+AkIOOp ak_os_io_send_zc(int sockfd, const AkVoid* buf, size_t len, int flags, unsigned zc_flags) noexcept;
+AkIOOp ak_os_io_send_zc_fixed(int sockfd, const AkVoid* buf, size_t len, int flags, unsigned zc_flags, unsigned buf_index) noexcept;
+AkIOOp ak_os_io_send_msg(int fd, const struct msghdr* msg, unsigned flags) noexcept;
+AkIOOp ak_os_io_send_msg_zc(int fd, const struct msghdr* msg, unsigned flags) noexcept;
+AkIOOp ak_os_io_send_msg_zc_fixed(int fd, const struct msghdr* msg, unsigned flags, unsigned buf_index) noexcept;
+AkIOOp ak_os_io_recv(int sockfd, AkVoid* buf, size_t len, int flags) noexcept;
+AkIOOp ak_os_io_recv_multishot(int sockfd, AkVoid* buf, size_t len, int flags) noexcept;
+AkIOOp ak_os_io_recv_msg(int fd, struct msghdr* msg, unsigned flags) noexcept;
+AkIOOp ak_os_io_recv_msg_multishot(int fd, struct msghdr* msg, unsigned flags) noexcept;
+AkIOOp ak_os_io_socket(int domain, int type, int protocol, unsigned int flags) noexcept;
+AkIOOp ak_os_io_socket_direct(int domain, int type, int protocol, unsigned file_index, unsigned int flags) noexcept;
 #if defined(IORING_FILE_INDEX_ALLOC)
-    op::ExecIO io_socket_direct_alloc(int domain, int type, int protocol, unsigned int flags) noexcept;
+AkIOOp ak_os_io_socket_direct_alloc(int domain, int type, int protocol, unsigned int flags) noexcept;
 #endif
 #if defined(IORING_OP_PIPE)
-    op::ExecIO io_pipe(int* fds, unsigned int flags) noexcept;
-    op::ExecIO io_pipe_direct(int* fds, unsigned int pipe_flags) noexcept;
+AkIOOp ak_os_io_pipe(int* fds, unsigned int flags) noexcept;
+AkIOOp ak_os_io_pipe_direct(int* fds, unsigned int pipe_flags) noexcept;
 #endif
-    op::ExecIO io_mkdir(const char* path, mode_t mode) noexcept;
-    op::ExecIO io_mkdir_at(int dfd, const char* path, mode_t mode) noexcept;
-    op::ExecIO io_symlink(const char* target, const char* linkpath) noexcept;
-    op::ExecIO io_symlink_at(const char* target, int newdirfd, const char* linkpath) noexcept;
-    op::ExecIO io_link(const char* oldpath, const char* newpath, int flags) noexcept;
-    op::ExecIO io_link_at(int olddfd, const char* oldpath, int newdfd, const char* newpath, int flags) noexcept;
-    op::ExecIO io_unlink(const char* path, int flags) noexcept;
-    op::ExecIO io_unlink_at(int dfd, const char* path, int flags) noexcept;
-    op::ExecIO io_rename(const char* oldpath, const char* newpath) noexcept;
-    op::ExecIO io_rename_at(int olddfd, const char* oldpath, int newdfd, const char* newpath, unsigned int flags) noexcept;
-    op::ExecIO io_sync(int fd, unsigned fsync_flags) noexcept;
-    op::ExecIO io_sync_file_range(int fd, unsigned len, __u64 offset, int flags) noexcept;
-    op::ExecIO io_fallocate(int fd, int mode, __u64 offset, __u64 len) noexcept;
-    op::ExecIO io_statx(int dfd, const char* path, int flags, unsigned mask, struct statx* statxbuf) noexcept;
-    op::ExecIO io_fadvise(int fd, __u64 offset, __u32 len, int advice) noexcept;
-    op::ExecIO io_fadvise64(int fd, __u64 offset, off_t len, int advice) noexcept;
-    op::ExecIO io_madvise(AkVoid* addr, __u32 length, int advice) noexcept;
-    op::ExecIO io_madvise64(AkVoid* addr, off_t length, int advice) noexcept;
-    op::ExecIO io_get_xattr(const char* name, char* value, const char* path, unsigned int len) noexcept;
-    op::ExecIO io_set_xattr(const char* name, const char* value, const char* path, int flags, unsigned int len) noexcept;
-    op::ExecIO io_fget_xattr(int fd, const char* name, char* value, unsigned int len) noexcept;
-    op::ExecIO io_fset_xattr(int fd, const char* name, const char* value, int flags, unsigned int len) noexcept;
-    op::ExecIO io_provide_buffers(AkVoid* addr, int len, int nr, int bgid, int bid) noexcept;
-    op::ExecIO io_remove_buffers(int nr, int bgid) noexcept;
-    op::ExecIO io_poll_add(int fd, unsigned poll_mask) noexcept;
-    op::ExecIO io_poll_multishot(int fd, unsigned poll_mask) noexcept;
-    op::ExecIO io_poll_remove(__u64 user_data) noexcept;
-    op::ExecIO io_poll_update(__u64 old_user_data, __u64 new_user_data, unsigned poll_mask, unsigned flags) noexcept;
-    op::ExecIO io_epoll_ctl(int epfd, int fd, int op, struct epoll_event* ev) noexcept;
-    op::ExecIO io_epoll_wait(int fd, struct epoll_event* events, int maxevents, unsigned flags) noexcept;
-    op::ExecIO io_timeout(struct __kernel_timespec* ts, unsigned count, unsigned flags) noexcept;
-    op::ExecIO io_timeout_remove(__u64 user_data, unsigned flags) noexcept;
-    op::ExecIO io_timeout_update(struct __kernel_timespec* ts, __u64 user_data, unsigned flags) noexcept;
-    op::ExecIO io_link_timeout(struct __kernel_timespec* ts, unsigned flags) noexcept;
-    op::ExecIO io_msg_ring(int fd, unsigned int len, __u64 data, unsigned int flags) noexcept;
-    op::ExecIO io_msg_ring_cqe_flags(int fd, unsigned int len, __u64 data, unsigned int flags, unsigned int cqe_flags) noexcept;
-    op::ExecIO io_msg_ring_fd(int fd, int source_fd, int target_fd, __u64 data, unsigned int flags) noexcept;
-    op::ExecIO io_msg_ring_fd_alloc(int fd, int source_fd, __u64 data, unsigned int flags) noexcept;
-    op::ExecIO io_waitid(idtype_t idtype, id_t id, siginfo_t* infop, int options, unsigned int flags) noexcept;
-    op::ExecIO io_futex_wake(uint32_t* futex, uint64_t val, uint64_t mask, uint32_t futex_flags, unsigned int flags) noexcept;
-    op::ExecIO io_futex_wait(uint32_t* futex, uint64_t val, uint64_t mask, uint32_t futex_flags, unsigned int flags) noexcept;
-    op::ExecIO io_futex_waitv(struct futex_waitv* futex, uint32_t nr_futex, unsigned int flags) noexcept;
-    op::ExecIO io_fixed_fd_install(int fd, unsigned int flags) noexcept;
-    op::ExecIO io_files_update(int* fds, unsigned nr_fds, int offset) noexcept;
-    op::ExecIO io_shutdown(int fd, int how) noexcept;
-    op::ExecIO io_ftruncate(int fd, loff_t len) noexcept;
-    op::ExecIO io_cmd_sock(int cmd_op, int fd, int level, int optname, AkVoid* optval, int optlen) noexcept;
-    op::ExecIO io_cmd_discard(int fd, uint64_t offset, uint64_t nbytes) noexcept;
-    op::ExecIO io_nop(__u64 user_data) noexcept;
-    op::ExecIO io_splice(int fd_in, int64_t off_in, int fd_out, int64_t off_out, unsigned int nbytes, unsigned int splice_flags) noexcept;
-    op::ExecIO io_tee(int fd_in, int fd_out, unsigned int nbytes, unsigned int splice_flags) noexcept;
-    op::ExecIO io_cancel64(__u64 user_data, int flags) noexcept;
-    op::ExecIO io_cancel(AkVoid* user_data, int flags) noexcept;
-    op::ExecIO io_cancel_fd(int fd, unsigned int flags) noexcept;
-
-}
+AkIOOp ak_os_io_mkdir(const char* path, mode_t mode) noexcept;
+AkIOOp ak_os_io_mkdir_at(int dfd, const char* path, mode_t mode) noexcept;
+AkIOOp ak_os_io_symlink(const char* target, const char* linkpath) noexcept;
+AkIOOp ak_os_io_symlink_at(const char* target, int newdirfd, const char* linkpath) noexcept;
+AkIOOp ak_os_io_link(const char* oldpath, const char* newpath, int flags) noexcept;
+AkIOOp ak_os_io_link_at(int olddfd, const char* oldpath, int newdfd, const char* newpath, int flags) noexcept;
+AkIOOp ak_os_io_unlink(const char* path, int flags) noexcept;
+AkIOOp ak_os_io_unlink_at(int dfd, const char* path, int flags) noexcept;
+AkIOOp ak_os_io_rename(const char* oldpath, const char* newpath) noexcept;
+AkIOOp ak_os_io_rename_at(int olddfd, const char* oldpath, int newdfd, const char* newpath, unsigned int flags) noexcept;
+AkIOOp ak_os_io_sync(int fd, unsigned fsync_flags) noexcept;
+AkIOOp ak_os_io_sync_file_range(int fd, unsigned len, __u64 offset, int flags) noexcept;
+AkIOOp ak_os_io_fallocate(int fd, int mode, __u64 offset, __u64 len) noexcept;
+AkIOOp ak_os_io_statx(int dfd, const char* path, int flags, unsigned mask, struct statx* statxbuf) noexcept;
+AkIOOp ak_os_io_fadvise(int fd, __u64 offset, __u32 len, int advice) noexcept;
+AkIOOp ak_os_io_fadvise64(int fd, __u64 offset, off_t len, int advice) noexcept;
+AkIOOp ak_os_io_madvise(AkVoid* addr, __u32 length, int advice) noexcept;
+AkIOOp ak_os_io_madvise64(AkVoid* addr, off_t length, int advice) noexcept;
+AkIOOp ak_os_io_get_xattr(const char* name, char* value, const char* path, unsigned int len) noexcept;
+AkIOOp ak_os_io_set_xattr(const char* name, const char* value, const char* path, int flags, unsigned int len) noexcept;
+AkIOOp ak_os_io_fget_xattr(int fd, const char* name, char* value, unsigned int len) noexcept;
+AkIOOp ak_os_io_fset_xattr(int fd, const char* name, const char* value, int flags, unsigned int len) noexcept;
+AkIOOp ak_os_io_provide_buffers(AkVoid* addr, int len, int nr, int bgid, int bid) noexcept;
+AkIOOp ak_os_io_remove_buffers(int nr, int bgid) noexcept;
+AkIOOp ak_os_io_poll_add(int fd, unsigned poll_mask) noexcept;
+AkIOOp ak_os_io_poll_multishot(int fd, unsigned poll_mask) noexcept;
+AkIOOp ak_os_io_poll_remove(__u64 user_data) noexcept;
+AkIOOp ak_os_io_poll_update(__u64 old_user_data, __u64 new_user_data, unsigned poll_mask, unsigned flags) noexcept;
+AkIOOp ak_os_io_epoll_ctl(int epfd, int fd, int op, struct epoll_event* ev) noexcept;
+AkIOOp ak_os_io_epoll_wait(int fd, struct epoll_event* events, int maxevents, unsigned flags) noexcept;
+AkIOOp ak_os_io_timeout(struct __kernel_timespec* ts, unsigned count, unsigned flags) noexcept;
+AkIOOp ak_os_io_timeout_remove(__u64 user_data, unsigned flags) noexcept;
+AkIOOp ak_os_io_timeout_update(struct __kernel_timespec* ts, __u64 user_data, unsigned flags) noexcept;
+AkIOOp ak_os_io_link_timeout(struct __kernel_timespec* ts, unsigned flags) noexcept;
+AkIOOp ak_os_io_msg_ring(int fd, unsigned int len, __u64 data, unsigned int flags) noexcept;
+AkIOOp ak_os_io_msg_ring_cqe_flags(int fd, unsigned int len, __u64 data, unsigned int flags, unsigned int cqe_flags) noexcept;
+AkIOOp ak_os_io_msg_ring_fd(int fd, int source_fd, int target_fd, __u64 data, unsigned int flags) noexcept;
+AkIOOp ak_os_io_msg_ring_fd_alloc(int fd, int source_fd, __u64 data, unsigned int flags) noexcept;
+AkIOOp ak_os_io_waitid(idtype_t idtype, id_t id, siginfo_t* infop, int options, unsigned int flags) noexcept;
+AkIOOp ak_os_io_futex_wake(uint32_t* futex, uint64_t val, uint64_t mask, uint32_t futex_flags, unsigned int flags) noexcept;
+AkIOOp ak_os_io_futex_wait(uint32_t* futex, uint64_t val, uint64_t mask, uint32_t futex_flags, unsigned int flags) noexcept;
+AkIOOp ak_os_io_futex_waitv(struct futex_waitv* futex, uint32_t nr_futex, unsigned int flags) noexcept;
+AkIOOp ak_os_io_fixed_fd_install(int fd, unsigned int flags) noexcept;
+AkIOOp ak_os_io_files_update(int* fds, unsigned nr_fds, int offset) noexcept;
+AkIOOp ak_os_io_shutdown(int fd, int how) noexcept;
+AkIOOp ak_os_io_ftruncate(int fd, loff_t len) noexcept;
+AkIOOp ak_os_io_cmd_sock(int cmd_op, int fd, int level, int optname, AkVoid* optval, int optlen) noexcept;
+AkIOOp ak_os_io_cmd_discard(int fd, uint64_t offset, uint64_t nbytes) noexcept;
+AkIOOp ak_os_io_nop(__u64 user_data) noexcept;
+AkIOOp ak_os_io_splice(int fd_in, int64_t off_in, int fd_out, int64_t off_out, unsigned int nbytes, unsigned int splice_flags) noexcept;
+AkIOOp ak_os_io_tee(int fd_in, int fd_out, unsigned int nbytes, unsigned int splice_flags) noexcept;
+AkIOOp ak_os_io_cancel64(__u64 user_data, int flags) noexcept;
+AkIOOp ak_os_io_cancel(AkVoid* user_data, int flags) noexcept;
+AkIOOp ak_os_io_cancel_fd(int fd, unsigned int flags) noexcept;
 
 AkVoid* ak_malloc(AkSize sz) noexcept;
 AkVoid  ak_free(AkVoid* ptr, AkU32 side_coalesching = (AkU32)~0) noexcept;

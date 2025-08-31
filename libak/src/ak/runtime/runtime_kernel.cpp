@@ -15,21 +15,21 @@ int ak_init_kernel(AkKernelConfig* config) noexcept {
         return -1;
     }
 
-    global_kernel_state.mem = config->mem_buffer;
-    global_kernel_state.mem_size = config->mem_buffer_size;
-    global_kernel_state.cthread_count = 0;
-    global_kernel_state.ready_cthread_count = 0;
-    global_kernel_state.waiting_cthread_count = 0;
-    global_kernel_state.iowaiting_cthread_count = 0;
-    global_kernel_state.zombie_cthread_count = 0;
+    global_kernel_state.mem_buffer = config->mem_buffer;
+    global_kernel_state.mem_buffer_size = config->mem_buffer_size;
+    global_kernel_state.task_count = 0;
+    global_kernel_state.ready_task_count = 0;
+    global_kernel_state.waiting_task_count = 0;
+    global_kernel_state.iowaiting_task_count = 0;
+    global_kernel_state.zombie_task_count = 0;
     global_kernel_state.interrupted = 0;
 
-    global_kernel_state.current_cthread.reset();
-    global_kernel_state.scheduler_cthread.reset();
+    global_kernel_state.current_task.reset();
+    global_kernel_state.scheduler_task.reset();
 
     ak_init_dlink(&global_kernel_state.zombie_list);
     ak_init_dlink(&global_kernel_state.ready_list);
-    ak_init_dlink(&global_kernel_state.cthread_list);
+    ak_init_dlink(&global_kernel_state.task_list);
     
     return 0;
 }

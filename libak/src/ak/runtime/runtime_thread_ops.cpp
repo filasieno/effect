@@ -2,148 +2,143 @@
 
 #include <liburing.h>
 
-namespace ak {
+// SuspendOp implmentation
+// ----------------------------------------------------------------------------------------------------------------
 
-    // SuspendOp implmentation
-    // ----------------------------------------------------------------------------------------------------------------
+AkCoroutineHandle AkSuspendTaskOp::await_suspend(AkCoroutineHandle current_task) const noexcept 
+{
 
-    AkCoroutineHandle op::Suspend::await_suspend(AkCoroutineHandle current_task) const noexcept {
-        using namespace priv;
+    AK_ASSERT(global_kernel_state.current_task);
 
-        AK_ASSERT(global_kernel_state.current_cthread);
+    AkPromise* current_promise = &current_task.promise();
 
-        AkPromise* current_promise = &current_task.promise();
-
-        if constexpr (AK_IS_DEBUG_MODE) {
-            AK_ASSERT(global_kernel_state.current_cthread == current_task);
-            AK_ASSERT(current_promise->state == AkCoroutineState::RUNNING);
-            AK_ASSERT(ak_is_dlink_detached(&current_promise->wait_link));
-            check_invariants();
-        }
-
-        // Move the current task from RUNNINIG to READY
-        current_promise->state = AkCoroutineState::READY;
-        ++global_kernel_state.ready_cthread_count;
-        ak_enqueue_dlink(&global_kernel_state.ready_list, &current_promise->wait_link);
-        global_kernel_state.current_cthread.reset();
-        check_invariants();
-
-        return schedule_next_thread();
-    }
-    
-    // ResumeTaskOp implementation
-    // ----------------------------------------------------------------------------------------------------------------
-
-    AkCoroutineHandle op::ResumeCThread::await_suspend(AkCoroutineHandle current_task_hdl) const noexcept {
-        using namespace priv;
-
-        AK_ASSERT(global_kernel_state.current_cthread == current_task_hdl);
-
-        // Check the current Task
-        AkPromise* current_promise = get_context(global_kernel_state.current_cthread);
-        AK_ASSERT(ak_is_dlink_detached(&current_promise->wait_link));
+    if constexpr (AK_IS_DEBUG_MODE) {
+        AK_ASSERT(global_kernel_state.current_task == current_task);
         AK_ASSERT(current_promise->state == AkCoroutineState::RUNNING);
-        check_invariants();
-
-        // Suspend the current Task
-        current_promise->state = AkCoroutineState::READY;
-        ++global_kernel_state.ready_cthread_count;
-        ak_enqueue_dlink(&global_kernel_state.ready_list, &current_promise->wait_link);
-        global_kernel_state.current_cthread.reset();
-        check_invariants();
-
-        // Move the target task from READY to RUNNING
-        AkPromise* promise = &hdl.promise();
-        promise->state = AkCoroutineState::RUNNING;
-        ak_detach_dlink(&promise->wait_link);
-        --global_kernel_state.ready_cthread_count;
-        global_kernel_state.current_cthread = hdl;
-        check_invariants();
-
-        AK_ASSERT(global_kernel_state.current_cthread);
-        return hdl;
+        AK_ASSERT(ak_is_dlink_detached(&current_promise->wait_link));
+        runtime_check_invariants();
     }
 
-    // JoinTaskOp implementation
-    // ----------------------------------------------------------------------------------------------------------------
+    // Move the current task from RUNNINIG to READY
+    current_promise->state = AkCoroutineState::READY;
+    ++global_kernel_state.ready_task_count;
+    ak_enqueue_dlink(&global_kernel_state.ready_list, &current_promise->wait_link);
+    global_kernel_state.current_task.reset();
+    runtime_check_invariants();
 
-    AkCoroutineHandle op::JoinCThread::await_suspend(AkCoroutineHandle current_task_hdl) const noexcept
-    {
-        using namespace priv;
+    return runtime_schedule_next_thread();
+}
 
-        AkPromise* current_task_ctx = &current_task_hdl.promise();
+// ResumeTaskOp implementation
+// ----------------------------------------------------------------------------------------------------------------
 
-        // Check CurrentTask preconditions
-        AK_ASSERT(current_task_ctx->state == AkCoroutineState::RUNNING);
-        AK_ASSERT(ak_is_dlink_detached(&current_task_ctx->wait_link));
-        AK_ASSERT(global_kernel_state.current_cthread == current_task_hdl);
-        check_invariants();
+AkCoroutineHandle AkResumeTaskOp::await_suspend(AkCoroutineHandle current_task_hdl) const noexcept {
+    
 
-        AkPromise* joined_task_ctx = &hdl.promise();                
-        AkCoroutineState joined_task_state = joined_task_ctx->state;
-        switch (joined_task_state) {
-            case AkCoroutineState::READY:
-            {
+    AK_ASSERT(global_kernel_state.current_task == current_task_hdl);
 
+    // Check the current Task
+    AkPromise* current_promise = ak::get_context(global_kernel_state.current_task);
+    AK_ASSERT(ak_is_dlink_detached(&current_promise->wait_link));
+    AK_ASSERT(current_promise->state == AkCoroutineState::RUNNING);
+    runtime_check_invariants();
+
+    // Suspend the current Task
+    current_promise->state = AkCoroutineState::READY;
+    ++global_kernel_state.ready_task_count;
+    ak_enqueue_dlink(&global_kernel_state.ready_list, &current_promise->wait_link);
+    global_kernel_state.current_task.reset();
+    runtime_check_invariants();
+
+    // Move the target task from READY to RUNNING
+    AkPromise* promise = &hdl.promise();
+    promise->state = AkCoroutineState::RUNNING;
+    ak_detach_dlink(&promise->wait_link);
+    --global_kernel_state.ready_task_count;
+    global_kernel_state.current_task = hdl;
+    runtime_check_invariants();
+
+    AK_ASSERT(global_kernel_state.current_task);
+    return hdl;
+}
+
+// JoinTaskOp implementation
+// ----------------------------------------------------------------------------------------------------------------
+
+AkCoroutineHandle AkJoinTaskOp::await_suspend(AkCoroutineHandle current_task_hdl) const noexcept
+{
+    AkPromise* current_task_ctx = &current_task_hdl.promise();
+
+    // Check CurrentTask preconditions
+    AK_ASSERT(current_task_ctx->state == AkCoroutineState::RUNNING);
+    AK_ASSERT(ak_is_dlink_detached(&current_task_ctx->wait_link));
+    AK_ASSERT(global_kernel_state.current_task == current_task_hdl);
+    runtime_check_invariants();
+
+    AkPromise* joined_task_ctx = &hdl.promise();                
+    AkCoroutineState joined_task_state = joined_task_ctx->state;
+    switch (joined_task_state) {
+        case AkCoroutineState::READY:
+        {
+
+            // Move current Task from READY to WAITING
+            current_task_ctx->state = AkCoroutineState::WAITING;
+            ++global_kernel_state.waiting_task_count;
+            ak_enqueue_dlink(&joined_task_ctx->awaiter_list, &current_task_ctx->wait_link); 
+            global_kernel_state.current_task.reset();
+            runtime_check_invariants();
+            runtime_dump_task_count();
+
+            // Move the joined TASK from READY to RUNNING
+            joined_task_ctx->state = AkCoroutineState::RUNNING;
+            ak_detach_dlink(&joined_task_ctx->wait_link);
+            --global_kernel_state.ready_task_count;
+            global_kernel_state.current_task = hdl;
+            runtime_check_invariants();
+            runtime_dump_task_count();
+            return hdl;
+        }
+
+        case AkCoroutineState::IO_WAITING:
+        case AkCoroutineState::WAITING:
+        {
                 // Move current Task from READY to WAITING
-                current_task_ctx->state = AkCoroutineState::WAITING;
-                ++global_kernel_state.waiting_cthread_count;
-                ak_enqueue_dlink(&joined_task_ctx->awaiter_list, &current_task_ctx->wait_link); 
-                global_kernel_state.current_cthread.reset();
-                check_invariants();
-                dump_task_count();
+            current_task_ctx->state = AkCoroutineState::WAITING;
+            ++global_kernel_state.waiting_task_count;
+            ak_enqueue_dlink(&joined_task_ctx->awaiter_list, &current_task_ctx->wait_link); 
+            global_kernel_state.current_task.reset();
+            runtime_check_invariants();
+            runtime_dump_task_count();
 
-                // Move the joined TASK from READY to RUNNING
-                joined_task_ctx->state = AkCoroutineState::RUNNING;
-                ak_detach_dlink(&joined_task_ctx->wait_link);
-                --global_kernel_state.ready_cthread_count;
-                global_kernel_state.current_cthread = hdl;
-                check_invariants();
-                dump_task_count();
-                return hdl;
-            }
+            // Move the Scheduler Task from READY to RUNNING
+            AkPromise* sched_ctx = ak::get_context(global_kernel_state.scheduler_task);
+            AK_ASSERT(sched_ctx->state == AkCoroutineState::READY);
+            sched_ctx->state = AkCoroutineState::RUNNING;
+            ak_detach_dlink(&sched_ctx->wait_link);
+            --global_kernel_state.ready_task_count;
+            global_kernel_state.current_task = global_kernel_state.scheduler_task;
+            runtime_check_invariants();
+            runtime_dump_task_count();
 
-            case AkCoroutineState::IO_WAITING:
-            case AkCoroutineState::WAITING:
-            {
-                 // Move current Task from READY to WAITING
-                current_task_ctx->state = AkCoroutineState::WAITING;
-                ++global_kernel_state.waiting_cthread_count;
-                ak_enqueue_dlink(&joined_task_ctx->awaiter_list, &current_task_ctx->wait_link); 
-                global_kernel_state.current_cthread.reset();
-                check_invariants();
-                dump_task_count();
-
-                // Move the Scheduler Task from READY to RUNNING
-                AkPromise* sched_ctx = get_context(global_kernel_state.scheduler_cthread);
-                AK_ASSERT(sched_ctx->state == AkCoroutineState::READY);
-                sched_ctx->state = AkCoroutineState::RUNNING;
-                ak_detach_dlink(&sched_ctx->wait_link);
-                --global_kernel_state.ready_cthread_count;
-                global_kernel_state.current_cthread = global_kernel_state.scheduler_cthread;
-                check_invariants();
-                dump_task_count();
-
-                return global_kernel_state.scheduler_cthread;
-            }
-            
-            case AkCoroutineState::DELETING:
-            case AkCoroutineState::ZOMBIE:
-            {
-                return current_task_hdl;
-            }
-            
-            case AkCoroutineState::INVALID:
-            case AkCoroutineState::CREATED:
-            case AkCoroutineState::RUNNING:
-            default:
-            {
-                // Illegal State
-                std::abort();
-            }
+            return global_kernel_state.scheduler_task;
+        }
+        
+        case AkCoroutineState::DELETING:
+        case AkCoroutineState::ZOMBIE:
+        {
+            return current_task_hdl;
+        }
+        
+        case AkCoroutineState::INVALID:
+        case AkCoroutineState::CREATED:
+        case AkCoroutineState::RUNNING:
+        default:
+        {
+            // Illegal State
+            std::abort();
         }
     }
-
 }
+
 
 

@@ -44,6 +44,6 @@ static AkTask co_main() noexcept {
 }
 
 TEST_F(KernelAkTest, CoroutineRun) {
-	int rc = run_main(co_main);
+	int rc = ak_run_main(co_main);
 	EXPECT_EQ(rc, 0);
 }

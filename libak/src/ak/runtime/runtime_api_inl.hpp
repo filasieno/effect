@@ -1,8 +1,5 @@
 #pragma once
 
-// Public inline API implementation
-// --------------------------------
-
 #include "ak/runtime/runtime_api.hpp"
 #include <cstdlib>
 
@@ -29,6 +26,10 @@ inline AkVoid  ak_free(AkVoid* ptr, AkU32 side_coalesching) noexcept { ak::priv:
 
 inline AkI32   ak_defragment_mem(AkU64 millis_time_budget) noexcept { return ak::priv::alloc_table_defrag(&global_kernel_state.alloc_table, millis_time_budget); }
 
+inline AkPromise* runtime_get_linked_task_context(const AkDLink* link) noexcept {
+    unsigned long long promise_off = ((unsigned long long)link) - offsetof(AkPromise, wait_link);
+    return reinterpret_cast<AkPromise*>(promise_off);
+}
 
 namespace ak { 
 
@@ -63,31 +64,27 @@ namespace ak {
 
     inline AkPromise* get_context(AkTask ct) noexcept { return &ct.hdl.promise(); }
 
-    inline AkPromise* get_context() noexcept { return &global_kernel_state.current_cthread.hdl.promise(); }
+    inline AkPromise* get_context() noexcept { return &global_kernel_state.current_task.hdl.promise(); }
 
-    inline constexpr op::GetCurrentTask get_cthread_context_async() noexcept { return {}; }
+    inline constexpr AkGetCurrentTaskOp get_cthread_context_async() noexcept { return {}; }
 
-    inline constexpr op::Suspend suspend() noexcept { return {}; }
+    inline constexpr AkSuspendTaskOp suspend() noexcept { return {}; }
 
-    inline op::JoinCThread join(AkTask ct) noexcept { return op::JoinCThread(ct); }
+    inline AkJoinTaskOp join(AkTask ct) noexcept { return AkJoinTaskOp(ct); }
 
-    inline op::JoinCThread operator co_await(AkTask ct) noexcept { return op::JoinCThread(ct); }
+    inline AkJoinTaskOp operator co_await(AkTask ct) noexcept { return AkJoinTaskOp(ct); }
 
     inline AkCoroutineState get_state(AkTask ct) noexcept { return ct.hdl.promise().state; }
 
     inline AkBool is_done(AkTask ct) noexcept { return ct.hdl.done(); }
 
-    inline op::ResumeCThread resume(AkTask ct) noexcept { return op::ResumeCThread(ct); }
+    inline AkResumeTaskOp resume(AkTask ct) noexcept { return AkResumeTaskOp(ct); }
 
     // Boot operations
     // ----------------------------------------------------------------------------------------------------------------
 
     namespace priv {
         
-        inline AkPromise* get_linked_cthread_context(const AkDLink* link) noexcept {
-            unsigned long long promise_off = ((unsigned long long)link) - offsetof(AkPromise, wait_link);
-            return reinterpret_cast<AkPromise*>(promise_off);
-        }
 
         // Scheduler operations
         // ----------------------------------------------------------------------------------------------------------------
@@ -123,7 +120,7 @@ namespace ak {
         BootCThread boot_main_proc(AkTask(*main_proc)(Args ...) noexcept, Args ... args) noexcept 
         {
             AkCoroutineHandle scheduler_hdl = ::ak::priv::scheduler_main_proc(main_proc, std::forward<Args>(args) ... );
-            global_kernel_state.scheduler_cthread = scheduler_hdl;
+            global_kernel_state.scheduler_task = scheduler_hdl;
 
             co_await ::ak::priv::run_scheduler();
             destroy_scheduler(scheduler_hdl);
@@ -134,7 +131,7 @@ namespace ak {
         AkTask scheduler_main_proc(AkTask(*main_proc)(Args ...) noexcept, Args... args) noexcept 
         {
             AkCoroutineHandle main_task = main_proc(args...);
-            global_kernel_state.main_cthread = main_task;
+            global_kernel_state.main_task = main_task;
             AK_ASSERT(!main_task.done());
             AK_ASSERT(get_state(main_task) == AkCoroutineState::READY);
 
@@ -151,29 +148,29 @@ namespace ak {
                 }
 
                 // If we have a ready task, resume it
-                if (global_kernel_state.ready_cthread_count > 0) {
+                if (global_kernel_state.ready_task_count > 0) {
                     AkDLink* next_node = global_kernel_state.ready_list.prev;
-                    AkPromise* next_promise = get_linked_cthread_context(next_node);
+                    AkPromise* next_promise = runtime_get_linked_task_context(next_node);
                     AkCoroutineHandle next_task = AkCoroutineHandle::from_promise(*next_promise);
-                    AK_ASSERT(next_task != global_kernel_state.scheduler_cthread);
-                    co_await op::ResumeCThread(next_task);
-                    AK_ASSERT(global_kernel_state.current_cthread);
+                    AK_ASSERT(next_task != global_kernel_state.scheduler_task);
+                    co_await AkResumeTaskOp(next_task);
+                    AK_ASSERT(global_kernel_state.current_task);
                     continue;
                 }
 
                 // Zombie bashing
-                while (global_kernel_state.zombie_cthread_count > 0) {
+                while (global_kernel_state.zombie_task_count > 0) {
                     AkDLink* zombie_link = ak_dequeue_dlink(&global_kernel_state.zombie_list);
-                    AkPromise* ctx = get_linked_cthread_context(zombie_link);
+                    AkPromise* ctx = runtime_get_linked_task_context(zombie_link);
                     AK_ASSERT(ctx->state == AkCoroutineState::ZOMBIE);
 
                     // Remove from zombie list
-                    --global_kernel_state.zombie_cthread_count;
+                    --global_kernel_state.zombie_task_count;
                     ak_detach_dlink(&ctx->wait_link);
 
                     // Remove from task list
                     ak_detach_dlink(&ctx->tasklist_link);
-                    --global_kernel_state.cthread_count;
+                    --global_kernel_state.task_count;
 
                     // Delete
                     ctx->state = AkCoroutineState::DELETING;
@@ -181,7 +178,7 @@ namespace ak {
                     zombieTaskHdl.destroy();
                 }
 
-                AkBool waiting_cc = global_kernel_state.iowaiting_cthread_count;
+                AkBool waiting_cc = global_kernel_state.iowaiting_task_count;
                 if (waiting_cc) {
                     // Process all available completions
                     struct io_uring_cqe *cqe;
@@ -193,9 +190,9 @@ namespace ak {
                         AK_ASSERT(ctx->state == AkCoroutineState::IO_WAITING);
 
                         // Move the target task from IO_WAITING to READY
-                        --global_kernel_state.iowaiting_cthread_count;
+                        --global_kernel_state.iowaiting_task_count;
                         ctx->state = AkCoroutineState::READY;
-                        ++global_kernel_state.ready_cthread_count;
+                        ++global_kernel_state.ready_task_count;
                         ak_enqueue_dlink(&global_kernel_state.ready_list, &ctx->wait_link);
                         
                         // Complete operation
@@ -207,7 +204,7 @@ namespace ak {
                     io_uring_cq_advance(&global_kernel_state.io_uring_state, completed);
                 }
 
-                if (global_kernel_state.ready_cthread_count == 0 && global_kernel_state.iowaiting_cthread_count == 0) {
+                if (global_kernel_state.ready_task_count == 0 && global_kernel_state.iowaiting_task_count == 0) {
                     break;
                 }
             }
@@ -218,12 +215,14 @@ namespace ak {
 
     // Make the main entry template visible to all translation units
     template <typename... Args>
-    int run_main(AkTask(*main_proc)(Args ...) noexcept , Args... args) noexcept {
+    int ak_run_main(AkTask(*main_proc)(Args ...) noexcept , Args... args) noexcept {
         auto boot_cthread = priv::boot_main_proc(main_proc, std::forward<Args>(args) ...);
-        global_kernel_state.boot_cthread = boot_cthread;
+        global_kernel_state.boot_task = boot_cthread;
         boot_cthread.hdl.resume();
-        return global_kernel_state.main_cthread_exit_code;
+        return global_kernel_state.main_task_exit_code;
     }
 }
 
-
+inline AkCoroutineHandle to_handle(AkPromise* promise) noexcept             { return AkCoroutineHandle::from_promise(*promise); }
+inline AkTask AkPromise::get_return_object_on_allocation_failure() noexcept { return { }; }
+inline AkTask AkPromise::get_return_object() noexcept                       { return { AkCoroutineHandle::from_promise(*this) }; }
