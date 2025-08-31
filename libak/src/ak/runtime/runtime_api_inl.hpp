@@ -6,8 +6,8 @@
 #include "ak/runtime/runtime_api.hpp"
 #include <cstdlib>
 
-template <typename... Args>
-inline AkPromise::AkPromise(Args&&... ) {
+
+inline AkPromise::AkPromise() {
 
     ak_init_dlink(&tasklist_link);
     ak_init_dlink(&wait_link);  

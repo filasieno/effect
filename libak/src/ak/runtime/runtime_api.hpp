@@ -45,8 +45,7 @@ struct AkPromise {
     static AkVoid    operator delete(AkVoid* ptr, std::size_t sz);
     static CThread   get_return_object_on_allocation_failure() noexcept;
 
-    template <typename... Args>
-    AkPromise(Args&&...);
+    AkPromise();
     ~AkPromise();
     
     CThread        get_return_object() noexcept;
