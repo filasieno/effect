@@ -23,11 +23,11 @@ protected:
 };
 
 static AkTask a_thread() noexcept {
-	co_await suspend();
-	co_await suspend();
-	co_await suspend();
-	co_await suspend();
-	co_await suspend();
+	co_await ak_suspend_task();
+	co_await ak_suspend_task();
+	co_await ak_suspend_task();
+	co_await ak_suspend_task();
+	co_await ak_suspend_task();
 	co_return 0;
 }
 

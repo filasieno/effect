@@ -60,7 +60,6 @@ namespace ak {
     // Inline Public API Implementation
     // ----------------------------------------------------------------------------------------------------------------
 
-    inline AkBool is_valid(AkTask ct) noexcept { return ct.hdl.address() != nullptr; }
 
     inline AkPromise* get_context(AkTask ct) noexcept { return &ct.hdl.promise(); }
 
@@ -68,17 +67,6 @@ namespace ak {
 
     inline constexpr AkGetCurrentTaskOp get_cthread_context_async() noexcept { return {}; }
 
-    inline constexpr AkSuspendTaskOp suspend() noexcept { return {}; }
-
-    inline AkJoinTaskOp join(AkTask ct) noexcept { return AkJoinTaskOp(ct); }
-
-    inline AkJoinTaskOp operator co_await(AkTask ct) noexcept { return AkJoinTaskOp(ct); }
-
-    inline AkCoroutineState get_state(AkTask ct) noexcept { return ct.hdl.promise().state; }
-
-    inline AkBool is_done(AkTask ct) noexcept { return ct.hdl.done(); }
-
-    inline AkResumeTaskOp resume(AkTask ct) noexcept { return AkResumeTaskOp(ct); }
 
     // Boot operations
     // ----------------------------------------------------------------------------------------------------------------
@@ -133,7 +121,7 @@ namespace ak {
             AkCoroutineHandle main_task = main_proc(args...);
             global_kernel_state.main_task = main_task;
             AK_ASSERT(!main_task.done());
-            AK_ASSERT(get_state(main_task) == AkCoroutineState::READY);
+            AK_ASSERT(ak_get_state(main_task) == AkCoroutineState::READY);
 
             while (true) {
                 // Sumbit IO operations
@@ -223,6 +211,19 @@ namespace ak {
     }
 }
 
+
+inline constexpr AkSuspendTaskOp ak_suspend_task() noexcept { return {}; }
+inline AkJoinTaskOp              ak_join_task(AkTask ct) noexcept { return AkJoinTaskOp(ct); }
+inline AkCoroutineState          ak_get_state(AkTask ct) noexcept { return ct.hdl.promise().state; }
+inline AkBool                    ak_is_task_done(AkTask ct) noexcept { return ct.hdl.done(); }
+inline AkResumeTaskOp            ak_resume_task(AkTask ct) noexcept { return AkResumeTaskOp(ct); }
+inline AkBool                    ak_is_task_valid(AkTask ct) noexcept { return ct.hdl.address() != nullptr; }
+
+inline AkJoinTaskOp              operator co_await(AkTask ct) noexcept { return AkJoinTaskOp(ct); }
+
+
 inline AkCoroutineHandle to_handle(AkPromise* promise) noexcept             { return AkCoroutineHandle::from_promise(*promise); }
 inline AkTask AkPromise::get_return_object_on_allocation_failure() noexcept { return { }; }
 inline AkTask AkPromise::get_return_object() noexcept                       { return { AkCoroutineHandle::from_promise(*this) }; }
+
+

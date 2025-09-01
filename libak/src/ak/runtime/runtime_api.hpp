@@ -218,30 +218,24 @@ struct AkIOOp {
 };
 
 namespace ak {
-
     template <typename... Args>
     int ak_run_main(AkTask (*co_main)(Args ...) noexcept, Args... args) noexcept;
 
     // CThread routines
-    AkBool           is_valid(AkTask task) noexcept;
-    AkBool           is_done(AkTask task) noexcept;
-    AkPromise*       get_context() noexcept;
-    AkPromise*       get_context(AkTask task) noexcept;
-    AkCoroutineState get_state(AkTask task) noexcept;
-    AkJoinTaskOp     join(AkTask task) noexcept;
-    AkJoinTaskOp     operator co_await(AkTask task) noexcept;
-    AkResumeTaskOp   resume(AkTask task) noexcept;
-    
-    constexpr AkSuspendTaskOp suspend() noexcept;
-
-    // Remove
+    AkPromise*                   get_context() noexcept;
+    AkPromise*                   get_context(AkTask task) noexcept;
     constexpr AkGetCurrentTaskOp get_cthread_context_async() noexcept; //< Duplicated remove.
-
 }
 
-
-AkI32  ak_init_kernel(AkKernelConfig* config) noexcept;
-AkVoid ak_fini_kernel() noexcept;
+AkI32                     ak_init_kernel(AkKernelConfig* config) noexcept;
+AkVoid                    ak_fini_kernel() noexcept;
+constexpr AkSuspendTaskOp ak_suspend_task() noexcept;
+AkResumeTaskOp            ak_resume_task(AkTask task) noexcept;
+AkCoroutineState          ak_get_state(AkTask task) noexcept;
+AkBool                    ak_is_task_valid(AkTask task) noexcept;
+AkBool                    ak_is_task_done(AkTask task) noexcept;
+AkJoinTaskOp              ak_join_task(AkTask task) noexcept;
+AkJoinTaskOp              operator co_await(AkTask task) noexcept;
 
 // IO Routines
 AkIOOp ak_os_io_open(const char* path, int flags, mode_t mode) noexcept;
