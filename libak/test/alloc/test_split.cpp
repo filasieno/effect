@@ -3,8 +3,6 @@
 
 #include "ak/alloc/alloc.hpp" // IWYU pragma: keep
 
-using namespace ak;
-
 class KernelAllocSplitTest : public ::testing::Test {
 protected:
 	AkVoid* buffer = nullptr;
@@ -13,7 +11,7 @@ protected:
 	void SetUp() override {
 		buffer = std::malloc(buffer_size);
 		ASSERT_NE(buffer, nullptr);
-		ASSERT_EQ(priv::alloc_table_init(&table, buffer, buffer_size), 0);
+		ASSERT_EQ(alloc_table_init(&table, buffer, buffer_size), 0);
 	}
 	void TearDown() override {
 		std::free(buffer);
@@ -23,12 +21,12 @@ protected:
 
 TEST_F(KernelAllocSplitTest, SplitAndReuse) {
 	AkU64 memSize01 = 8096;
-	AkVoid* buff01 = ak::priv::alloc_table_try_malloc(&table, memSize01);
+	AkVoid* buff01 = alloc_table_try_malloc(&table, memSize01);
 	ASSERT_NE(buff01, nullptr);
-	ak::priv::alloc_table_free(&table, buff01, 0);
+	alloc_table_free(&table, buff01, 0);
 
 	AkU64 memSize02 = 16;
-	AkVoid* buff02 = ak::priv::alloc_table_try_malloc(&table, memSize02);
+	AkVoid* buff02 = alloc_table_try_malloc(&table, memSize02);
 	ASSERT_NE(buff02, nullptr);
-	ak::priv::alloc_table_free(&table, buff02, 0);
+	alloc_table_free(&table, buff02, 0);
 }

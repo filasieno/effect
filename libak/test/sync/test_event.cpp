@@ -8,12 +8,14 @@ class KernelEventTest : public ::testing::Test {
 protected:
 	AkVoid* buffer = nullptr;
 	AkU64   buffer_size = 8192;
+
 	void SetUp() override {
 		buffer = std::malloc(buffer_size);
 		ASSERT_NE(buffer, nullptr);
 		AkKernelConfig config{ .mem_buffer = buffer, .mem_buffer_size = buffer_size, .io_uring_entry_count = 256 };
 		ASSERT_EQ(ak_init_kernel(&config), 0);
 	}
+	
 	void TearDown() override {
 		ak_fini_kernel();
 		std::free(buffer);
@@ -22,12 +24,12 @@ protected:
 };
 
 
-static AkTask reader_thread(Event* r_ready, Event* w_ready, int *r_signal, int* w_signal, int* value) noexcept {
+static AkTask reader_thread(AkEvent* r_ready, AkEvent* w_ready, int *r_signal, int* w_signal, int* value) noexcept {
 	int check = 0;
 	while (true) {
 		EXPECT_LT(check, 12);
 		if (*r_signal == 0) {
-			co_await ak::wait(r_ready);
+			co_await ak_wait_event(r_ready);
 			EXPECT_EQ(*r_signal, 1);
 			*r_signal = 0;
 		} else {
@@ -41,14 +43,14 @@ static AkTask reader_thread(Event* r_ready, Event* w_ready, int *r_signal, int* 
 		}
 		EXPECT_EQ(*w_signal, 0);
 		*w_signal = 1;
-		int cc = ak::signal(w_ready);
+		int cc = ak_signal_event(w_ready);
 		(void)cc;
 		EXPECT_EQ(*w_signal, 1);
 		++check;
 	}
 }
 
-static AkTask writer_thread(Event* r_ready, Event* w_ready, int *r_signal, int* w_signal, int* value) noexcept {
+static AkTask writer_thread(AkEvent* r_ready, AkEvent* w_ready, int *r_signal, int* w_signal, int* value) noexcept {
 	int check = 0;
 	int i = 10;
 	while (true) {
@@ -57,7 +59,7 @@ static AkTask writer_thread(Event* r_ready, Event* w_ready, int *r_signal, int* 
 		std::print("write : {}\n", *value);
 		EXPECT_EQ(*r_signal, 0);
 		*r_signal = 1;
-		int cc = ak::signal(r_ready);
+		int cc = ak_signal_event(r_ready);
 		(void)cc;
 		EXPECT_EQ(*r_signal, 1);
 		if (i == 0) {
@@ -65,7 +67,7 @@ static AkTask writer_thread(Event* r_ready, Event* w_ready, int *r_signal, int* 
 		}
 		--i;
 		if (*w_signal == 0) {
-			co_await ak::wait(w_ready);
+			co_await ak_wait_event(w_ready);
 			EXPECT_EQ(*w_signal, 1);
 			*w_signal = 0;
 		} else {
@@ -80,11 +82,11 @@ static AkTask co_main() noexcept {
 	int   value = -1;
 	int   r_signal = 0;
 	int   w_signal = 0; 
-	Event r_ready;
-	Event w_ready;
+	AkEvent r_ready;
+	AkEvent w_ready;
 
-	ak::init_event(&r_ready);
-	ak::init_event(&w_ready);
+	ak_init_event(&r_ready);
+	ak_init_event(&w_ready);
 
 	AkTask writer = writer_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
 	AkTask reader = reader_thread(&r_ready, &w_ready, &r_signal, &w_signal, &value);
@@ -93,6 +95,8 @@ static AkTask co_main() noexcept {
 	std::fflush(stdout);
 	co_return 0;
 }
+
+
 
 TEST_F(KernelEventTest, ReaderWriterHandshake) {
 	int rc = ak_run_main(co_main);

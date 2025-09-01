@@ -1,12 +1,12 @@
 #include "ak/storage/storage_frame_table.hpp" // IWYU pragma: keep
 
 namespace ak {
-    const char* to_string(BufferPool p) noexcept {
+    const char* ak_to_string(AkBufferPool p) noexcept {
         switch (p) {
-            case BufferPool::INVALID: return "Invalid";
-            case BufferPool::DEFAULT: return "Default";
-            case BufferPool::RECYCLE: return "Recycle";
-            case BufferPool::KEEP:    return "Keep";
+            case AkBufferPool::INVALID: return "Invalid";
+            case AkBufferPool::DEFAULT: return "Default";
+            case AkBufferPool::RECYCLE: return "Recycle";
+            case AkBufferPool::KEEP:    return "Keep";
         }
         std::abort();
     }

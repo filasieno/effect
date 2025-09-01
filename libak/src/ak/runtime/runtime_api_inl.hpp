@@ -20,11 +20,11 @@ inline AkPromise::AkPromise() {
     // check_invariants();
 }
 
-inline AkVoid* ak_malloc(AkSize sz) noexcept { return ak::priv::alloc_table_try_malloc(&global_kernel_state.alloc_table, sz); }
+inline AkVoid* ak_malloc(AkSize sz) noexcept { return alloc_table_try_malloc(&global_kernel_state.alloc_table, sz); }
 
-inline AkVoid  ak_free(AkVoid* ptr, AkU32 side_coalesching) noexcept { ak::priv::alloc_table_free(&global_kernel_state.alloc_table, ptr, side_coalesching); }
+inline AkVoid  ak_free(AkVoid* ptr, AkU32 side_coalesching) noexcept { alloc_table_free(&global_kernel_state.alloc_table, ptr, side_coalesching); }
 
-inline AkI32   ak_defragment_mem(AkU64 millis_time_budget) noexcept { return ak::priv::alloc_table_defrag(&global_kernel_state.alloc_table, millis_time_budget); }
+inline AkI32   ak_defragment_mem(AkU64 millis_time_budget) noexcept { return alloc_table_defrag(&global_kernel_state.alloc_table, millis_time_budget); }
 
 inline AkPromise* runtime_get_linked_task_context(const AkDLink* link) noexcept {
     unsigned long long promise_off = ((unsigned long long)link) - offsetof(AkPromise, wait_link);

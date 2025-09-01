@@ -6,9 +6,6 @@
 
 #include "ak/alloc/alloc.hpp" // IWYU pragma: keep
 
-using namespace ak;
-using namespace ak::priv;
-
 namespace {
 
 struct MockBlock : public AkAllocFreeBlockHeader {

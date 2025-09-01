@@ -2,8 +2,6 @@
 
 #include <ak/storage/storage.hpp>
 
-using namespace ak;
-
 
 TEST(FrameTable, empty) {
 }
