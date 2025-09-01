@@ -13,14 +13,14 @@ AkPromise::~AkPromise() {
 }
 
 AkVoid* AkPromise::operator new(std::size_t n) noexcept {
-    AkVoid* mem = ak_malloc(n);
+    AkVoid* mem = ak_alloc_mem(n);
     if (!mem) return nullptr;
     return mem;
 }
 
 AkVoid AkPromise::operator delete(AkVoid* ptr, std::size_t sz) {
     (AkVoid)sz;
-    ak_free(ptr);
+    ak_free_mem(ptr);
 }
 
 AkVoid AkPromise::unhandled_exception() noexcept 
@@ -32,7 +32,7 @@ AkVoid AkPromise::return_value(int value) noexcept {
 
     runtime_check_invariants();
 
-    AkPromise* current_context = ak::get_context(global_kernel_state.current_task);
+    AkPromise* current_context = ak_get_promise(global_kernel_state.current_task);
     current_context->res = value;
     if (global_kernel_state.current_task == global_kernel_state.main_task) {
         std::print("MainTask done; returning: {}\n", value);

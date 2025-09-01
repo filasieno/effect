@@ -23,7 +23,7 @@ namespace ak::priv {
         using namespace priv;
 
         (AkVoid)current_task_hdl;
-        AkPromise* scheduler_ctx = get_context(global_kernel_state.scheduler_task);
+        AkPromise* scheduler_ctx = ak_get_promise(global_kernel_state.scheduler_task);
 
         // Check expected state post scheduler construction
 
@@ -53,7 +53,7 @@ namespace ak::priv {
         AK_ASSERT(global_kernel_state.current_task == global_kernel_state.scheduler_task);
         AK_ASSERT(global_kernel_state.current_task == hdl);
 
-        auto* scheduler_context = get_context(global_kernel_state.scheduler_task);
+        auto* scheduler_context = ak_get_promise(global_kernel_state.scheduler_task);
         AK_ASSERT(scheduler_context->state == AkCoroutineState::RUNNING);
         AK_ASSERT(ak_dlink_is_detached(&scheduler_context->wait_link));
 
@@ -70,7 +70,7 @@ namespace ak::priv {
 
     AkVoid destroy_scheduler(AkTask ct) noexcept {
         using namespace priv;
-        auto* context = get_context(ct);
+        auto* context = ak_get_promise(ct);
 
         // Remove from Task list
         ak_dlink_detach(&context->tasklist_link);

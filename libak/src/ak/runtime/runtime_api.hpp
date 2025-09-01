@@ -7,8 +7,8 @@
 #include "ak/alloc/alloc.hpp" // IWYU pragma: keep
 
 struct AkPromise;
+struct AkTask;
 using AkCoroutineHandle = std::coroutine_handle<AkPromise>;
-
 
 /// \brief Idenfies the state of a task
 /// \ingroup Task
@@ -23,22 +23,19 @@ enum class AkCoroutineState
     ZOMBIE,      ///< Already dead
     DELETING     ///< Currently being deleted
 };
-const char* to_string(AkCoroutineState state) noexcept;
-
-
-struct AkTask;
+const AkChar* ak_to_string(AkCoroutineState state) noexcept;
 
 struct AkPromise {
 
     struct InitialSuspend {
         constexpr AkBool await_ready() const noexcept  { return false; }
-        constexpr AkVoid await_resume() const noexcept {}
+        constexpr AkVoid await_resume() const noexcept { }
         AkVoid           await_suspend(AkCoroutineHandle hdl) const noexcept;
     };
 
     struct FinalSuspend {
         constexpr AkBool  await_ready() const noexcept  { return false; }
-        constexpr AkVoid  await_resume() const noexcept {}
+        constexpr AkVoid  await_resume() const noexcept { }
         AkCoroutineHandle await_suspend(AkCoroutineHandle hdl) const noexcept;
     };
 
@@ -91,9 +88,9 @@ struct AkTask {
     AkCoroutineHandle hdl;
 };
 
-
 namespace ak { 
  
+    // TODO: Remove
     struct BootCThread {
         struct Context {
             using InitialSuspend = std::suspend_always;
@@ -135,10 +132,10 @@ namespace ak {
 
 struct AkKernel {        
     // Allocation table
-    AkAllocTable alloc_table;
+    AkAllocTable    alloc_table;
     
     // Task management
-    char            boot_task_frame_buffer[64];
+    AkChar          boot_task_frame_buffer[64];
     ak::BootCThread boot_task;
     AkTask          current_task;
     AkTask          scheduler_task;
@@ -172,10 +169,10 @@ struct AkKernelConfig {
 };
 
 struct AkResumeTaskOp {
-    explicit AkResumeTaskOp(AkTask ct) : hdl(ct.hdl) {};
+    explicit AkResumeTaskOp(AkTask task) : hdl(task.hdl) {};
 
-    constexpr AkBool  await_ready() const noexcept { return false; }
-    constexpr AkVoid  await_resume() const noexcept {}
+    constexpr AkBool  await_ready() const noexcept  { return false; }
+    constexpr AkVoid  await_resume() const noexcept { }
 
     AkCoroutineHandle await_suspend(AkCoroutineHandle hdl) const noexcept;
 
@@ -217,25 +214,27 @@ struct AkIOOp {
     AkCoroutineHandle await_suspend(AkCoroutineHandle hdl) noexcept;
 };
 
-namespace ak {
-    template <typename... Args>
-    int ak_run_main(AkTask (*co_main)(Args ...) noexcept, Args... args) noexcept;
-
-    // CThread routines
-    AkPromise*                   get_context() noexcept;
-    AkPromise*                   get_context(AkTask task) noexcept;
-    constexpr AkGetCurrentTaskOp get_cthread_context_async() noexcept; //< Duplicated remove.
-}
+template <typename... Args>
+AkI32 ak_run_main(AkTask (*co_main)(Args ...) noexcept, Args... args) noexcept;
 
 AkI32                     ak_init_kernel(AkKernelConfig* config) noexcept;
 AkVoid                    ak_fini_kernel() noexcept;
 constexpr AkSuspendTaskOp ak_suspend_task() noexcept;
 AkResumeTaskOp            ak_resume_task(AkTask task) noexcept;
-AkCoroutineState          ak_get_state(AkTask task) noexcept;
+AkCoroutineState          ak_get_task_state(AkTask task) noexcept;
 AkBool                    ak_is_task_valid(AkTask task) noexcept;
 AkBool                    ak_is_task_done(AkTask task) noexcept;
-AkJoinTaskOp              ak_join_task(AkTask task) noexcept;
+AkPromise*                ak_get_promise() noexcept;
+AkPromise*                ak_get_promise(AkTask task) noexcept;
+
 AkJoinTaskOp              operator co_await(AkTask task) noexcept;
+AkJoinTaskOp              ak_join_task(AkTask task) noexcept;
+
+AkGetCurrentTaskOp        ak_get_task_promise_async() noexcept; //< Remove Task
+
+AkVoid*                   ak_alloc_mem(AkSize sz) noexcept;
+AkVoid                    ak_free_mem(AkVoid*ptr, AkU32 side_coalesching = (AkU32)~0) noexcept;
+AkI32                     ak_defragment_mem(AkU64 millis_time_budget = ~0ull) noexcept;
 
 // IO Routines
 AkIOOp ak_os_io_open(const char* path, int flags, mode_t mode) noexcept;
@@ -343,9 +342,3 @@ AkIOOp ak_os_io_tee(int fd_in, int fd_out, unsigned int nbytes, unsigned int spl
 AkIOOp ak_os_io_cancel64(__u64 user_data, int flags) noexcept;
 AkIOOp ak_os_io_cancel(AkVoid* user_data, int flags) noexcept;
 AkIOOp ak_os_io_cancel_fd(int fd, unsigned int flags) noexcept;
-
-AkVoid* ak_malloc(AkSize sz) noexcept;
-AkVoid  ak_free(AkVoid* ptr, AkU32 side_coalesching = (AkU32)~0) noexcept;
-AkI32   ak_defragment_mem(AkU64 millis_time_budget = ~0ull) noexcept;
-
-

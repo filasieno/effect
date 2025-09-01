@@ -5,7 +5,6 @@
 
 
 inline AkPromise::AkPromise() {
-
     ak_dlink_init(&tasklist_link);
     ak_dlink_init(&wait_link);  
     ak_dlink_init(&awaiter_list);
@@ -20,80 +19,68 @@ inline AkPromise::AkPromise() {
     // check_invariants();
 }
 
-inline AkVoid* ak_malloc(AkSize sz) noexcept { return alloc_table_try_malloc(&global_kernel_state.alloc_table, sz); }
+inline AkVoid* ak_alloc_mem(AkSize sz) noexcept 
+{ 
+    return alloc_table_try_malloc(&global_kernel_state.alloc_table, sz); 
+}
 
-inline AkVoid  ak_free(AkVoid* ptr, AkU32 side_coalesching) noexcept { alloc_table_free(&global_kernel_state.alloc_table, ptr, side_coalesching); }
+inline AkVoid ak_free_mem(AkVoid* ptr, AkU32 side_coalesching) noexcept 
+{ 
+    alloc_table_free(&global_kernel_state.alloc_table, ptr, side_coalesching); 
+}
 
-inline AkI32   ak_defragment_mem(AkU64 millis_time_budget) noexcept { return alloc_table_defrag(&global_kernel_state.alloc_table, millis_time_budget); }
+inline AkI32 ak_defragment_mem(AkU64 millis_time_budget) noexcept { 
+    return alloc_table_defrag(&global_kernel_state.alloc_table, millis_time_budget); 
+}
 
 inline AkPromise* runtime_get_linked_task_context(const AkDLink* link) noexcept {
     unsigned long long promise_off = ((unsigned long long)link) - offsetof(AkPromise, wait_link);
     return reinterpret_cast<AkPromise*>(promise_off);
 }
 
-namespace ak { 
+inline const AkChar* ak_to_string(AkCoroutineState state) noexcept 
+{
+    switch (state) {
+        case AkCoroutineState::INVALID:    return "INVALID";
+        case AkCoroutineState::CREATED:    return "CREATED";
+        case AkCoroutineState::READY:      return "READY";
+        case AkCoroutineState::RUNNING:    return "RUNNING";
+        case AkCoroutineState::IO_WAITING: return "IO_WAITING";
+        case AkCoroutineState::WAITING:    return "WAITING";
+        case AkCoroutineState::ZOMBIE:     return "ZOMBIE";
+        case AkCoroutineState::DELETING:   return "DELETING";
+        default: return nullptr;
+    }
+}
 
-    // Inline Context
-    // ----------------------------------------------------------------------------------------------------------------
+namespace ak 
+{ 
 
     inline BootCThread BootCThread::Context::get_return_object_on_allocation_failure() noexcept 
     {
         std::abort(); /* unreachable */
     }
 
-
-    inline const AkChar* to_string(AkCoroutineState state) noexcept 
-    {
-        switch (state) {
-            case AkCoroutineState::INVALID:    return "INVALID";
-            case AkCoroutineState::CREATED:    return "CREATED";
-            case AkCoroutineState::READY:      return "READY";
-            case AkCoroutineState::RUNNING:    return "RUNNING";
-            case AkCoroutineState::IO_WAITING: return "IO_WAITING";
-            case AkCoroutineState::WAITING:    return "WAITING";
-            case AkCoroutineState::ZOMBIE:     return "ZOMBIE";
-            case AkCoroutineState::DELETING:   return "DELETING";
-            default: return nullptr;
-        }
-    }
-
-    // Inline Public API Implementation
-    // ----------------------------------------------------------------------------------------------------------------
-
-
-    inline AkPromise* get_context(AkTask ct) noexcept { return &ct.hdl.promise(); }
-
-    inline AkPromise* get_context() noexcept { return &global_kernel_state.current_task.hdl.promise(); }
-
-    inline constexpr AkGetCurrentTaskOp get_cthread_context_async() noexcept { return {}; }
-
-
-    // Boot operations
-    // ----------------------------------------------------------------------------------------------------------------
-
     namespace priv {
         
-
         // Scheduler operations
         // ----------------------------------------------------------------------------------------------------------------
 
         struct RunSchedulerOp {
-            constexpr AkBool await_ready() const noexcept { return false; }
-            constexpr AkVoid await_resume() const noexcept { }
-            AkCoroutineHandle   await_suspend(BootCThread::Hdl current_task_hdl) const noexcept;
+            constexpr AkBool  await_ready() const noexcept { return false; }
+            constexpr AkVoid  await_resume() const noexcept { }
+            AkCoroutineHandle await_suspend(BootCThread::Hdl current_task_hdl) const noexcept;
         };
     
         struct TerminateSchedulerOp {
-            constexpr AkBool   await_ready() const noexcept { return false; }
-            constexpr AkVoid   await_resume() const noexcept { }
+            constexpr AkBool await_ready() const noexcept  { return false; }
+            constexpr AkVoid await_resume() const noexcept { }
             BootCThread::Hdl await_suspend(AkCoroutineHandle hdl) const noexcept;
         };
 
         constexpr RunSchedulerOp       run_scheduler() noexcept       { return {}; }
-        
         constexpr TerminateSchedulerOp terminate_scheduler() noexcept { return {}; }
-        
-        AkVoid                           destroy_scheduler(AkTask hdl) noexcept;
+        AkVoid                         destroy_scheduler(AkTask hdl) noexcept;
         
         // Coroutine System Boot
         // ----------------------------------------------------------------------------------------------------------------
@@ -121,7 +108,7 @@ namespace ak {
             AkCoroutineHandle main_task = main_proc(args...);
             global_kernel_state.main_task = main_task;
             AK_ASSERT(!main_task.done());
-            AK_ASSERT(ak_get_state(main_task) == AkCoroutineState::READY);
+            AK_ASSERT(ak_get_task_state(main_task) == AkCoroutineState::READY);
 
             while (true) {
                 // Sumbit IO operations
@@ -200,25 +187,25 @@ namespace ak {
             std::abort(); // Unreachable
         } 
     }
-
-    // Make the main entry template visible to all translation units
-    template <typename... Args>
-    int ak_run_main(AkTask(*main_proc)(Args ...) noexcept , Args... args) noexcept {
-        auto boot_cthread = priv::boot_main_proc(main_proc, std::forward<Args>(args) ...);
-        global_kernel_state.boot_task = boot_cthread;
-        boot_cthread.hdl.resume();
-        return global_kernel_state.main_task_exit_code;
-    }
 }
 
+template <typename... Args>
+AkI32 ak_run_main(AkTask(*main_proc)(Args ...) noexcept , Args... args) noexcept {
+    auto boot_cthread = ak::priv::boot_main_proc(main_proc, std::forward<Args>(args) ...);
+    global_kernel_state.boot_task = boot_cthread;
+    boot_cthread.hdl.resume();
+    return global_kernel_state.main_task_exit_code;
+}
 
-inline constexpr AkSuspendTaskOp ak_suspend_task() noexcept { return {}; }
-inline AkJoinTaskOp              ak_join_task(AkTask ct) noexcept { return AkJoinTaskOp(ct); }
-inline AkCoroutineState          ak_get_state(AkTask ct) noexcept { return ct.hdl.promise().state; }
-inline AkBool                    ak_is_task_done(AkTask ct) noexcept { return ct.hdl.done(); }
-inline AkResumeTaskOp            ak_resume_task(AkTask ct) noexcept { return AkResumeTaskOp(ct); }
-inline AkBool                    ak_is_task_valid(AkTask ct) noexcept { return ct.hdl.address() != nullptr; }
-
+inline AkPromise*                ak_get_promise(AkTask ct) noexcept    { return &ct.hdl.promise(); }
+inline AkPromise*                ak_get_promise() noexcept             { return &global_kernel_state.current_task.hdl.promise(); }
+inline constexpr AkSuspendTaskOp ak_suspend_task() noexcept            { return {}; }
+inline AkJoinTaskOp              ak_join_task(AkTask ct) noexcept      { return AkJoinTaskOp(ct); }
+inline AkCoroutineState          ak_get_task_state(AkTask ct) noexcept { return ct.hdl.promise().state; }
+inline AkBool                    ak_is_task_done(AkTask ct) noexcept   { return ct.hdl.done(); }
+inline AkResumeTaskOp            ak_resume_task(AkTask ct) noexcept    { return AkResumeTaskOp(ct); }
+inline AkBool                    ak_is_task_valid(AkTask ct) noexcept  { return ct.hdl.address() != nullptr; }
+inline AkGetCurrentTaskOp        ak_get_task_promise_async() noexcept  { return {}; }
 inline AkJoinTaskOp              operator co_await(AkTask ct) noexcept { return AkJoinTaskOp(ct); }
 
 

@@ -3,7 +3,7 @@
 AkCoroutineHandle AkIOOp::await_suspend(AkCoroutineHandle current_context_hdl) noexcept {
 
     // Move current task to IO_WAITING and resume scheduler
-    auto* current_context = ak::get_context(current_context_hdl);
+    auto* current_context = ak_get_promise(current_context_hdl);
     AK_ASSERT(current_context->state == AkCoroutineState::RUNNING);
     current_context->state = AkCoroutineState::IO_WAITING;
     ++global_kernel_state.iowaiting_task_count;
@@ -11,7 +11,7 @@ AkCoroutineHandle AkIOOp::await_suspend(AkCoroutineHandle current_context_hdl) n
     runtime_check_invariants();
     runtime_dump_task_count();
 
-    auto* sched_ctx = ak::get_context(global_kernel_state.scheduler_task);
+    auto* sched_ctx = ak_get_promise(global_kernel_state.scheduler_task);
     AK_ASSERT(sched_ctx->state == AkCoroutineState::READY);
     sched_ctx->state = AkCoroutineState::RUNNING;
     ak_dlink_detach(&sched_ctx->wait_link);
@@ -25,7 +25,7 @@ AkCoroutineHandle AkIOOp::await_suspend(AkCoroutineHandle current_context_hdl) n
 
 template <typename PrepFn>
 inline AkIOOp prepare_io_uring_op(PrepFn prep_fn) noexcept {
-    AkPromise* ctx = ak::get_context(global_kernel_state.current_task);
+    AkPromise* ctx = ak_get_promise(global_kernel_state.current_task);
     unsigned int free_slots = io_uring_sq_space_left(&global_kernel_state.io_uring_state);
     while (free_slots < 1) {
         int ret = io_uring_submit(&global_kernel_state.io_uring_state);

@@ -38,7 +38,7 @@ AkCoroutineHandle AkResumeTaskOp::await_suspend(AkCoroutineHandle current_task_h
     AK_ASSERT(global_kernel_state.current_task == current_task_hdl);
 
     // Check the current Task
-    AkPromise* current_promise = ak::get_context(global_kernel_state.current_task);
+    AkPromise* current_promise = ak_get_promise(global_kernel_state.current_task);
     AK_ASSERT(ak_dlink_is_detached(&current_promise->wait_link));
     AK_ASSERT(current_promise->state == AkCoroutineState::RUNNING);
     runtime_check_invariants();
@@ -111,7 +111,7 @@ AkCoroutineHandle AkJoinTaskOp::await_suspend(AkCoroutineHandle current_task_hdl
             runtime_dump_task_count();
 
             // Move the Scheduler Task from READY to RUNNING
-            AkPromise* sched_ctx = ak::get_context(global_kernel_state.scheduler_task);
+            AkPromise* sched_ctx = ak_get_promise(global_kernel_state.scheduler_task);
             AK_ASSERT(sched_ctx->state == AkCoroutineState::READY);
             sched_ctx->state = AkCoroutineState::RUNNING;
             ak_dlink_detach(&sched_ctx->wait_link);
