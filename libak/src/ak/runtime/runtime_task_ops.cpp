@@ -7,7 +7,6 @@
 
 AkCoroutineHandle AkSuspendTaskOp::await_suspend(AkCoroutineHandle current_task) const noexcept 
 {
-
     AK_ASSERT(global_kernel_state.current_task);
 
     AkPromise* current_promise = &current_task.promise();
@@ -32,9 +31,8 @@ AkCoroutineHandle AkSuspendTaskOp::await_suspend(AkCoroutineHandle current_task)
 // ResumeTaskOp implementation
 // ----------------------------------------------------------------------------------------------------------------
 
-AkCoroutineHandle AkResumeTaskOp::await_suspend(AkCoroutineHandle current_task_hdl) const noexcept {
-    
-
+AkCoroutineHandle AkResumeTaskOp::await_suspend(AkCoroutineHandle current_task_hdl) const noexcept
+{
     AK_ASSERT(global_kernel_state.current_task == current_task_hdl);
 
     // Check the current Task

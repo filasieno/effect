@@ -41,6 +41,7 @@ ifdef LIBURING_LIB
   LDFLAGS  += -L$(LIBURING_LIB)
 endif
 
+
 # Dependency flags
 DEPFLAGS := -MMD -MP
 
@@ -61,6 +62,9 @@ else
   PCH =
   PCH_FLAG =
 endif
+
+LDFLAGS += -L$(LIBARGTABLE)
+LDLIBS  += -largtable3
 
 # Valgrind support
 ifeq ($(RUN_WITH_VALGRIND),yes)
@@ -203,7 +207,7 @@ lspd_sources := $(shell find $(source_dir)/ak/lspd -name "*.cpp")
 lspd_objects := $(patsubst $(source_dir)/%.cpp, $(build_dir)/%.o, $(lspd_sources))
 
 $(build_dir)/lspd: $(lspd_objects) $(build_dir)/libak_base.a $(build_dir)/libak_runtime.a $(build_dir)/libak_alloc.a $(build_dir)/libak_sync.a
-	$(CXX) $(LDFLAGS) -L$(build_dir) $^ -luring -o $@
+	$(CXX) $(LDFLAGS) -L$(build_dir) $^ -luring -largtable3 -o $@
 
 .PHONY: lspd
 lspd: $(build_dir)/lspd

@@ -1,10 +1,11 @@
 #include "ak/runtime/runtime.hpp" // IWYU pragma: keep
 
-#include <print>
+// #include <print>
 #include <liburing.h>
 
 // TaskContext ctor/dtor definitions
-AkPromise::~AkPromise() {
+AkPromise::~AkPromise()
+{
     AK_ASSERT(state == AkCoroutineState::DELETING);
     AK_ASSERT(ak_dlink_is_detached(&tasklist_link));
     AK_ASSERT(ak_dlink_is_detached(&wait_link));
@@ -12,13 +13,15 @@ AkPromise::~AkPromise() {
     runtime_check_invariants();
 }
 
-AkVoid* AkPromise::operator new(std::size_t n) noexcept {
+AkVoid* AkPromise::operator new(std::size_t n) noexcept
+{
     AkVoid* mem = ak_alloc_mem(n);
     if (!mem) return nullptr;
     return mem;
 }
 
-AkVoid AkPromise::operator delete(AkVoid* ptr, std::size_t sz) {
+AkVoid AkPromise::operator delete(AkVoid* ptr, std::size_t sz)
+{
     (AkVoid)sz;
     ak_free_mem(ptr);
 }
@@ -28,14 +31,14 @@ AkVoid AkPromise::unhandled_exception() noexcept
     std::abort(); /* unreachable */
 }
 
-AkVoid AkPromise::return_value(int value) noexcept {
+AkVoid AkPromise::return_value(int value) noexcept
+{
 
     runtime_check_invariants();
 
     AkPromise* current_context = ak_get_promise(global_kernel_state.current_task);
     current_context->res = value;
     if (global_kernel_state.current_task == global_kernel_state.main_task) {
-        std::print("MainTask done; returning: {}\n", value);
         global_kernel_state.main_task_exit_code = value;
     }
 
@@ -59,7 +62,8 @@ AkVoid AkPromise::return_value(int value) noexcept {
 
 }
 
-AkVoid AkPromise::InitialSuspend::await_suspend(AkCoroutineHandle hdl) const noexcept {
+AkVoid AkPromise::InitialSuspend::await_suspend(AkCoroutineHandle hdl) const noexcept
+{
     
     AkPromise* promise = &hdl.promise();
 
@@ -83,7 +87,8 @@ AkVoid AkPromise::InitialSuspend::await_suspend(AkCoroutineHandle hdl) const noe
     runtime_dump_task_count();
 }
 
-AkCoroutineHandle AkPromise::FinalSuspend::await_suspend(AkCoroutineHandle hdl) const noexcept {
+AkCoroutineHandle AkPromise::FinalSuspend::await_suspend(AkCoroutineHandle hdl) const noexcept
+{
     // Check preconditions
     AkPromise* ctx = &hdl.promise();
     AK_ASSERT(global_kernel_state.current_task == hdl);
