@@ -21,6 +21,9 @@
       inherit system;
       overlays = [ akOverlay ];
     };
+
+    libakPkg = self.packages.${system}.libak;
+    
     # Setup custom gtest/gbenchmark
     cmakeFlagsArray = ''cmakeFlagsArray+=(-DCMAKE_CXX_FLAGS="-fno-exceptions -fno-rtti")'';
 
@@ -42,8 +45,8 @@
   in  
 
   {
-
     packages.x86_64-linux = {
+
       libak = pkgs.llvmPackages.stdenv.mkDerivation {
         pname = "libak";
         description = "ak library";
@@ -54,18 +57,24 @@
 
         nativeBuildInputs = with pkgs; [
           clang 
-          clang-tools          
+          clang-tools
+          gnumake
           liburing.dev
           valgrind
           ccache
-        ] ++ [ak_gtest ak_gbenchmark];          
+        ] ++ [
+          ak_gtest 
+          ak_gbenchmark
+        ];
 
         buildInputs = with pkgs; [
+          argtable
           liburing
           llvmPackages.libcxx
         ];
 
         propagatedBuildInputs = with pkgs; [
+          argtable
           liburing
           llvmPackages.libcxx
         ];
@@ -80,17 +89,17 @@
 
         installPhase = ''
           mkdir -p $out/lib
-          cp build/libak-so/libak.so* $out/lib/
-          
+          cp build/libak.so* $out/lib/
 
           mkdir -p $dev/lib
-          cp build/libak-a/libak.a $dev/lib/
+          cp build/libak.a $dev/lib/
+
           mkdir -p $dev/include
           for file in $(find src -name '*_api.hpp' -o -name '*_api_inl.hpp' -o -name 'ak.hpp'); do
-            install -D -m644 "$file" "$dev/include/$file"
+            install -D -m644 "$file" "$dev/include/''${file#src/}"
           done
-        ''; 
-      };
+        '';
+      };      
 
       libak-examples-echo = pkgs.llvmPackages.stdenv.mkDerivation {
         name = "libak-examples-echo";
@@ -123,7 +132,7 @@
         ''; 
       };
 
-      default = self.packages.x86_64-linux.libak;
+      default = self.packages.${system}.libak;
     };
 
     devShells.x86_64-linux =
@@ -152,9 +161,13 @@
               clang 
               clang-tools
               ccache
-            ] ++ [ak_gtest ak_gbenchmark];
+            ] ++ [
+              ak_gtest 
+              ak_gbenchmark
+            ];
             
             buildInputs = with pkgs; [
+              argtable
               liburing
               llvmPackages.libcxx
             ];
@@ -162,12 +175,13 @@
             shellHook = ''
               export PROJECT_ROOT=$(git rev-parse --show-toplevel)
               export LIBAK_ROOT="$PROJECT_ROOT/libak"
+              export LSPD_ROOT="$PROJECT_ROOT/lspd"
               export TERM=xterm-256color
               export COMPILER="clang++"
               export CC="clang++"
               export CXX="clang++"
-              export CPATH="${pkgs.gtest.dev}/include:${pkgs.gbenchmark}/include:${pkgs.liburing.dev}/include:$CPATH"
-              export LIBRARY_PATH="${pkgs.gtest}/lib:${pkgs.gbenchmark}/lib:${pkgs.liburing}/lib:$LIBRARY_PATH"
+              export CPATH="${pkgs.gtest.dev}/include:${pkgs.gbenchmark}/include:${pkgs.liburing.dev}/include:$CPATH:${pkgs.argtable}/include"
+              export LIBRARY_PATH="${pkgs.gtest}/lib:${pkgs.gbenchmark}/lib:${pkgs.liburing}/lib:$LIBRARY_PATH:${pkgs.argtable}/lib"
               export PS1='\[\033[1;33m\](libak)\[\033[0m\] \[\033[1;32m\][\w]$\[\033[0m\] '
               export PROJECT_ROOT=$(git rev-parse --show-toplevel)
 
@@ -176,6 +190,8 @@
               echo "C++ compiler   : ${pkgs.clang}"
               echo "libcxx path    : ${pkgs.llvmPackages.libcxx}"
               echo "clangd path    : ${pkgs.clang-tools}/bin/clangd"
+              echo "argtable inc   : ${pkgs.argtable}/include"
+              echo "argtable lib   : ${pkgs.argtable}/lib"
               echo "gtest inc      : ${pkgs.gtest.dev}/include"
               echo "gtest lib      : ${pkgs.gtest}/lib"
               echo "gbenchmark inc : ${pkgs.gbenchmark}/include"

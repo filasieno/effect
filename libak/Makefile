@@ -13,7 +13,10 @@ ENABLE_PCH ?= yes
 # ------------------------------------------------------------------------------------------------------------------------------
 
 TARGET_ARCH := -march=x86-64-v3
-CXX         := ccache clang++
+CXX         ?= clang++
+ifneq ($(shell command -v ccache 2>/dev/null),)
+  CXX := ccache $(CXX)
+endif
 CXXFLAGS    := 
 CXXFLAGS    += -fno-exceptions -fno-rtti
 CXXFLAGS    += -Wall -Wextra -std=c++2c  
@@ -22,6 +25,21 @@ CXXFLAGS    += -mavx2 -mbmi -mbmi2 -fPIC
 CXXFLAGS    += $(TARGET_ARCH)
 CXXFLAGS    += -I$(source_dir)
 CXXFLAGS    += -I$(test_dir)
+
+# Optional dependency discovery
+PKGCONFIG := $(shell command -v pkg-config 2>/dev/null)
+ifneq ($(PKGCONFIG),)
+  CPPFLAGS += $(shell pkg-config --cflags liburing 2>/dev/null)
+  LDFLAGS  += $(shell pkg-config --libs-only-L liburing 2>/dev/null)
+  LDLIBS   += $(shell pkg-config --libs-only-l liburing 2>/dev/null)
+endif
+
+ifdef LIBURING_INCLUDE
+  CPPFLAGS += -I$(LIBURING_INCLUDE)
+endif
+ifdef LIBURING_LIB
+  LDFLAGS  += -L$(LIBURING_LIB)
+endif
 
 # Dependency flags
 DEPFLAGS := -MMD -MP
@@ -177,6 +195,19 @@ test_storage_objects := $(patsubst $(test_dir)/%.cpp, $(build_dir)/test/%.o, $(t
 $(build_dir)/test_storage: $(test_storage_objects) $(build_dir)/libak_base.a $(build_dir)/libak_alloc.a $(build_dir)/libak_runtime.a $(build_dir)/libak_sync.a $(build_dir)/libak_json.a $(build_dir)/libak_storage.a
 	$(CXX) $(LDFLAGS) -L$(build_dir) $^ -lgtest_main -lgtest -luring -o $@
 
+# ------------------------------------------------------------------------------------------------------------------------------
+# LSPD
+# ------------------------------------------------------------------------------------------------------------------------------
+
+lspd_sources := $(shell find $(source_dir)/ak/lspd -name "*.cpp")
+lspd_objects := $(patsubst $(source_dir)/%.cpp, $(build_dir)/%.o, $(lspd_sources))
+
+$(build_dir)/lspd: $(lspd_objects) $(build_dir)/libak_base.a $(build_dir)/libak_runtime.a $(build_dir)/libak_alloc.a $(build_dir)/libak_sync.a
+	$(CXX) $(LDFLAGS) -L$(build_dir) $^ -luring -o $@
+
+.PHONY: lspd
+lspd: $(build_dir)/lspd
+
 # ==============================================================================================================================
 # Test
 # ==============================================================================================================================
@@ -222,7 +253,7 @@ test_storage: $(build_dir)/test_storage
 
 # Dependency includes
 all_test_objects := $(test_base_objects) $(test_alloc_objects) $(test_runtime_objects) $(test_sync_objects) $(test_json_objects) $(test_storage_objects)
-all_objects := $(base_objects) $(alloc_objects) $(runtime_objects) $(sync_objects) $(json_objects) $(storage_objects)
+all_objects := $(base_objects) $(alloc_objects) $(runtime_objects) $(sync_objects) $(json_objects) $(storage_objects) $(lspd_objects)
 
 -include $(all_objects:.o=.d)
 -include $(all_test_objects:.o=.d)
