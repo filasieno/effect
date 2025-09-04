@@ -210,7 +210,7 @@ $(build_dir)/lspd: $(lspd_objects) $(build_dir)/libak_base.a $(build_dir)/libak_
 	$(CXX) $(LDFLAGS) -L$(build_dir) $^ -luring -largtable3 -o $@
 
 .PHONY: lspd
-lspd: $(build_dir)/lspd
+lspd:: $(build_dir)/lspd
 
 # ==============================================================================================================================
 # Test
@@ -285,7 +285,7 @@ $(build_dir)/libak.so: $(all_objects)
 # ==============================================================================================================================
 
 .PHONY: all
-all: $(build_dir)/libak.a $(build_dir)/libak.so
+all:: $(build_dir)/libak.a $(build_dir)/libak.so
 
 .PHONY: clean
 clean::

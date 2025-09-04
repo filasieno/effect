@@ -3,7 +3,8 @@
 
 alignas(4096) char buffer[4096];
 
-AkTask lspd_main(LSPDConfig* config) noexcept {
+AkTask lspd_main(LSPDConfig* config) noexcept 
+{
     std::memset(buffer, 0, sizeof(buffer));
     std::print("lspd_main started\n");
     
@@ -20,8 +21,5 @@ AkTask lspd_main(LSPDConfig* config) noexcept {
         co_return -1;
     }
 
-
-
     co_return 0;
 }
-
