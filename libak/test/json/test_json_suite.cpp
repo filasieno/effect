@@ -154,7 +154,7 @@ static AkJSONParserState parse_json_chunks(const std::vector<std::pair<std::stri
         return AkJSONParserState::ERROR;
     }
     std::memset(parser_mem, 0, (size_t)required_size);
-    AkJSONParser *session = ak_init_json_parser(parser_mem, required_size, &cfg, on_json_event, (AkVoid *)&sink);
+    AkJSONParser *session = ak_init_json_parser(parser_mem, required_size, &cfg, on_json_event, (void *)&sink);
     if (!session) {
         log_stream << "ERROR: Failed to initialize JSON parser session\n";
         std::free(parser_mem);

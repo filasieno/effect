@@ -3,7 +3,7 @@
 // Public inline API implementation
 // --------------------------------
 
-inline AkVoid ak_init_event(AkEvent* event) {  
+inline void ak_init_event(AkEvent* event) {  
     AK_ASSERT(event != nullptr);
     ak_dlink_init(&event->wait_list);
 }

@@ -6,7 +6,7 @@ using namespace ak;
 
 class KernelEventTest : public ::testing::Test {
 protected:
-	AkVoid* buffer = nullptr;
+	void* buffer = nullptr;
 	AkU64   buffer_size = 8192;
 
 	void SetUp() override {

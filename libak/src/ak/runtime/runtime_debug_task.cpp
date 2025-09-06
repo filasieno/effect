@@ -1,16 +1,16 @@
   #include "ak/runtime/runtime.hpp" // IWYU pragma: keep
 
 
-inline static AkVoid do_check_task_count_invariant() noexcept;
+inline static void do_check_task_count_invariant() noexcept;
 
 
-AkVoid check_task_count_invariant() noexcept 
+void check_task_count_invariant() noexcept 
 {
     do_check_task_count_invariant();
 
 }
 
-AkVoid runtime_check_invariants() noexcept 
+void runtime_check_invariants() noexcept 
 {
     if constexpr (AK_IS_DEBUG_MODE) {
         // check the Task invariants
@@ -21,7 +21,7 @@ AkVoid runtime_check_invariants() noexcept
     }
 }
 
-AkVoid runtime_dump_task_count() noexcept {
+void runtime_dump_task_count() noexcept {
     if constexpr (AK_TRACE_DEBUG_CODE) {
         int running_count = global_kernel_state.current_task != AkCoroutineHandle() ? 1 : 0;
         std::print("- {} Running\n", running_count);
@@ -32,11 +32,11 @@ AkVoid runtime_dump_task_count() noexcept {
     }
 }
 
-inline static AkVoid do_check_task_count_invariant() noexcept 
+inline static void do_check_task_count_invariant() noexcept 
 {
     if constexpr (AK_IS_DEBUG_MODE) {
         int running_count = global_kernel_state.current_task != AkCoroutineHandle() ? 1 : 0;
-        AkBool condition = global_kernel_state.task_count == running_count + global_kernel_state.ready_task_count + global_kernel_state.waiting_task_count + global_kernel_state.iowaiting_task_count + global_kernel_state.zombie_task_count;
+        bool condition = global_kernel_state.task_count == running_count + global_kernel_state.ready_task_count + global_kernel_state.waiting_task_count + global_kernel_state.iowaiting_task_count + global_kernel_state.zombie_task_count;
         if (!condition) {
             runtime_dump_task_count();
             std::abort();

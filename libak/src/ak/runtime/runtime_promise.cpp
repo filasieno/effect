@@ -13,25 +13,25 @@ AkPromise::~AkPromise()
     runtime_check_invariants();
 }
 
-AkVoid* AkPromise::operator new(std::size_t n) noexcept
+void* AkPromise::operator new(std::size_t n) noexcept
 {
-    AkVoid* mem = ak_alloc_mem(n);
+    void* mem = ak_alloc_mem(n);
     if (!mem) return nullptr;
     return mem;
 }
 
-AkVoid AkPromise::operator delete(AkVoid* ptr, std::size_t sz)
+void AkPromise::operator delete(void* ptr, std::size_t sz)
 {
-    (AkVoid)sz;
+    (void)sz;
     ak_free_mem(ptr);
 }
 
-AkVoid AkPromise::unhandled_exception() noexcept 
+void AkPromise::unhandled_exception() noexcept 
 {
     std::abort(); /* unreachable */
 }
 
-AkVoid AkPromise::return_value(int value) noexcept
+void AkPromise::return_value(int value) noexcept
 {
 
     runtime_check_invariants();
@@ -48,7 +48,7 @@ AkVoid AkPromise::return_value(int value) noexcept
     }
 
     do {
-        AkDLink* next = ak_dlink_dequeue(&awaiter_list);
+        ak_dlink* next = ak_dlink_dequeue(&awaiter_list);
         AkPromise* ctx = runtime_get_linked_task_context(next);
         runtime_dump_task_count();
         AK_ASSERT(ctx->state == AkCoroutineState::WAITING);
@@ -62,7 +62,7 @@ AkVoid AkPromise::return_value(int value) noexcept
 
 }
 
-AkVoid AkPromise::InitialSuspend::await_suspend(AkCoroutineHandle hdl) const noexcept
+void AkPromise::InitialSuspend::await_suspend(AkCoroutineHandle hdl) const noexcept
 {
     
     AkPromise* promise = &hdl.promise();

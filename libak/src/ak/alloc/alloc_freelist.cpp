@@ -12,7 +12,7 @@
 /// \pre AVX2 is available
 /// \pre bitField is 64 byte aligned
 /// \internal
-AkI32 alloc_freelist_find_index(const AkU64* bit_field, AkSize alloc_size) noexcept {
+int alloc_freelist_find_index(const AkU64* bit_field, AkSize alloc_size) noexcept {
     AK_ASSERT(bit_field != nullptr);
     // If no bins are populated, signal not found
     const AkU64 word = *bit_field;
@@ -26,38 +26,38 @@ AkI32 alloc_freelist_find_index(const AkU64* bit_field, AkSize alloc_size) noexc
     const AkU64 mask = (~0ull) << required_bin;
     const AkU64 value = word & mask;
     if (value == 0ull) return -1; // no suitable bin found
-    return (AkI32)__builtin_ctzll(value);
+    return (int)__builtin_ctzll(value);
 }
 
 
-AkVoid alloc_freelist_set_mask(AkU64* bit_field, AkU64 bin_idx) noexcept {
+void alloc_freelist_set_mask(AkU64* bit_field, AkU64 bin_idx) noexcept {
     AK_ASSERT(bit_field != nullptr);
     AK_ASSERT(bin_idx < 64);
     *bit_field |= (1ull << bin_idx);
 }
 
-AkBool alloc_freelist_get_mask(const AkU64* bit_field, AkU64 bin_idx) noexcept {
+bool alloc_freelist_get_mask(const AkU64* bit_field, AkU64 bin_idx) noexcept {
     AK_ASSERT(bit_field != nullptr);
     AK_ASSERT(bin_idx < 64);
     return ((*bit_field >> bin_idx) & 1ull) != 0ull;
 }
 
-AkVoid alloc_freelist_clear_mask(AkU64* bit_field, AkU64 bin_idx) noexcept {
+void alloc_freelist_clear_mask(AkU64* bit_field, AkU64 bin_idx) noexcept {
     AK_ASSERT(bit_field != nullptr);
     AK_ASSERT(bin_idx < 64);
     *bit_field &= ~(1ull << bin_idx);
 }
 
-AkAllocBlockHeader* alloc_block_next(AkAllocBlockHeader* header) noexcept {
+ak_alloc_block_header* alloc_block_next(ak_alloc_block_header* header) noexcept {
     size_t sz = (size_t)header->this_desc.size;
     if (sz == 0) return header;
-    return (AkAllocBlockHeader*)((AkChar*)header + sz);
+    return (ak_alloc_block_header*)((char*)header + sz);
 }
 
-AkAllocBlockHeader* alloc_block_prev(AkAllocBlockHeader* header) noexcept {
+ak_alloc_block_header* alloc_block_prev(ak_alloc_block_header* header) noexcept {
     size_t sz = (size_t)header->prev_desc.size;
     if (sz == 0) return header;
-    return (AkAllocBlockHeader*)((AkChar*)header - sz);
+    return (ak_alloc_block_header*)((char*)header - sz);
 }
 
 
@@ -70,11 +70,11 @@ AkU64 alloc_freelist_get_index(AkU64 sz) noexcept {
     return bin;
 }
 
-AkU32 alloc_freelist_get_index(const AkAllocBlockHeader* header) noexcept {
-    switch ((AkAllocBlockState)header->this_desc.state) {
-        case AkAllocBlockState::WILD_BLOCK:
+AkU32 alloc_freelist_get_index(const ak_alloc_block_header* header) noexcept {
+    switch ((enum ak_alloc_block_state)header->this_desc.state) {
+        case AK_ALLOC_BLOCK_STATE_WILD_BLOCK:
             return 63;
-        case AkAllocBlockState::FREE: 
+        case AK_ALLOC_BLOCK_STATE_FREE: 
         {
             const AkU64 sz = header->this_desc.size;
             AkU64 bin = (AkU64)((sz - 1ull) >> 5);
@@ -82,10 +82,10 @@ AkU32 alloc_freelist_get_index(const AkAllocBlockHeader* header) noexcept {
             bin = (bin & ~mask) | (63u & mask);
             return bin;
         }
-        case AkAllocBlockState::INVALID:
-        case AkAllocBlockState::USED:
-        case AkAllocBlockState::BEGIN_SENTINEL:
-        case AkAllocBlockState::END_SENTINEL:
+        case AK_ALLOC_BLOCK_STATE_INVALID:
+        case AK_ALLOC_BLOCK_STATE_USED:
+        case AK_ALLOC_BLOCK_STATE_BEGIN_SENTINEL:
+        case AK_ALLOC_BLOCK_STATE_END_SENTINEL:
         default:
         {
             // Unreachable

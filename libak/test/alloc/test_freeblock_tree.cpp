@@ -8,10 +8,10 @@
 
 namespace {
 
-struct MockBlock : public AkAllocFreeBlockHeader {
+struct MockBlock : public ak_alloc_free_block_header {
     MockBlock(AkU64 size) {
         this->this_desc.size = size;
-        this->this_desc.state = static_cast<AkU32>(AkAllocBlockState::FREE);
+        this->this_desc.state = (unsigned int)(AK_ALLOC_BLOCK_STATE_FREE);
     }
 };
 
@@ -24,22 +24,22 @@ MockBlock* create_mock_block(AkU64 size) {
     return new (mem) MockBlock(size);
 }
 
-bool is_tree_node(const AkAllocFreeBlockHeader* node) {
+bool is_tree_node(const ak_alloc_free_block_header* node) {
     return node->height >= 0;
 }
 
-int compute_height(const AkAllocFreeBlockHeader* node) {
+int compute_height(const ak_alloc_free_block_header* node) {
     if (!node) return 0;
     if (!is_tree_node(node)) return 0;
     return 1 + std::max(compute_height(node->left), compute_height(node->right));
 }
 
-int compute_balance(const AkAllocFreeBlockHeader* node) {
+int compute_balance(const ak_alloc_free_block_header* node) {
     if (!node || !is_tree_node(node)) return 0;
     return compute_height(node->left) - compute_height(node->right);
 }
 
-void verify_tree(const AkAllocFreeBlockHeader* node, AkU64 min_key = 0, AkU64 max_key = UINT64_MAX) {
+void verify_tree(const ak_alloc_free_block_header* node, AkU64 min_key = 0, AkU64 max_key = UINT64_MAX) {
     if (!node) return;
 
     if (!is_tree_node(node)) {
@@ -67,15 +67,15 @@ void verify_tree(const AkAllocFreeBlockHeader* node, AkU64 min_key = 0, AkU64 ma
     verify_tree(node->right, node->this_desc.size, max_key);
 
     if (!alloc_freeblock_is_detached(node)) {
-        const AkAllocFreeBlockHeader* current = node;
+        const ak_alloc_free_block_header* current = node;
         int count = 0;
         do {
             EXPECT_EQ(current->this_desc.size, node->this_desc.size) << "List node size mismatch";
             if (!is_tree_node(current)) {
                 verify_tree(current);
             }
-            AkDLink* nl = current->multimap_link.next;
-            current = (const AkAllocFreeBlockHeader*)((const AkChar*)nl - AK_OFFSET(AkAllocFreeBlockHeader, multimap_link));
+            ak_dlink* nl = current->multimap_link.next;
+            current = (const ak_alloc_free_block_header*)((const char*)nl - AK_OFFSET(ak_alloc_free_block_header, multimap_link));
             ++count;
             ASSERT_LT(count, 1000) << "Infinite list loop";
         } while (current != node);
@@ -85,18 +85,18 @@ void verify_tree(const AkAllocFreeBlockHeader* node, AkU64 min_key = 0, AkU64 ma
 }  // namespace
 
 TEST(AllocFreeBlockHeaderTest, Init) {
-    AkAllocFreeBlockHeader* root = reinterpret_cast<AkAllocFreeBlockHeader*>(0xdeadbeef);
+    ak_alloc_free_block_header* root = reinterpret_cast<ak_alloc_free_block_header*>(0xdeadbeef);
     alloc_freeblock_init_root(&root);
     EXPECT_EQ(root, nullptr);
 }
 
 TEST(AllocFreeBlockHeaderTest, InsertSingle) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     MockBlock* b1 = create_mock_block(8192);
     blocks.push_back(b1);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b1));
     EXPECT_EQ(root, b1);
     EXPECT_EQ(b1->height, 1);
     EXPECT_EQ(b1->balance, 0);
@@ -115,15 +115,15 @@ TEST(AllocFreeBlockHeaderTest, InsertSingle) {
 
 TEST(AllocFreeBlockHeaderTest, InsertDuplicate) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     MockBlock* b1 = create_mock_block(8192);
     blocks.push_back(b1);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b1));
 
     MockBlock* b2 = create_mock_block(8192);
     blocks.push_back(b2);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b2));
     EXPECT_EQ(root, b1);
     EXPECT_EQ(b2->height, -1);
     EXPECT_EQ(b2->balance, 0);
@@ -146,19 +146,19 @@ TEST(AllocFreeBlockHeaderTest, InsertDuplicate) {
 
 TEST(AllocFreeBlockHeaderTest, InsertMultipleDuplicates) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     MockBlock* b1 = create_mock_block(16384);
     blocks.push_back(b1);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b1));
 
     MockBlock* b2 = create_mock_block(16384);
     blocks.push_back(b2);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b2));
 
     MockBlock* b3 = create_mock_block(16384);
     blocks.push_back(b3);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b3));
 
     EXPECT_EQ(root, b1);
     EXPECT_EQ(b1->multimap_link.next, &b2->multimap_link);
@@ -181,19 +181,19 @@ TEST(AllocFreeBlockHeaderTest, InsertMultipleDuplicates) {
 
 TEST(AllocFreeBlockHeaderTest, InsertRightRotation) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     MockBlock* b300 = create_mock_block(24576);
     blocks.push_back(b300);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b300));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b300));
 
     MockBlock* b200 = create_mock_block(16384);
     blocks.push_back(b200);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b200));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b200));
 
     MockBlock* b100 = create_mock_block(8192);
     blocks.push_back(b100);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b100));
 
     EXPECT_EQ(root, b200);
     EXPECT_EQ(b200->left, b100);
@@ -212,19 +212,19 @@ TEST(AllocFreeBlockHeaderTest, InsertRightRotation) {
 
 TEST(AllocFreeBlockHeaderTest, InsertLeftRotation) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     MockBlock* b100 = create_mock_block(8192);
     blocks.push_back(b100);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b100));
 
     MockBlock* b200 = create_mock_block(16384);
     blocks.push_back(b200);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b200));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b200));
 
     MockBlock* b300 = create_mock_block(24576);
     blocks.push_back(b300);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b300));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b300));
 
     EXPECT_EQ(root, b200);
     EXPECT_EQ(b200->left, b100);
@@ -243,19 +243,19 @@ TEST(AllocFreeBlockHeaderTest, InsertLeftRotation) {
 
 TEST(AllocFreeBlockHeaderTest, InsertLeftRightRotation) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     MockBlock* b300 = create_mock_block(24576);
     blocks.push_back(b300);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b300));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b300));
 
     MockBlock* b100 = create_mock_block(8192);
     blocks.push_back(b100);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b100));
 
     MockBlock* b200 = create_mock_block(16384);
     blocks.push_back(b200);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b200));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b200));
 
     EXPECT_EQ(root, b200);
     EXPECT_EQ(b200->left, b100);
@@ -272,19 +272,19 @@ TEST(AllocFreeBlockHeaderTest, InsertLeftRightRotation) {
 
 TEST(AllocFreeBlockHeaderTest, InsertRightLeftRotation) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     MockBlock* b100 = create_mock_block(8192);
     blocks.push_back(b100);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b100));
 
     MockBlock* b300 = create_mock_block(24576);
     blocks.push_back(b300);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b300));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b300));
 
     MockBlock* b200 = create_mock_block(16384);
     blocks.push_back(b200);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b200));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b200));
 
     EXPECT_EQ(root, b200);
     EXPECT_EQ(b200->left, b100);
@@ -299,17 +299,17 @@ TEST(AllocFreeBlockHeaderTest, InsertRightLeftRotation) {
 
 TEST(AllocFreeBlockHeaderTest, FindGTE_Exact) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     MockBlock* b64 = create_mock_block(8192);
     blocks.push_back(b64);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b64));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b64));
 
     MockBlock* b128 = create_mock_block(16384);
     blocks.push_back(b128);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b128));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b128));
 
-    AkAllocFreeBlockHeader* found = alloc_freeblock_find_gte(root, 16384);
+    ak_alloc_free_block_header* found = alloc_freeblock_find_gte(root, 16384);
     EXPECT_EQ(found, b128);
 
     for (auto* b : blocks) {
@@ -319,17 +319,17 @@ TEST(AllocFreeBlockHeaderTest, FindGTE_Exact) {
 
 TEST(AllocFreeBlockHeaderTest, FindGTE_Greater) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     MockBlock* b64 = create_mock_block(8192);
     blocks.push_back(b64);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b64));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b64));
 
     MockBlock* b256 = create_mock_block(32768);
     blocks.push_back(b256);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b256));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b256));
 
-    AkAllocFreeBlockHeader* found = alloc_freeblock_find_gte(root, 16384);
+    ak_alloc_free_block_header* found = alloc_freeblock_find_gte(root, 16384);
     EXPECT_EQ(found, b256);
 
     for (auto* b : blocks) {
@@ -338,12 +338,12 @@ TEST(AllocFreeBlockHeaderTest, FindGTE_Greater) {
 }
 
 TEST(AllocFreeBlockHeaderTest, FindGTE_None) {
-    AkAllocFreeBlockHeader* root = nullptr;
-    AkAllocFreeBlockHeader* found = alloc_freeblock_find_gte(root, 8192);
+    ak_alloc_free_block_header* root = nullptr;
+    ak_alloc_free_block_header* found = alloc_freeblock_find_gte(root, 8192);
     EXPECT_EQ(found, nullptr);
 
     MockBlock* b32 = create_mock_block(16384);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b32));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b32));
     // Search strictly larger than any present so that none is found
     found = alloc_freeblock_find_gte(root, 65536);
     EXPECT_EQ(found, nullptr);
@@ -352,19 +352,19 @@ TEST(AllocFreeBlockHeaderTest, FindGTE_None) {
 
 TEST(AllocFreeBlockHeaderTest, DetachListNode) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     MockBlock* b1 = create_mock_block(8192);
     blocks.push_back(b1);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b1));
 
     MockBlock* b2 = create_mock_block(8192);
     blocks.push_back(b2);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b2));
 
     MockBlock* b3 = create_mock_block(8192);
     blocks.push_back(b3);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b3));
 
     alloc_freeblock_detach(&root, b2);
     // List-node detach clears the node
@@ -387,11 +387,11 @@ TEST(AllocFreeBlockHeaderTest, DetachListNode) {
 
 TEST(AllocFreeBlockHeaderTest, DetachTreeNodeLeaf) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     MockBlock* b100 = create_mock_block(8192);
     blocks.push_back(b100);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b100));
 
     alloc_freeblock_detach(&root, b100);
     EXPECT_EQ(root, nullptr);
@@ -410,15 +410,15 @@ TEST(AllocFreeBlockHeaderTest, DetachTreeNodeLeaf) {
 
 TEST(AllocFreeBlockHeaderTest, DetachTreeNodeOneChild) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     MockBlock* b100 = create_mock_block(8192);
     blocks.push_back(b100);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b100));
 
     MockBlock* b50 = create_mock_block(16384);
     blocks.push_back(b50);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b50));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b50));
 
     alloc_freeblock_detach(&root, b100);
     EXPECT_EQ(root, b50);
@@ -436,23 +436,23 @@ TEST(AllocFreeBlockHeaderTest, DetachTreeNodeOneChild) {
 
 TEST(AllocFreeBlockHeaderTest, DetachTreeNodeTwoChildren) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     MockBlock* b100 = create_mock_block(8192);
     blocks.push_back(b100);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b100));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b100));
 
     MockBlock* b50 = create_mock_block(16384);
     blocks.push_back(b50);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b50));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b50));
 
     MockBlock* b150 = create_mock_block(24576);
     blocks.push_back(b150);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b150));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b150));
 
     MockBlock* b125 = create_mock_block(20480);
     blocks.push_back(b125);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b125));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b125));
 
     alloc_freeblock_detach(&root, b100);
     EXPECT_EQ(root, b125);
@@ -470,19 +470,19 @@ TEST(AllocFreeBlockHeaderTest, DetachTreeNodeTwoChildren) {
 
 TEST(AllocFreeBlockHeaderTest, DetachHeadWithList) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     MockBlock* b1 = create_mock_block(8192);
     blocks.push_back(b1);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b1));
 
     MockBlock* b2 = create_mock_block(8192);
     blocks.push_back(b2);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b2));
 
     MockBlock* b3 = create_mock_block(8192);
     blocks.push_back(b3);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b3));
 
     alloc_freeblock_detach(&root, b1);
     EXPECT_EQ(root, b2);
@@ -505,15 +505,15 @@ TEST(AllocFreeBlockHeaderTest, DetachHeadWithList) {
 
 TEST(AllocFreeBlockHeaderTest, DetachLastInListPromotes) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     MockBlock* b1 = create_mock_block(8192);
     blocks.push_back(b1);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b1));
 
     MockBlock* b2 = create_mock_block(8192);
     blocks.push_back(b2);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b2));
 
     alloc_freeblock_detach(&root, b2);
 
@@ -527,21 +527,21 @@ TEST(AllocFreeBlockHeaderTest, DetachLastInListPromotes) {
 
 TEST(AllocFreeBlockHeaderTest, FIFOOrder) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     MockBlock* b1 = create_mock_block(8192);
     blocks.push_back(b1);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b1));
 
     MockBlock* b2 = create_mock_block(8192);
     blocks.push_back(b2);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b2));
 
     MockBlock* b3 = create_mock_block(8192);
     blocks.push_back(b3);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b3));
 
-    AkAllocFreeBlockHeader* group = alloc_freeblock_find_gte(root, 8192);
+    ak_alloc_free_block_header* group = alloc_freeblock_find_gte(root, 8192);
     EXPECT_EQ(group, b1);
 
     alloc_freeblock_detach(&root, group);
@@ -569,9 +569,9 @@ TEST(AllocFreeBlockHeaderTest, Clear) {
     MockBlock* b = create_mock_block(8192);
     b->height = 5;
     b->balance = 2;
-    b->parent = reinterpret_cast<AkAllocFreeBlockHeader*>(0x1);
-    b->left = reinterpret_cast<AkAllocFreeBlockHeader*>(0x2);
-    b->right = reinterpret_cast<AkAllocFreeBlockHeader*>(0x3);
+    b->parent = reinterpret_cast<ak_alloc_free_block_header*>(0x1);
+    b->left = reinterpret_cast<ak_alloc_free_block_header*>(0x2);
+    b->right = reinterpret_cast<ak_alloc_free_block_header*>(0x3);
     b->multimap_link.next = &b->multimap_link;
     b->multimap_link.prev = &b->multimap_link;
 
@@ -586,7 +586,7 @@ TEST(AllocFreeBlockHeaderTest, Clear) {
     EXPECT_EQ(b->multimap_link.prev, nullptr);
 
     EXPECT_EQ((AkU64)b->this_desc.size, (AkU64)8192);
-    EXPECT_EQ(b->this_desc.state, static_cast<AkU32>(AkAllocBlockState::FREE));
+    EXPECT_EQ(b->this_desc.state, (unsigned int)(AK_ALLOC_BLOCK_STATE_FREE));
 
     std::free(b);
 }
@@ -597,10 +597,10 @@ TEST(AllocFreeBlockHeaderTest, IsDetached) {
     b->multimap_link.prev = &b->multimap_link;
     EXPECT_TRUE(alloc_freeblock_is_detached(b));
 
-    b->multimap_link.next = reinterpret_cast<AkDLink*>(0x1);
+    b->multimap_link.next = reinterpret_cast<ak_dlink*>(0x1);
     EXPECT_FALSE(alloc_freeblock_is_detached(b));
 
-    b->multimap_link.prev = reinterpret_cast<AkDLink*>(0x2);
+    b->multimap_link.prev = reinterpret_cast<ak_dlink*>(0x2);
     EXPECT_FALSE(alloc_freeblock_is_detached(b));
 
     b->multimap_link.next = &b->multimap_link;
@@ -612,27 +612,27 @@ TEST(AllocFreeBlockHeaderTest, IsDetached) {
 
 TEST(AllocFreeBlockHeaderTest, DetachTriggersRightRotation) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     MockBlock* b4 = create_mock_block(32768);
     blocks.push_back(b4);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b4));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b4));
 
     MockBlock* b2 = create_mock_block(16384);
     blocks.push_back(b2);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b2));
 
     MockBlock* b5 = create_mock_block(40960);
     blocks.push_back(b5);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b5));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b5));
 
     MockBlock* b1 = create_mock_block(8192);
     blocks.push_back(b1);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b1));
 
     MockBlock* b3 = create_mock_block(24576);
     blocks.push_back(b3);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b3));
 
     EXPECT_EQ(root, b4);
     EXPECT_EQ(b4->left, b2);
@@ -659,28 +659,28 @@ TEST(AllocFreeBlockHeaderTest, DetachTriggersRightRotation) {
 
 TEST(AllocFreeBlockHeaderTest, DetachTriggersLeftRotation) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     // Build tree with unique keys: root=16384, left=8192, right=24576, right-left=20480, right-right=32768
     MockBlock* b1 = create_mock_block(16384);
     blocks.push_back(b1);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b1));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b1));
 
     MockBlock* b3 = create_mock_block(24576);
     blocks.push_back(b3);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b3));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b3));
 
     MockBlock* b0 = create_mock_block(8192);
     blocks.push_back(b0);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b0));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b0));
 
     MockBlock* b2 = create_mock_block(20480);
     blocks.push_back(b2);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b2));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b2));
 
     MockBlock* b4 = create_mock_block(32768);
     blocks.push_back(b4);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b4));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b4));
 
     EXPECT_EQ(root, b1);
     EXPECT_EQ(b1->left, b0);
@@ -707,19 +707,19 @@ TEST(AllocFreeBlockHeaderTest, DetachTriggersLeftRotation) {
 
 TEST(AllocFreeBlockHeaderTest, LargeTreeMultipleOperations) {
     std::vector<MockBlock*> blocks;
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
 
     std::vector<AkU64> sizes = {8192, 16384, 24576, 16384, 24576, 32768, 40960, 16384, 24576, 8192, 8192, 24576};
 
     for (AkU64 s : sizes) {
         MockBlock* b = create_mock_block(s);
         blocks.push_back(b);
-        alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b));
+        alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b));
         verify_tree(root);
     }
 
     for (size_t i = 0; i < blocks.size() / 2; ++i) {
-        AkAllocFreeBlockHeader* to_detach = alloc_freeblock_find_gte(root, 16384);
+        ak_alloc_free_block_header* to_detach = alloc_freeblock_find_gte(root, 16384);
         if (to_detach) {
             alloc_freeblock_detach(&root, to_detach);
             verify_tree(root);
@@ -727,7 +727,7 @@ TEST(AllocFreeBlockHeaderTest, LargeTreeMultipleOperations) {
     }
 
     while (root) {
-        AkAllocFreeBlockHeader* to_detach = root;
+        ak_alloc_free_block_header* to_detach = root;
         alloc_freeblock_detach(&root, to_detach);
         verify_tree(root);
     }
@@ -738,9 +738,9 @@ TEST(AllocFreeBlockHeaderTest, LargeTreeMultipleOperations) {
 }
 
 TEST(AllocFreeBlockHeaderTest, MinSize) {
-    AkAllocFreeBlockHeader* root = nullptr;
+    ak_alloc_free_block_header* root = nullptr;
     MockBlock* b = create_mock_block(8192);
-    alloc_freeblock_put(&root, reinterpret_cast<AkAllocBlockHeader*>(b));
+    alloc_freeblock_put(&root, reinterpret_cast<ak_alloc_block_header*>(b));
     verify_tree(root);
     alloc_freeblock_detach(&root, b);
     std::free(b);

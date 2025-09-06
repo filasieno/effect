@@ -7,7 +7,7 @@ using namespace ak;
 
 class KernelAkTest : public ::testing::Test {
 protected:
-	AkVoid* buffer = nullptr;
+	void* buffer = nullptr;
 	AkU64   buffer_size = 8192;
 	void SetUp() override {
 		buffer = std::malloc(buffer_size);

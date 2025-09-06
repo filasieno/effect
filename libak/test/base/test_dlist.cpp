@@ -3,8 +3,8 @@
 #include "ak/base/base.hpp" // IWYU pragma: keep
 
 struct Data {
-    AkDLink node;
-    int     value;
+    struct ak_dlink node;
+    int             value;
 };
 
 TEST(AkDLinkTest, BasicOperations) {

@@ -106,24 +106,24 @@ enum CharClass : AkU8 {
 /// Rationale: abstract the destination (key/value sinks) to avoid branching
 ///  in the encoder and code duplication across call sites.
 /// \internal
-using EmitFn = AkVoid(AkJSONParser *session, const AkChar *buf, AkU64 len);
+using EmitFn = void(AkJSONParser *session, const char *buf, AkU64 len);
 
 static AkJSONParserState raise_error(AkJSONParser *session, AkJSONErrorCode code) noexcept;
 static AkJSONParserState suspend_parser(AkJSONParser *session, AkJSONParserStateFn *fn, AkU32 sub_state, AkU64 json_size, AkU64 string_size) noexcept;
 
 /// \internal Fast char classification utility
-static inline CharClass classify_char(AkChar c) noexcept;
+static inline CharClass classify_char(char c) noexcept;
 
 /// \brief Encode codepoint to UTF-8 and emit via callback.
 /// \details
 ///  Rationale: reuse one encoder for multiple sinks (key/value) while keeping
 ///  hot paths simple; function-pointer cost is minimal and localized.
 /// \internal
-static inline AkVoid emit_utf8_bytes(AkJSONParser *session, AkU32 cp, EmitFn *emit);
+static inline void emit_utf8_bytes(AkJSONParser *session, AkU32 cp, EmitFn *emit);
 
 /// \brief Return true if character belongs to number token class.
 /// \internal
-static inline AkBool is_number_char(AkChar c) noexcept;
+static inline bool is_number_char(char c) noexcept;
 
 /// \brief Prefetch static classification tables to warm caches.
 /// \internal
@@ -131,7 +131,7 @@ static inline void prefetch_classification_tables() noexcept;
 
 /// \brief Skip whitespace and advance json_size accordingly.
 /// \internal
-static inline AkChar* skip_whitespace(AkChar* head, AkChar* end, AkU64* json_size) noexcept;
+static inline char* skip_whitespace(char* head, char* end, AkU64* json_size) noexcept;
 
 /// Shared escape/Unicode helpers
 
@@ -141,13 +141,13 @@ static inline AkChar* skip_whitespace(AkChar* head, AkChar* end, AkU64* json_siz
 /// - Returns false when buffer ends (caller should suspend)
 /// - Signals an error via raise_error(session, ...) on invalid hex digit and returns false
 /// \internal
-static inline AkBool parse_hex4(AkJSONParser *session, AkChar **phead, AkChar *end, AkU64 *pjson_size, AkU32 *pout) noexcept;
+static inline bool parse_hex4(AkJSONParser *session, char **phead, char *end, AkU64 *pjson_size, AkU32 *pout) noexcept;
 
 /// \brief Unified event notification
 /// \internal
-static AkVoid notify_event(AkJSONParser *session, AkJSONEvent event_type, const AkJSONEventData *data = nullptr, AkU64 more = 0) noexcept;
-static inline AkBool push_parse_context_checked(AkJSONParser *session, AkJSONParserStateFn *fn, AkU32 sub_state = 0) noexcept;
-static AkJSONParserState resume_parse_context(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept;
+static void notify_event(AkJSONParser *session, AkJSONEvent event_type, const AkJSONEventData *data = nullptr, AkU64 more = 0) noexcept;
+static inline bool push_parse_context_checked(AkJSONParser *session, AkJSONParserStateFn *fn, AkU32 sub_state = 0) noexcept;
+static AkJSONParserState resume_parse_context(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept;
 
 // ==========================================
 // Constants and Tables
@@ -235,60 +235,60 @@ static constexpr AkU8 number_char_table[256] = {
 // ==========================================
 
 // Parser state changed
-static AkVoid notify_state_changed(AkJSONParser *session) noexcept;
+static void notify_state_changed(AkJSONParser *session) noexcept;
 
 // Literal Values
-static AkVoid notify_value_null(AkJSONParser *session) noexcept;
-static AkVoid notify_value_bool(AkJSONParser *session, AkBool value) noexcept;
-static AkVoid notify_value_number_int(AkJSONParser *session, AkI64 value) noexcept;
-static AkVoid notify_value_number_float(AkJSONParser *session, AkF64 value) noexcept;
-static AkVoid notify_value_string_chunk(AkJSONParser *session, const AkChar *text_buffer, AkU64 text_buffer_length, AkU64 more) noexcept;
-static AkVoid notify_value_string(AkJSONParser *session, const AkChar *text_buffer, AkU64 text_buffer_length) noexcept;
+static void notify_value_null(AkJSONParser *session) noexcept;
+static void notify_value_bool(AkJSONParser *session, bool value) noexcept;
+static void notify_value_number_int(AkJSONParser *session, AkI64 value) noexcept;
+static void notify_value_number_float(AkJSONParser *session, AkF64 value) noexcept;
+static void notify_value_string_chunk(AkJSONParser *session, const char *text_buffer, AkU64 text_buffer_length, AkU64 more) noexcept;
+static void notify_value_string(AkJSONParser *session, const char *text_buffer, AkU64 text_buffer_length) noexcept;
 
 // Array  Notification
-static AkVoid notify_array_begin(AkJSONParser *session) noexcept;
-static AkVoid notify_array_end(AkJSONParser *session) noexcept;
+static void notify_array_begin(AkJSONParser *session) noexcept;
+static void notify_array_end(AkJSONParser *session) noexcept;
 
 // Object  Notification
-static AkVoid notify_object_begin(AkJSONParser *session) noexcept;
-static AkVoid notify_object_end(AkJSONParser *session) noexcept;
+static void notify_object_begin(AkJSONParser *session) noexcept;
+static void notify_object_end(AkJSONParser *session) noexcept;
 
 // Attribute Notification
-static AkVoid notify_attr_key_chunk(AkJSONParser *session, const AkChar *text_buffer, AkU64 text_buffer_length, AkU64 more) noexcept;
-static AkVoid notify_attr_key(AkJSONParser *session, const AkChar *text_buffer, AkU64 text_buffer_length) noexcept;
-static AkVoid emit_attr_key_utf8(AkJSONParser *session, const AkChar *text_buffer, AkU64 text_buffer_length) noexcept;
+static void notify_attr_key_chunk(AkJSONParser *session, const char *text_buffer, AkU64 text_buffer_length, AkU64 more) noexcept;
+static void notify_attr_key(AkJSONParser *session, const char *text_buffer, AkU64 text_buffer_length) noexcept;
+static void emit_attr_key_utf8(AkJSONParser *session, const char *text_buffer, AkU64 text_buffer_length) noexcept;
 
 // ==========================================
 // State function declarations
 // ==========================================
 
-static AkJSONParserState sentinel(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept;
-static AkJSONParserState state_return_result(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept;
-static AkJSONParserState state_root_dispatch(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept;
+static AkJSONParserState sentinel(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept;
+static AkJSONParserState state_return_result(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept;
+static AkJSONParserState state_root_dispatch(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept;
 
-static AkJSONParserState state_object_first_attr(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept;
-static AkJSONParserState state_object_rest_attrs(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept;
+static AkJSONParserState state_object_first_attr(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept;
+static AkJSONParserState state_object_rest_attrs(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept;
 
-static AkJSONParserState state_array_first_value(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept;
-static AkJSONParserState state_list_rest_values(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept;
-static AkJSONParserState state_array_value_required(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept;
+static AkJSONParserState state_array_first_value(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept;
+static AkJSONParserState state_list_rest_values(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept;
+static AkJSONParserState state_array_value_required(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept;
 
-static AkJSONParserState state_attr_begin_key(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept;
-static AkJSONParserState state_attr_key_chars(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept;
-static AkJSONParserState state_attr_separator(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept;
+static AkJSONParserState state_attr_begin_key(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept;
+static AkJSONParserState state_attr_key_chars(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept;
+static AkJSONParserState state_attr_separator(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept;
 
-static AkJSONParserState state_value_dispatch(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept;
-static AkJSONParserState state_null_head(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept;
-static AkJSONParserState state_true_head(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept;
-static AkJSONParserState state_false_head(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept;
-static AkJSONParserState state_number_head(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept;
-static AkJSONParserState state_string_head(AkJSONParser *session, AkU32 sub_state, AkChar* head, AkChar* end, AkU64 json_size, AkU64 string_size) noexcept;
+static AkJSONParserState state_value_dispatch(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept;
+static AkJSONParserState state_null_head(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept;
+static AkJSONParserState state_true_head(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept;
+static AkJSONParserState state_false_head(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept;
+static AkJSONParserState state_number_head(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept;
+static AkJSONParserState state_string_head(AkJSONParser *session, AkU32 sub_state, char* head, char* end, AkU64 json_size, AkU64 string_size) noexcept;
 
 // ==========================================
 // Public function implementation
 // ==========================================
 
-AkJSONParser *ak_init_json_parser(AkVoid *buffer, AkU64 buffer_size, AkJSONParserConfig *cfg, AkJSONParserCallbackFn* on_event, AkVoid *user_data) noexcept {
+AkJSONParser *ak_init_json_parser(void *buffer, AkU64 buffer_size, AkJSONParserConfig *cfg, AkJSONParserCallbackFn* on_event, void *user_data) noexcept {
     if (buffer == nullptr || cfg == nullptr || on_event == nullptr) {
         return nullptr;
     }
@@ -311,8 +311,8 @@ AkJSONParser *ak_init_json_parser(AkVoid *buffer, AkU64 buffer_size, AkJSONParse
     session->parser_buffer = buffer;
     session->parser_buffer_size = buffer_size;
 
-    session->stack_begin = (AkJSONParserCtx *)((AkChar *)session + sizeof(AkJSONParser));
-    session->stack_end = (AkJSONParserCtx *)((AkChar *)session->stack_begin + (cfg->max_depth * (AkU64)sizeof(AkJSONParserCtx)));
+    session->stack_begin = (AkJSONParserCtx *)((char *)session + sizeof(AkJSONParser));
+    session->stack_end = (AkJSONParserCtx *)((char *)session->stack_begin + (cfg->max_depth * (AkU64)sizeof(AkJSONParserCtx)));
     session->stack_top = session->stack_begin;
 
     session->config = *cfg;
@@ -333,7 +333,7 @@ AkJSONParser *ak_init_json_parser(AkVoid *buffer, AkU64 buffer_size, AkJSONParse
     return session;
 }
 
-AkVoid ak_reset_json_parser(AkJSONParser *session) noexcept {
+void ak_reset_json_parser(AkJSONParser *session) noexcept {
     AK_ASSERT(session != nullptr);
     if (session == nullptr) {
         return;
@@ -348,7 +348,7 @@ AkVoid ak_reset_json_parser(AkJSONParser *session) noexcept {
 }
 
 
-AkJSONParserState ak_run_json_parser(AkJSONParser *session, AkVoid *buffer, AkU64 buffer_size) noexcept {
+AkJSONParserState ak_run_json_parser(AkJSONParser *session, void *buffer, AkU64 buffer_size) noexcept {
     AK_ASSERT(session != nullptr);
     if (session == nullptr || buffer == nullptr) {
         return AkJSONParserState::ERROR;
@@ -358,7 +358,7 @@ AkJSONParserState ak_run_json_parser(AkJSONParser *session, AkVoid *buffer, AkU6
     }
 
     // Always set the current buffer for this invocation
-    session->buffer = (AkChar *)buffer;
+    session->buffer = (char *)buffer;
     session->buffer_len = buffer_size;
 
     if (session->state == AkJSONParserState::CONTINUE) {
@@ -443,7 +443,7 @@ AkJSONParserState ak_eof_json_parser(AkJSONParser *session) noexcept {
 // State function implementations
 // ==========================================
 
-static AkJSONParserState sentinel(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
+static AkJSONParserState sentinel(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
     (void)(sub_state);
     (void)(head);
     (void)(end);
@@ -454,7 +454,7 @@ static AkJSONParserState sentinel(AkJSONParser *session, AkU32 sub_state, AkChar
     return AkJSONParserState::ERROR;
 }
 
-static AkJSONParserState state_return_result(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
+static AkJSONParserState state_return_result(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
     (void)(sub_state);
     (void)(head);
     (void)(end);
@@ -468,7 +468,7 @@ static AkJSONParserState state_return_result(AkJSONParser *session, AkU32 sub_st
 }
 
 // Initial and root states
-static AkJSONParserState state_root_dispatch(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
+static AkJSONParserState state_root_dispatch(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
     head = skip_whitespace(head, end, &json_size);
     if (head == end) {
         if (json_size == 0) return raise_error(session, AkJSONErrorCode::EMPTY_INPUT);
@@ -500,7 +500,7 @@ static AkJSONParserState state_root_dispatch(AkJSONParser *session, AkU32 sub_st
     }
 }
 
-static AkJSONParserState state_object_first_attr(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
+static AkJSONParserState state_object_first_attr(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
     head = skip_whitespace(head, end, &json_size);
     if (head == end)
         return suspend_parser(session, state_object_first_attr, sub_state, json_size, string_size);
@@ -514,7 +514,7 @@ static AkJSONParserState state_object_first_attr(AkJSONParser *session, AkU32 su
     AK_MUST_TAIL return state_attr_begin_key(session, sub_state, head, end, json_size, string_size);
 }
 
-static AkJSONParserState state_object_rest_attrs(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
+static AkJSONParserState state_object_rest_attrs(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
     head = skip_whitespace(head, end, &json_size);
     if (head == end)
         return suspend_parser(session, state_object_rest_attrs, sub_state, json_size, string_size);
@@ -533,7 +533,7 @@ static AkJSONParserState state_object_rest_attrs(AkJSONParser *session, AkU32 su
     return raise_error(session, AkJSONErrorCode::EXPECTED_COMMA_OR_CLOSING_BRACE);
 }
 
-static AkJSONParserState state_array_first_value(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
+static AkJSONParserState state_array_first_value(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
     while (true) {
         head = skip_whitespace(head, end, &json_size);
         if (head == end)
@@ -549,7 +549,7 @@ static AkJSONParserState state_array_first_value(AkJSONParser *session, AkU32 su
     }
 }
 
-static AkJSONParserState state_list_rest_values(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
+static AkJSONParserState state_list_rest_values(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
     head = skip_whitespace(head, end, &json_size);
     if (head == end)
         return suspend_parser(session, state_list_rest_values, sub_state, json_size, string_size);
@@ -568,7 +568,7 @@ static AkJSONParserState state_list_rest_values(AkJSONParser *session, AkU32 sub
 }
 
 // After a comma inside arrays, a value must follow; ']' is not allowed (catches trailing comma)
-static AkJSONParserState state_array_value_required(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
+static AkJSONParserState state_array_value_required(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
     while (true) {
         head = skip_whitespace(head, end, &json_size);
         if (head == end)
@@ -581,10 +581,10 @@ static AkJSONParserState state_array_value_required(AkJSONParser *session, AkU32
 }
 
 // Key string parsing (supports simple escapes and raw chunks)
-static AkJSONParserState state_attr_key_chars(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
-    AkBool is_complete_key = (sub_state == 1);
-    AkChar *key_start = head;
-    AkChar *chunk_start = head;
+static AkJSONParserState state_attr_key_chars(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
+    bool is_complete_key = (sub_state == 1);
+    char *key_start = head;
+    char *chunk_start = head;
 
     while (true) {
         if (head == end) {
@@ -594,7 +594,7 @@ static AkJSONParserState state_attr_key_chars(AkJSONParser *session, AkU32 sub_s
             }
             return suspend_parser(session, state_attr_key_chars, 0, json_size, string_size);
         }
-        AkChar c = *head;
+        char c = *head;
         if (c == '\\') {
             // On first escape, fall back to streaming mode
             if (is_complete_key) {
@@ -612,10 +612,10 @@ static AkJSONParserState state_attr_key_chars(AkJSONParser *session, AkU32 sub_s
             if (head == end) {
                 return suspend_parser(session, state_attr_key_chars, 0, json_size, string_size);
             }
-            AkChar e = *head;
+            char e = *head;
             ++head;
             ++json_size;
-            AkChar rc;
+            char rc;
             switch (e) {
             case '"':
                 rc = '"';
@@ -711,7 +711,7 @@ static AkJSONParserState state_attr_key_chars(AkJSONParser *session, AkU32 sub_s
     }
 }
 
-static AkJSONParserState state_attr_begin_key(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
+static AkJSONParserState state_attr_begin_key(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
     head = skip_whitespace(head, end, &json_size);
     if (head == end) {
         return suspend_parser(session, state_attr_begin_key, sub_state, json_size, string_size);
@@ -729,7 +729,7 @@ static AkJSONParserState state_attr_begin_key(AkJSONParser *session, AkU32 sub_s
 
 // state_attr_end_key not used; end-of-key handled in state_attr_key_chars
 
-static AkJSONParserState state_attr_separator(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
+static AkJSONParserState state_attr_separator(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
     (void)sub_state;
     (void)string_size;
     while (true) {
@@ -747,7 +747,7 @@ static AkJSONParserState state_attr_separator(AkJSONParser *session, AkU32 sub_s
 }
 
 // Optimized value dispatch using character classes (definition)
-static AkJSONParserState state_value_dispatch(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
+static AkJSONParserState state_value_dispatch(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
     (void)sub_state;
     (void)string_size;
     head = skip_whitespace(head, end, &json_size);
@@ -785,15 +785,15 @@ static AkJSONParserState state_value_dispatch(AkJSONParser *session, AkU32 sub_s
     }
 }
 
-static AkJSONParserState state_null_head(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
+static AkJSONParserState state_null_head(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
     // We already consumed 'n'; now expect 'u' 'l' 'l'
     (void)string_size;
-    const AkChar expected[] = {'u', 'l', 'l'};
+    const char expected[] = {'u', 'l', 'l'};
     AkU32 idx = sub_state; // how many of expected we already matched
     while (idx < 3) {
         if (head == end)
             return suspend_parser(session, state_null_head, idx, json_size, 0);
-        AkChar c = *head;
+        char c = *head;
         if (c != expected[idx])
             return raise_error(session, AkJSONErrorCode::INVALID_TOKEN_EXPECTED_NULL);
         ++head;
@@ -804,14 +804,14 @@ static AkJSONParserState state_null_head(AkJSONParser *session, AkU32 sub_state,
     AK_MUST_TAIL return resume_parse_context(session, 0, head, end, json_size, 0);
 }
 
-static AkJSONParserState state_true_head(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
+static AkJSONParserState state_true_head(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
     (void)string_size;
-    const AkChar expected[] = {'r', 'u', 'e'};
+    const char expected[] = {'r', 'u', 'e'};
     AkU32 idx = sub_state;
     while (idx < 3) {
         if (head == end)
             return suspend_parser(session, state_true_head, idx, json_size, 0);
-        AkChar c = *head;
+        char c = *head;
         if (c != expected[idx])
             return raise_error(session, AkJSONErrorCode::INVALID_TOKEN_EXPECTED_TRUE);
         ++head;
@@ -822,14 +822,14 @@ static AkJSONParserState state_true_head(AkJSONParser *session, AkU32 sub_state,
     AK_MUST_TAIL return resume_parse_context(session, 0, head, end, json_size, 0);
 }
 
-static AkJSONParserState state_false_head(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
+static AkJSONParserState state_false_head(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
     (void)string_size;
-    const AkChar expected[] = {'a', 'l', 's', 'e'};
+    const char expected[] = {'a', 'l', 's', 'e'};
     AkU32 idx = sub_state;
     while (idx < 4) {
         if (head == end)
             return suspend_parser(session, state_false_head, idx, json_size, 0);
-        AkChar c = *head;
+        char c = *head;
         if (c != expected[idx])
             return raise_error(session, AkJSONErrorCode::INVALID_TOKEN_EXPECTED_FALSE);
         ++head;
@@ -840,10 +840,10 @@ static AkJSONParserState state_false_head(AkJSONParser *session, AkU32 sub_state
     AK_MUST_TAIL return resume_parse_context(session, 0, head, end, json_size, 0);
 }
 
-// Deprecated: replaced by is_number_char(AkChar)
-// static AkBool is_num_char(AkChar c) noexcept { return (c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E' || (c >= '0' && c <= '9')); }
+// Deprecated: replaced by is_number_char(char)
+// static bool is_num_char(char c) noexcept { return (c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E' || (c >= '0' && c <= '9')); }
 
-static AkJSONParserState state_number_head(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
+static AkJSONParserState state_number_head(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
     (void)sub_state;
     (void)string_size;
     // collect number into suspend buffer; only use suspend buffer for numbers
@@ -851,7 +851,7 @@ static AkJSONParserState state_number_head(AkJSONParser *session, AkU32 sub_stat
         if (head == end) {
             break; // finalize number at buffer end
         }
-        AkChar c = *head;
+        char c = *head;
         if (!is_number_char(c)) {
             break;
         }
@@ -932,7 +932,7 @@ static AkJSONParserState state_number_head(AkJSONParser *session, AkU32 sub_stat
         return raise_error(session, AkJSONErrorCode::INVALID_NUMBER_FORMAT);
     // decide int vs float
     for (AkU64 i = 0; i < session->suspend_buffer_size; ++i) {
-        AkChar c = session->suspend_buffer[i];
+        char c = session->suspend_buffer[i];
         if (c == '.' || c == 'e' || c == 'E') {
             is_float = true;
             break;
@@ -949,7 +949,7 @@ static AkJSONParserState state_number_head(AkJSONParser *session, AkU32 sub_stat
             ++pos;
         }
         for (; pos < session->suspend_buffer_size; ++pos) {
-            AkChar d = session->suspend_buffer[pos];
+            char d = session->suspend_buffer[pos];
             if (d < '0' || d > '9')
                 return raise_error(session, AkJSONErrorCode::INVALID_INTEGER_FORMAT);
             val = (val * 10) + (d - '0');
@@ -977,9 +977,9 @@ static AkJSONParserState state_number_head(AkJSONParser *session, AkU32 sub_stat
     AK_MUST_TAIL return resume_parse_context(session, 0, head, end, json_size, 0);
 }
 
-static AkJSONParserState state_string_head(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
-    AkBool is_single_buffer = (sub_state == 1);
-    AkChar* chunk_start = head;
+static AkJSONParserState state_string_head(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
+    bool is_single_buffer = (sub_state == 1);
+    char* chunk_start = head;
 
     while (true) {
         if (head == end) {
@@ -997,7 +997,7 @@ static AkJSONParserState state_string_head(AkJSONParser *session, AkU32 sub_stat
             }
             return suspend_parser(session, state_string_head, 0, json_size, string_size);
         }
-        AkChar c = *head;
+        char c = *head;
         if (c == '\\') {
             ++head; ++json_size;
             if (head == end) {
@@ -1022,7 +1022,7 @@ static AkJSONParserState state_string_head(AkJSONParser *session, AkU32 sub_stat
                 // No more chars in this buffer; suspend and continue in next buffer
                 return suspend_parser(session, state_string_head, 0, json_size, string_size);
             }
-            AkChar e = *head; ++head; ++json_size;
+            char e = *head; ++head; ++json_size;
             switch (e) {
                 case '"': 
                 case '\\': 
@@ -1091,7 +1091,7 @@ static AkJSONParserState state_string_head(AkJSONParser *session, AkU32 sub_stat
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // Unified event notification function
-static AkVoid notify_event(AkJSONParser *session, AkJSONEvent event_type, const AkJSONEventData *data, AkU64 more) noexcept {
+static void notify_event(AkJSONParser *session, AkJSONEvent event_type, const AkJSONEventData *data, AkU64 more) noexcept {
     AK_ASSERT(session != nullptr);
     AK_ASSERT(session->on_event != nullptr);
     int rc = session->on_event(session, event_type, data, more);
@@ -1101,7 +1101,7 @@ static AkVoid notify_event(AkJSONParser *session, AkJSONEvent event_type, const 
 }
 
 // Parser state changed
-static AkVoid notify_state_changed(AkJSONParser *session) noexcept {
+static void notify_state_changed(AkJSONParser *session) noexcept {
     AkJSONEventData data = {};
     data.state_data.state = session->state;
     data.state_data.err_code = session->err_code;
@@ -1109,22 +1109,22 @@ static AkVoid notify_state_changed(AkJSONParser *session) noexcept {
 }
 
 // Object Notification
-static AkVoid notify_object_begin(AkJSONParser *session) noexcept {
+static void notify_object_begin(AkJSONParser *session) noexcept {
     notify_event(session, AkJSONEvent::OBJECT_BEGIN, nullptr, 0);
 }
 
-static AkVoid notify_object_end(AkJSONParser *session) noexcept {
+static void notify_object_end(AkJSONParser *session) noexcept {
     notify_event(session, AkJSONEvent::OBJECT_END, nullptr, 0);
 }
 
-static AkVoid notify_attr_key_chunk(AkJSONParser *session, const AkChar *text_buffer, AkU64 text_buffer_length, AkU64 more) noexcept {
+static void notify_attr_key_chunk(AkJSONParser *session, const char *text_buffer, AkU64 text_buffer_length, AkU64 more) noexcept {
     AkJSONEventData data = {};
     data.string_data.str = text_buffer;
     data.string_data.len = text_buffer_length;
     notify_event(session, AkJSONEvent::ATTR_KEY, &data, more);
 }
 
-static AkVoid notify_attr_key(AkJSONParser *session, const AkChar *text_buffer, AkU64 text_buffer_length) noexcept {
+static void notify_attr_key(AkJSONParser *session, const char *text_buffer, AkU64 text_buffer_length) noexcept {
     AkJSONEventData data = {};
     data.string_data.str = text_buffer;
     data.string_data.len = text_buffer_length;
@@ -1133,36 +1133,36 @@ static AkVoid notify_attr_key(AkJSONParser *session, const AkChar *text_buffer, 
 
 
 // Literal Values
-static AkVoid notify_value_null(AkJSONParser *session) noexcept {
+static void notify_value_null(AkJSONParser *session) noexcept {
     notify_event(session, AkJSONEvent::NULL_VALUE, nullptr, 0);
 }
 
-static AkVoid notify_value_bool(AkJSONParser *session, AkBool value) noexcept {
+static void notify_value_bool(AkJSONParser *session, bool value) noexcept {
     AkJSONEventData data = {};
     data.bool_value = value;
     notify_event(session, AkJSONEvent::BOOL_VALUE, &data, 0);
 }
 
-static AkVoid notify_value_number_int(AkJSONParser *session, AkI64 value) noexcept {
+static void notify_value_number_int(AkJSONParser *session, AkI64 value) noexcept {
     AkJSONEventData data = {};
     data.int_value = value;
     notify_event(session, AkJSONEvent::INT_VALUE, &data, 0);
 }
 
-static AkVoid notify_value_number_float(AkJSONParser *session, AkF64 value) noexcept {
+static void notify_value_number_float(AkJSONParser *session, AkF64 value) noexcept {
     AkJSONEventData data = {};
     data.float_value = value;
     notify_event(session, AkJSONEvent::FLOAT_VALUE, &data, 0);
 }
 
-static AkVoid notify_value_string_chunk(AkJSONParser *session, const AkChar *text_buffer, AkU64 text_buffer_length, AkU64 more) noexcept {
+static void notify_value_string_chunk(AkJSONParser *session, const char *text_buffer, AkU64 text_buffer_length, AkU64 more) noexcept {
     AkJSONEventData data = {};
     data.string_data.str = text_buffer;
     data.string_data.len = text_buffer_length;
     notify_event(session, AkJSONEvent::STRING_VALUE, &data, more);
 }
 
-static AkVoid notify_value_string(AkJSONParser *session, const AkChar *text_buffer, AkU64 text_buffer_length) noexcept {
+static void notify_value_string(AkJSONParser *session, const char *text_buffer, AkU64 text_buffer_length) noexcept {
     AkJSONEventData data = {};
     data.string_data.str = text_buffer;
     data.string_data.len = text_buffer_length;
@@ -1170,11 +1170,11 @@ static AkVoid notify_value_string(AkJSONParser *session, const AkChar *text_buff
 }
 
 // Array  Notification
-static AkVoid notify_array_begin(AkJSONParser *session) noexcept {
+static void notify_array_begin(AkJSONParser *session) noexcept {
     notify_event(session, AkJSONEvent::ARRAY_BEGIN, nullptr, 0);
 }
 
-static AkVoid notify_array_end(AkJSONParser *session) noexcept {
+static void notify_array_end(AkJSONParser *session) noexcept {
     notify_event(session, AkJSONEvent::ARRAY_END, nullptr, 0);
 }
 
@@ -1189,7 +1189,7 @@ static AkJSONParserState raise_error(AkJSONParser *session, AkJSONErrorCode code
     return AkJSONParserState::ERROR;
 }
 
-static inline AkBool push_parse_context_checked(AkJSONParser *session, AkJSONParserStateFn *fn, AkU32 sub_state) noexcept {
+static inline bool push_parse_context_checked(AkJSONParser *session, AkJSONParserStateFn *fn, AkU32 sub_state) noexcept {
     if (!(session->stack_top < session->stack_end)) {
         (void)raise_error(session, AkJSONErrorCode::MAX_DEPTH_EXCEEDED);
         return false;
@@ -1203,7 +1203,7 @@ static inline AkBool push_parse_context_checked(AkJSONParser *session, AkJSONPar
 }
 
 /// \internal Use push_parse_context_checked directly when pushing continuation frames
-static AkJSONParserState resume_parse_context(AkJSONParser *session, AkU32 sub_state, AkChar *head, AkChar *end, AkU64 json_size, AkU64 string_size) noexcept {
+static AkJSONParserState resume_parse_context(AkJSONParser *session, AkU32 sub_state, char *head, char *end, AkU64 json_size, AkU64 string_size) noexcept {
     AK_ASSERT(session != nullptr);
     (void)sub_state;
     AK_ASSERT(session->stack_top > session->stack_begin);
@@ -1214,7 +1214,7 @@ static AkJSONParserState resume_parse_context(AkJSONParser *session, AkU32 sub_s
     AK_MUST_TAIL return continuation(session, ret_sub, head, end, json_size, string_size);
 }
 
-static inline AkVoid emit_utf8_bytes(AkJSONParser *session, AkU32 cp, EmitFn *emit) {
+static inline void emit_utf8_bytes(AkJSONParser *session, AkU32 cp, EmitFn *emit) {
     char bytes[4];
     AkU32 n = 0;
     if (cp < UTF8_1_MAX) {
@@ -1239,15 +1239,15 @@ static inline AkVoid emit_utf8_bytes(AkJSONParser *session, AkU32 cp, EmitFn *em
     (*emit)(session, bytes, n);
 }
 
-static AkVoid emit_attr_key_utf8(AkJSONParser *session, const AkChar *buf, AkU64 len) noexcept {
+static void emit_attr_key_utf8(AkJSONParser *session, const char *buf, AkU64 len) noexcept {
     notify_attr_key_chunk(session, buf, len, 1);
 }
 
-static inline CharClass classify_char(AkChar c) noexcept {
+static inline CharClass classify_char(char c) noexcept {
     return static_cast<CharClass>(char_class_table[(AkU8)c]);
 }
 
-static inline AkBool is_number_char(AkChar c) noexcept {
+static inline bool is_number_char(char c) noexcept {
     return number_char_table[(AkU8)c] != 0;
 }
 
@@ -1256,7 +1256,7 @@ static inline void prefetch_classification_tables() noexcept {
     __builtin_prefetch(&number_char_table[0], 0, 3);
 }
 
-static inline AkChar* skip_whitespace(AkChar* head, AkChar* end, AkU64* json_size) noexcept {
+static inline char* skip_whitespace(char* head, char* end, AkU64* json_size) noexcept {
     while (head < end) {
         CharClass cls = classify_char(*head);
         if (cls != CHAR_WHITESPACE) {
@@ -1267,15 +1267,15 @@ static inline AkChar* skip_whitespace(AkChar* head, AkChar* end, AkU64* json_siz
     }
     return head;
 }
-static inline AkBool parse_hex4(AkJSONParser *session, AkChar **phead, AkChar *end, AkU64 *pjson_size, AkU32 *pout) noexcept {
-    AkChar *head = *phead;
+static inline bool parse_hex4(AkJSONParser *session, char **phead, char *end, AkU64 *pjson_size, AkU32 *pout) noexcept {
+    char *head = *phead;
     AkU64 json_size = *pjson_size;
     AkU32 out = 0;
     for (int i = 0; i < 4; ++i) {
         if (head == end) {
             return false;
         }
-        AkChar h = *head;
+        char h = *head;
         ++head;
         ++json_size;
         AkU32 d;

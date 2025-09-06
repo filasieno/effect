@@ -4,29 +4,29 @@
 
 // AVL utility forward declarations 
 
-inline static AkI32                   alloc_freeblock_height_of(const AkAllocFreeBlockHeader* n) noexcept;
-inline static AkVoid                  alloc_freeblock_update(AkAllocFreeBlockHeader* n) noexcept;
-inline static AkVoid                  alloc_freeblock_rotate_left(AkAllocFreeBlockHeader** root, AkAllocFreeBlockHeader* x) noexcept;
-inline static AkVoid                  alloc_freeblock_rotate_right(AkAllocFreeBlockHeader** root, AkAllocFreeBlockHeader* y) noexcept;
-inline static AkVoid                  alloc_freeblock_rebalance_upwards(AkAllocFreeBlockHeader** root, AkAllocFreeBlockHeader* n) noexcept;
-inline static AkVoid                  alloc_freeblock_transplant(AkAllocFreeBlockHeader** root, AkAllocFreeBlockHeader* u, AkAllocFreeBlockHeader* v) noexcept;
-inline static AkAllocFreeBlockHeader* alloc_freeblock_min_node(AkAllocFreeBlockHeader* root) noexcept;
+inline static int                     alloc_freeblock_height_of(const ak_alloc_free_block_header* n) noexcept;
+inline static void                    alloc_freeblock_update(ak_alloc_free_block_header* n) noexcept;
+inline static void                    alloc_freeblock_rotate_left(ak_alloc_free_block_header** root, ak_alloc_free_block_header* x) noexcept;
+inline static void                    alloc_freeblock_rotate_right(ak_alloc_free_block_header** root, ak_alloc_free_block_header* y) noexcept;
+inline static void                    alloc_freeblock_rebalance_upwards(ak_alloc_free_block_header** root, ak_alloc_free_block_header* n) noexcept;
+inline static void                    alloc_freeblock_transplant(ak_alloc_free_block_header** root, ak_alloc_free_block_header* u, ak_alloc_free_block_header* v) noexcept;
+inline static ak_alloc_free_block_header* alloc_freeblock_min_node(ak_alloc_free_block_header* root) noexcept;
 
-AkVoid alloc_freeblock_init_root(AkAllocFreeBlockHeader** root) noexcept {
+void alloc_freeblock_init_root(ak_alloc_free_block_header** root) noexcept {
     AK_ASSERT(root != nullptr);
     *root = nullptr;
 }
 
-AkVoid alloc_freeblock_put(AkAllocFreeBlockHeader** root, AkAllocBlockHeader* block) noexcept {
+void alloc_freeblock_put(ak_alloc_free_block_header** root, ak_alloc_block_header* block) noexcept {
     AK_ASSERT(root != nullptr);
     AK_ASSERT(block != nullptr);
-    AK_ASSERT(block->this_desc.state == (AkU32)AkAllocBlockState::FREE);
+    AK_ASSERT(block->this_desc.state == (AkU32)AK_ALLOC_BLOCK_STATE_FREE);
     AK_ASSERT(block->this_desc.size > 2048);
 
-    auto key_of = [](const AkAllocFreeBlockHeader* n) noexcept -> AkU64 { return n->this_desc.size; };
+    auto key_of = [](const ak_alloc_free_block_header* n) noexcept -> AkU64 { return n->this_desc.size; };
     // (helpers moved to static inline utilities above)
 
-    AkAllocFreeBlockHeader* new_link = (AkAllocFreeBlockHeader*)block;
+    ak_alloc_free_block_header* new_link = (ak_alloc_free_block_header*)block;
 
     if (*root == nullptr) {
         // First node becomes root (as tree node)
@@ -41,8 +41,8 @@ AkVoid alloc_freeblock_put(AkAllocFreeBlockHeader** root, AkAllocBlockHeader* bl
     }
 
     // Traverse to find insertion point or existing key
-    AkAllocFreeBlockHeader* cur = *root;
-    AkAllocFreeBlockHeader* parent = nullptr;
+    ak_alloc_free_block_header* cur = *root;
+    ak_alloc_free_block_header* parent = nullptr;
     AkU64 k = new_link->this_desc.size;
     while (cur) {
         parent = cur;
@@ -78,12 +78,12 @@ AkVoid alloc_freeblock_put(AkAllocFreeBlockHeader** root, AkAllocBlockHeader* bl
     return;
 }
 
-AkAllocFreeBlockHeader* alloc_freeblock_find_gte(AkAllocFreeBlockHeader* root, AkU64 block_size) noexcept {
+ak_alloc_free_block_header* alloc_freeblock_find_gte(ak_alloc_free_block_header* root, AkU64 block_size) noexcept {
     if (root == nullptr) return nullptr;
     if (block_size <= 2048) return nullptr;
     
-    AkAllocFreeBlockHeader* node = root;
-    AkAllocFreeBlockHeader* best = nullptr;
+    ak_alloc_free_block_header* node = root;
+    ak_alloc_free_block_header* best = nullptr;
     while (node) {
         AkU64 k = node->this_desc.size;
         if (k == block_size) return node;
@@ -93,11 +93,11 @@ AkAllocFreeBlockHeader* alloc_freeblock_find_gte(AkAllocFreeBlockHeader* root, A
     return best;
 }
 
-AkVoid alloc_freeblock_detach(AkAllocFreeBlockHeader** root, AkAllocFreeBlockHeader* node) noexcept {
+void alloc_freeblock_detach(ak_alloc_free_block_header** root, ak_alloc_free_block_header* node) noexcept {
     AK_ASSERT(root != nullptr);
     AK_ASSERT(*root != nullptr);
     AK_ASSERT(node != nullptr);
-    AK_ASSERT(node->this_desc.state == (AkU32)AkAllocBlockState::FREE);
+    AK_ASSERT(node->this_desc.state == (AkU32)AK_ALLOC_BLOCK_STATE_FREE);
     AK_ASSERT(node->this_desc.size > 2048);
     
     // Case 1: List node case; the node is part of a list; just unlink it
@@ -111,16 +111,16 @@ AkVoid alloc_freeblock_detach(AkAllocFreeBlockHeader** root, AkAllocFreeBlockHea
 
     // Case 2: Simple AVL tree node case; there is no list node linked in the tree
     if (alloc_freeblock_is_detached(node)) {
-        AkAllocFreeBlockHeader* start_rebalance = node->parent;
+        ak_alloc_free_block_header* start_rebalance = node->parent;
         if (node->left == nullptr) {
             alloc_freeblock_transplant(root, node, node->right);
         } else if (node->right == nullptr) {
             alloc_freeblock_transplant(root, node, node->left);
         } else {
-            AkAllocFreeBlockHeader* s = alloc_freeblock_min_node(node->right);
+            ak_alloc_free_block_header* s = alloc_freeblock_min_node(node->right);
             if (s->parent != node) {
                 // Replace s with its right subtree
-                AkAllocFreeBlockHeader* sp = s->parent;
+                ak_alloc_free_block_header* sp = s->parent;
                 alloc_freeblock_transplant(root, s, s->right);
                 // Attach original right to s
                 s->right = node->right;
@@ -147,8 +147,8 @@ AkVoid alloc_freeblock_detach(AkAllocFreeBlockHeader** root, AkAllocFreeBlockHea
     //
     // 1. Get the first element of the list N (FIFO) and detach H from the ring
     
-    AkDLink* next_node_link = node->multimap_link.next;
-    AkAllocFreeBlockHeader* next_node = (AkAllocFreeBlockHeader*)((AkChar*)next_node_link - AK_OFFSET(AkAllocFreeBlockHeader, multimap_link));
+    ak_dlink* next_node_link = node->multimap_link.next;
+    ak_alloc_free_block_header* next_node = (ak_alloc_free_block_header*)((char*)next_node_link - AK_OFFSET(ak_alloc_free_block_header, multimap_link));
     AK_ASSERT(next_node != nullptr && next_node != node);
     // Remove H from circular list so that N becomes the new head
     ak_dlink_detach(&node->multimap_link);
@@ -176,7 +176,7 @@ AkVoid alloc_freeblock_detach(AkAllocFreeBlockHeader** root, AkAllocFreeBlockHea
 
 }
 
-AkBool alloc_freeblock_is_detached(const AkAllocFreeBlockHeader* link) noexcept {
+bool alloc_freeblock_is_detached(const ak_alloc_free_block_header* link) noexcept {
     AK_ASSERT(link != nullptr);
     return link->multimap_link.next == &link->multimap_link && link->multimap_link.prev == &link->multimap_link;
 }
@@ -184,24 +184,24 @@ AkBool alloc_freeblock_is_detached(const AkAllocFreeBlockHeader* link) noexcept 
 // ------------------------------------------------------------------
 // AVL utility implementations (moved to bottom for clarity)
 
-AkVoid alloc_freeblock_clear(AkAllocFreeBlockHeader* link) noexcept {
+void alloc_freeblock_clear(ak_alloc_free_block_header* link) noexcept {
     AK_ASSERT(link != nullptr);
-    char* buff = ((char*)link) + sizeof(AkAllocBlockHeader);
-    std::memset(buff, 0, sizeof(AkAllocFreeBlockHeader) - sizeof(AkAllocBlockHeader));
+    char* buff = ((char*)link) + sizeof(ak_alloc_block_header);
+    std::memset(buff, 0, sizeof(ak_alloc_free_block_header) - sizeof(ak_alloc_block_header));
 }
 
-inline static AkI32 alloc_freeblock_height_of(const AkAllocFreeBlockHeader* n) noexcept { return n ? n->height : 0; }
+inline static int alloc_freeblock_height_of(const ak_alloc_free_block_header* n) noexcept { return n ? n->height : 0; }
 
-inline static AkVoid alloc_freeblock_update(AkAllocFreeBlockHeader* n) noexcept {
+inline static void alloc_freeblock_update(ak_alloc_free_block_header* n) noexcept {
     if (!n) return;
-    const AkI32 hl = alloc_freeblock_height_of(n->left);
-    const AkI32 hr = alloc_freeblock_height_of(n->right);
+    const int hl = alloc_freeblock_height_of(n->left);
+    const int hr = alloc_freeblock_height_of(n->right);
     n->height  = 1 + (hl > hr ? hl : hr);
     n->balance = hl - hr;
 }
 
-inline static AkVoid alloc_freeblock_rotate_left(AkAllocFreeBlockHeader** r, AkAllocFreeBlockHeader* x) noexcept {
-    AkAllocFreeBlockHeader* y = x->right;
+inline static void alloc_freeblock_rotate_left(ak_alloc_free_block_header** r, ak_alloc_free_block_header* x) noexcept {
+    ak_alloc_free_block_header* y = x->right;
     AK_ASSERT(y != nullptr);
     x->right = y->left;
     if (y->left) y->left->parent = x;
@@ -219,8 +219,8 @@ inline static AkVoid alloc_freeblock_rotate_left(AkAllocFreeBlockHeader** r, AkA
     alloc_freeblock_update(y);
 }
 
-inline static AkVoid alloc_freeblock_rotate_right(AkAllocFreeBlockHeader** r, AkAllocFreeBlockHeader* y) noexcept {
-    AkAllocFreeBlockHeader* x = y->left;
+inline static void alloc_freeblock_rotate_right(ak_alloc_free_block_header** r, ak_alloc_free_block_header* y) noexcept {
+    ak_alloc_free_block_header* x = y->left;
     AK_ASSERT(x != nullptr);
     y->left = x->right;
     if (x->right) x->right->parent = y;
@@ -238,7 +238,7 @@ inline static AkVoid alloc_freeblock_rotate_right(AkAllocFreeBlockHeader** r, Ak
     alloc_freeblock_update(x);
 }
 
-inline static AkVoid alloc_freeblock_rebalance_upwards(AkAllocFreeBlockHeader** r, AkAllocFreeBlockHeader* n) noexcept {
+inline static void alloc_freeblock_rebalance_upwards(ak_alloc_free_block_header** r, ak_alloc_free_block_header* n) noexcept {
     while (n) {
         alloc_freeblock_update(n);
         if (n->balance > 1) {
@@ -256,7 +256,7 @@ inline static AkVoid alloc_freeblock_rebalance_upwards(AkAllocFreeBlockHeader** 
     }
 }
 
-inline static AkVoid alloc_freeblock_transplant(AkAllocFreeBlockHeader** r, AkAllocFreeBlockHeader* u, AkAllocFreeBlockHeader* v) noexcept {
+inline static void alloc_freeblock_transplant(ak_alloc_free_block_header** r, ak_alloc_free_block_header* u, ak_alloc_free_block_header* v) noexcept {
     if (u->parent == nullptr) {
         *r = v;
     } else if (u->parent->left == u) {
@@ -267,7 +267,7 @@ inline static AkVoid alloc_freeblock_transplant(AkAllocFreeBlockHeader** r, AkAl
     if (v) v->parent = u->parent;
 }
 
-inline static AkAllocFreeBlockHeader* alloc_freeblock_min_node(AkAllocFreeBlockHeader* n) noexcept {
+inline static ak_alloc_free_block_header* alloc_freeblock_min_node(ak_alloc_free_block_header* n) noexcept {
     AK_ASSERT(n != nullptr);
     while (n->left) n = n->left;
     return n;

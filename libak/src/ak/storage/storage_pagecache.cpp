@@ -2,12 +2,12 @@
 
 
 // inline PagecacheEntry* get_pagecache_bucket_at(const Pagecache* cache, AkU32 bucket_id) noexcept;
-// inline AkBool            is_pagecache_bucket_used(const Pagecache* cache, AkU32 bucket_index) noexcept;
-inline static AkU32  hash(AkPageId id) noexcept;
-inline static AkU32  hash(const AkPagecacheEntry& entry) noexcept;
-inline static AkBool is_free(const AkPagecacheEntry& entry) noexcept;
-inline static AkBool is_used(const AkPagecacheEntry& entry) noexcept;
-inline static AkVoid clear(AkPagecacheEntry& entry) noexcept;
+// inline bool            is_pagecache_bucket_used(const Pagecache* cache, AkU32 bucket_index) noexcept;
+inline static AkU32  hash(ak_page_id id) noexcept;
+inline static AkU32  hash(const ak_pagecahe_entry& entry) noexcept;
+inline static bool is_free(const ak_pagecahe_entry& entry) noexcept;
+inline static bool is_used(const ak_pagecahe_entry& entry) noexcept;
+inline static void clear(ak_pagecahe_entry& entry) noexcept;
 
 // PageCache page_cache_create(AllocTable* at, AkU32 capacity) noexcept {    
 //     AkU32 aligned_capacity = 1;
@@ -21,7 +21,7 @@ inline static AkVoid clear(AkPagecacheEntry& entry) noexcept;
 //     return {entries, aligned_capacity};
 // }
 
-// AkVoid page_cache_destroy(PageCache& cache, AllocTable* at) noexcept {
+// void page_cache_destroy(PageCache& cache, AllocTable* at) noexcept {
 //     if (cache.entries) {
 //         ak::dealloc(at, cache.entries);
 //         cache.entries = nullptr;
@@ -30,7 +30,7 @@ inline static AkVoid clear(AkPagecacheEntry& entry) noexcept;
 // }
 
 
-AkBool storage_pagecache_contains_entry(const AkPagecache* cache, AkPageId page_id) noexcept {
+bool storage_pagecache_contains_entry(const ak_pagecache* cache, ak_page_id page_id) noexcept {
     AK_ASSERT(cache != nullptr);
     AK_ASSERT(page_id);
     
@@ -47,7 +47,7 @@ AkBool storage_pagecache_contains_entry(const AkPagecache* cache, AkPageId page_
     return false;
 }
 
-AkFrameId storage_pagecache_lookup_entry(const AkPagecache* cache, AkPageId page_id) noexcept {
+ak_frame_id storage_pagecache_lookup_entry(const ak_pagecache* cache, ak_page_id page_id) noexcept {
     AK_ASSERT(cache != nullptr);
     if (cache->capacity == 0) return {};
     AkU32 h = hash(page_id);
@@ -62,7 +62,7 @@ AkFrameId storage_pagecache_lookup_entry(const AkPagecache* cache, AkPageId page
     return {};
 }
 
-AkU32 storage_pagecache_put_entry(AkPagecache* cache, AkPageId page_id, AkFrameId frame_id) noexcept {
+AkU32 storage_pagecache_put_entry(ak_pagecache* cache, ak_page_id page_id, ak_frame_id frame_id) noexcept {
     AK_ASSERT(cache != nullptr);
     AK_ASSERT(cache->capacity > 0, "Cache not initialized");
     AkU32 h = hash(page_id);
@@ -86,7 +86,7 @@ AkU32 storage_pagecache_put_entry(AkPagecache* cache, AkPageId page_id, AkFrameI
 }
 
 
-static AkVoid remove_and_update_hash_chain(AkPagecache* cache, AkU32 bucket_id) noexcept {
+static void remove_and_update_hash_chain(ak_pagecache* cache, AkU32 bucket_id) noexcept {
     AK_ASSERT(bucket_id < cache->capacity, "Invalid bucket_id");
     AkU32 j = bucket_id;
     AkU32 i = bucket_id;
@@ -106,7 +106,7 @@ static AkVoid remove_and_update_hash_chain(AkPagecache* cache, AkU32 bucket_id) 
 }
 
     
-AkFrameId storage_pagecache_remove_entry(AkPagecache* cache, AkPageId page_id) noexcept {
+ak_frame_id storage_pagecache_remove_entry(ak_pagecache* cache, ak_page_id page_id) noexcept {
     AK_ASSERT(cache != nullptr);
     AK_ASSERT(page_id);
     if (cache->capacity == 0) return {};
@@ -115,44 +115,44 @@ AkFrameId storage_pagecache_remove_entry(AkPagecache* cache, AkPageId page_id) n
     AkU32 entry_id = h & mask;
     while (true) {
         auto& entry = cache->entries[entry_id];
-        if (is_free(entry)) return AkFrameId(AkFrameId::INVALID);
+        if (is_free(entry)) return ak_frame_id(ak_frame_id::INVALID);
         if (entry.page_id == page_id) {
-            AkFrameId out_frame_id = entry.frame_id;
+            ak_frame_id out_frame_id = entry.frame_id;
             remove_and_update_hash_chain(cache, entry_id);
             return out_frame_id;
         }
         entry_id = (entry_id + 1) & mask;
     }
-    return AkFrameId(AkFrameId::INVALID);
+    return ak_frame_id(ak_frame_id::INVALID);
 }
 
 // Utilities 
 
-inline static AkU32 hash(AkPageId id) noexcept {
+inline static AkU32 hash(ak_page_id id) noexcept {
     AK_ASSERT(id);
     AkU32 h = id.id;
     h ^= h >> 16;
     return h;
 }
 
-inline static AkU32 hash(const AkPagecacheEntry& entry) noexcept {
+inline static AkU32 hash(const ak_pagecahe_entry& entry) noexcept {
     return hash(entry.page_id);
 }
 
-inline static AkBool is_free(const AkPagecacheEntry& entry) noexcept {
-    return entry.page_id == AkPageId::INVALID;
+inline static bool is_free(const ak_pagecahe_entry& entry) noexcept {
+    return entry.page_id == ak_page_id::INVALID;
 }
 
-inline static AkBool is_used(const AkPagecacheEntry& entry) noexcept {
+inline static bool is_used(const ak_pagecahe_entry& entry) noexcept {
     return !is_free(entry);
 }
 
-inline static AkVoid clear(AkPagecacheEntry& entry) noexcept {
-    entry.page_id = AkPageId(AkPageId::INVALID);
-    entry.frame_id = AkFrameId(AkFrameId::INVALID);
+inline static void clear(ak_pagecahe_entry& entry) noexcept {
+    entry.page_id = ak_page_id(ak_page_id::INVALID);
+    entry.frame_id = ak_frame_id(ak_frame_id::INVALID);
 }
 
-inline AkPagecacheEntry* get_pagecache_bucket_at(const AkPagecache* cache, AkU32 bucket_id) noexcept {
+inline ak_pagecahe_entry* get_pagecache_bucket_at(const ak_pagecache* cache, AkU32 bucket_id) noexcept {
     AK_ASSERT(cache != nullptr);
     AK_ASSERT(bucket_id < cache->capacity, "Invalid bucket_id");
     auto& entry = cache->entries[bucket_id];
@@ -160,7 +160,7 @@ inline AkPagecacheEntry* get_pagecache_bucket_at(const AkPagecache* cache, AkU32
     return &entry;
 }
 
-inline AkBool is_pagecache_bucket_used(const AkPagecache* cache, AkU32 bucket_index) noexcept {
+inline bool is_pagecache_bucket_used(const ak_pagecache* cache, AkU32 bucket_index) noexcept {
     AK_ASSERT(cache != nullptr);
     AK_ASSERT(bucket_index < cache->capacity, "Invalid bucket_index");
     return is_used(cache->entries[bucket_index]);

@@ -33,7 +33,7 @@ inline AkIOOp prepare_io_uring_op(PrepFn prep_fn) noexcept {
         free_slots = io_uring_sq_space_left(&global_kernel_state.io_uring_state);
     }
     io_uring_sqe* sqe = io_uring_get_sqe(&global_kernel_state.io_uring_state);
-    io_uring_sqe_set_data(sqe, (AkVoid*) ctx);
+    io_uring_sqe_set_data(sqe, (void*) ctx);
     prep_fn(sqe);
     ctx->res = 0;
     ++ctx->prepared_io;
@@ -72,7 +72,7 @@ AkIOOp ak_os_io_close_direct(unsigned file_index) noexcept {
 }
 
 // Read Operations (definitions)
-AkIOOp ak_os_io_read(int fd, AkVoid* buf, unsigned nbytes, __u64 offset) noexcept {
+AkIOOp ak_os_io_read(int fd, void* buf, unsigned nbytes, __u64 offset) noexcept {
     return prepare_io_uring_op([=](io_uring_sqe* sqe) {
         io_uring_prep_read(sqe, fd, buf, nbytes, offset);
     });
@@ -84,7 +84,7 @@ AkIOOp ak_os_io_read_multishot(int fd, unsigned nbytes, __u64 offset, int buf_gr
     });
 }
 
-AkIOOp ak_os_io_read_fixed(int fd, AkVoid* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
+AkIOOp ak_os_io_read_fixed(int fd, void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
     return prepare_io_uring_op([=](io_uring_sqe* sqe) {
         io_uring_prep_read_fixed(sqe, fd, buf, nbytes, offset, buf_index);
     });
@@ -109,13 +109,13 @@ AkIOOp ak_os_io_readv_fixed(int fd, const struct iovec* iovecs, unsigned nr_vecs
 }
 
 // Write Operations (definitions)
-AkIOOp ak_os_io_write(int fd, const AkVoid* buf, unsigned nbytes, __u64 offset) noexcept {
+AkIOOp ak_os_io_write(int fd, const void* buf, unsigned nbytes, __u64 offset) noexcept {
     return prepare_io_uring_op([=](io_uring_sqe* sqe) {
         io_uring_prep_write(sqe, fd, buf, nbytes, offset);
     });
 }
 
-AkIOOp ak_os_io_write_fixed(int fd, const AkVoid* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
+AkIOOp ak_os_io_write_fixed(int fd, const void* buf, unsigned nbytes, __u64 offset, int buf_index) noexcept {
     return prepare_io_uring_op([=](io_uring_sqe* sqe) {
         io_uring_prep_write_fixed(sqe, fd, buf, nbytes, offset, buf_index);
     });
@@ -170,19 +170,19 @@ AkIOOp ak_os_io_connect(int fd, const struct sockaddr* addr, socklen_t addrlen) 
     });
 }
 
-AkIOOp ak_os_io_send(int sockfd, const AkVoid* buf, size_t len, int flags) noexcept {
+AkIOOp ak_os_io_send(int sockfd, const void* buf, size_t len, int flags) noexcept {
     return prepare_io_uring_op([=](io_uring_sqe* sqe) {
         io_uring_prep_send(sqe, sockfd, buf, len, flags);
     });
 }
 
-AkIOOp ak_os_io_send_zc(int sockfd, const AkVoid* buf, size_t len, int flags, unsigned zc_flags) noexcept {
+AkIOOp ak_os_io_send_zc(int sockfd, const void* buf, size_t len, int flags, unsigned zc_flags) noexcept {
     return prepare_io_uring_op([=](io_uring_sqe* sqe) {
         io_uring_prep_send_zc(sqe, sockfd, buf, len, flags, zc_flags);
     });
 }
 
-AkIOOp ak_os_io_send_zc_fixed(int sockfd, const AkVoid* buf, size_t len, int flags, unsigned zc_flags, unsigned buf_index) noexcept {
+AkIOOp ak_os_io_send_zc_fixed(int sockfd, const void* buf, size_t len, int flags, unsigned zc_flags, unsigned buf_index) noexcept {
     return prepare_io_uring_op([=](io_uring_sqe* sqe) {
         io_uring_prep_send_zc_fixed(sqe, sockfd, buf, len, flags, zc_flags, buf_index);
     });
@@ -206,13 +206,13 @@ AkIOOp ak_os_io_send_msg_zc_fixed(int fd, const struct msghdr* msg, unsigned fla
     });
 }
 
-AkIOOp ak_os_io_recv(int sockfd, AkVoid* buf, size_t len, int flags) noexcept {
+AkIOOp ak_os_io_recv(int sockfd, void* buf, size_t len, int flags) noexcept {
     return prepare_io_uring_op([=](io_uring_sqe* sqe) {
         io_uring_prep_recv(sqe, sockfd, buf, len, flags);
     });
 }
 
-AkIOOp ak_os_io_recv_multishot(int sockfd, AkVoid* buf, size_t len, int flags) noexcept {
+AkIOOp ak_os_io_recv_multishot(int sockfd, void* buf, size_t len, int flags) noexcept {
     return prepare_io_uring_op([=](io_uring_sqe* sqe) {
         io_uring_prep_recv_multishot(sqe, sockfd, buf, len, flags);
     });
@@ -351,13 +351,13 @@ AkIOOp ak_os_io_fadvise64(int fd, __u64 offset, off_t len, int advice) noexcept 
     });
 }
 
-AkIOOp ak_os_io_madvise(AkVoid* addr, __u32 length, int advice) noexcept {
+AkIOOp ak_os_io_madvise(void* addr, __u32 length, int advice) noexcept {
     return prepare_io_uring_op([=](io_uring_sqe* sqe) {
         io_uring_prep_madvise(sqe, addr, length, advice);
     });
 }
 
-AkIOOp ak_os_io_madvise64(AkVoid* addr, off_t length, int advice) noexcept {
+AkIOOp ak_os_io_madvise64(void* addr, off_t length, int advice) noexcept {
     return prepare_io_uring_op([=](io_uring_sqe* sqe) {
         io_uring_prep_madvise64(sqe, addr, length, advice);
     });
@@ -389,7 +389,7 @@ AkIOOp ak_os_io_fset_xattr(int fd, const char* name, const char* value, int flag
 }
 
 // Buffer Operations
-AkIOOp ak_os_io_provide_buffers(AkVoid* addr, int len, int nr, int bgid, int bid) noexcept {
+AkIOOp ak_os_io_provide_buffers(void* addr, int len, int nr, int bgid, int bid) noexcept {
     return prepare_io_uring_op([=](io_uring_sqe* sqe) {
         io_uring_prep_provide_buffers(sqe, addr, len, nr, bgid, bid);
     });
@@ -542,7 +542,7 @@ AkIOOp ak_os_io_ftruncate(int fd, loff_t len) noexcept {
 }
 
 // Command Operations
-AkIOOp ak_os_io_cmd_sock(int cmd_op, int fd, int level, int optname, AkVoid* optval, int optlen) noexcept {
+AkIOOp ak_os_io_cmd_sock(int cmd_op, int fd, int level, int optname, void* optval, int optlen) noexcept {
     return prepare_io_uring_op([=](io_uring_sqe* sqe) {
         io_uring_prep_cmd_sock(sqe, cmd_op, fd, level, optname, optval, optlen);
     });
@@ -582,7 +582,7 @@ AkIOOp ak_os_io_cancel64(__u64 user_data, int flags) noexcept {
     });
 }
 
-AkIOOp ak_os_io_cancel(AkVoid* user_data, int flags) noexcept {
+AkIOOp ak_os_io_cancel(void* user_data, int flags) noexcept {
     return prepare_io_uring_op([=](io_uring_sqe* sqe) {
         io_uring_prep_cancel(sqe, user_data, flags);
     });
@@ -607,7 +607,7 @@ AkIOOp ak_os_io_send_bundle(int sockfd, size_t len, int flags) noexcept {
     });
 }
 
-AkIOOp ak_os_io_sendto(int sockfd, const AkVoid* buf, size_t len, int flags, const struct sockaddr* addr, socklen_t addrlen) noexcept {
+AkIOOp ak_os_io_sendto(int sockfd, const void* buf, size_t len, int flags, const struct sockaddr* addr, socklen_t addrlen) noexcept {
     return prepare_io_uring_op([=](io_uring_sqe* sqe) {
         io_uring_prep_sendto(sqe, sockfd, buf, len, flags, addr, addrlen);
     });

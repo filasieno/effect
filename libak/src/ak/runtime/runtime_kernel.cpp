@@ -34,6 +34,6 @@ int ak_init_kernel(AkKernelConfig* config) noexcept {
     return 0;
 }
 
-AkVoid ak_fini_kernel() noexcept {
+void ak_fini_kernel() noexcept {
     io_uring_queue_exit(&global_kernel_state.io_uring_state);
 }

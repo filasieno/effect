@@ -4,9 +4,9 @@
 
 namespace ak { 
    
-    AkVoid* BootCThread::Context::operator new(std::size_t n) noexcept {
+    void* BootCThread::Context::operator new(std::size_t n) noexcept {
         AK_ASSERT(n <= sizeof(global_kernel_state.boot_task_frame_buffer));
-        return (AkVoid*)global_kernel_state.boot_task_frame_buffer;
+        return (void*)global_kernel_state.boot_task_frame_buffer;
     }    
 
 }
@@ -22,7 +22,7 @@ namespace ak::priv {
     AkCoroutineHandle RunSchedulerOp::await_suspend(BootCThread::Hdl current_task_hdl) const noexcept {
         using namespace priv;
 
-        (AkVoid)current_task_hdl;
+        (void)current_task_hdl;
         AkPromise* scheduler_ctx = ak_get_promise(global_kernel_state.scheduler_task);
 
         // Check expected state post scheduler construction
@@ -68,7 +68,7 @@ namespace ak::priv {
     // Boot implementation
     // ----------------------------------------------------------------------------------------------------------------
 
-    AkVoid destroy_scheduler(AkTask ct) noexcept {
+    void destroy_scheduler(AkTask ct) noexcept {
         using namespace priv;
         auto* context = ak_get_promise(ct);
 
@@ -102,7 +102,7 @@ AkCoroutineHandle runtime_schedule_next_thread() noexcept {
     // If we have a ready task, resume it
     while (true) {
         if (global_kernel_state.ready_task_count > 0) {
-            AkDLink* link = ak_dlink_dequeue(&global_kernel_state.ready_list);
+            struct ak_dlink* link = ak_dlink_dequeue(&global_kernel_state.ready_list);
             AkPromise* ctx = runtime_get_linked_task_context(link);
             AkCoroutineHandle task = AkCoroutineHandle::from_promise(*ctx);
             AK_ASSERT(ctx->state == AkCoroutineState::READY);
@@ -155,7 +155,7 @@ AkCoroutineHandle runtime_schedule_next_thread() noexcept {
         while (global_kernel_state.zombie_task_count > 0) {
             //dump_task_count();
 
-            AkDLink* zombie_node = ak_dlink_dequeue(&global_kernel_state.zombie_list);
+            struct ak_dlink* zombie_node = ak_dlink_dequeue(&global_kernel_state.zombie_list);
             AkPromise& zombie_promise = *runtime_get_linked_task_context(zombie_node);
             AK_ASSERT(zombie_promise.state == AkCoroutineState::ZOMBIE);
 

@@ -2,7 +2,7 @@
 
 #include "ak.hpp" // IWYU pragma: keep
 
-AkI32 on_parse_event(AkJSONParser* session, AkJSONEvent event, const AkJSONEventData* data, AkU64 more) noexcept {
+int on_parse_event(AkJSONParser* session, AkJSONEvent event, const AkJSONEventData* data, AkU64 more) noexcept {
     (void) session;
     (void) data;
     (void) more;
@@ -70,7 +70,7 @@ AkI32 on_parse_event(AkJSONParser* session, AkJSONEvent event, const AkJSONEvent
 char buffer[1024 * 1024];
 
 TEST(JSONParserTest, ReaderWriterHandshake) {
-    const AkChar json[] = R"({"name": "John", "age": 30})";
+    const char json[] = R"({"name": "John", "age": 30})";
     const AkU64 json_size = sizeof(json);
 
     AkJSONParserConfig cfg = { };
@@ -84,7 +84,7 @@ TEST(JSONParserTest, ReaderWriterHandshake) {
 
 
     AkJSONParserState state;
-    state = ak_run_json_parser(session, (AkVoid*)json, json_size);
+    state = ak_run_json_parser(session, (void*)json, json_size);
     ASSERT_EQ(state, AkJSONParserState::DONE);
     state = ak_eof_json_parser(session);
     ASSERT_EQ(state, AkJSONParserState::DONE);

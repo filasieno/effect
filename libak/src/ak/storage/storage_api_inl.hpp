@@ -2,12 +2,13 @@
 
 #include "ak/storage/storage_api.hpp"
 
-inline const AkChar* ak_to_string(AkBufferPool p) noexcept {
+inline const char* ak_to_string(enum ak_bufferpool p) noexcept {
     switch (p) {
-        case AkBufferPool::INVALID: return "Invalid";
-        case AkBufferPool::DEFAULT: return "Default";
-        case AkBufferPool::RECYCLE: return "Recycle";
-        case AkBufferPool::KEEP:    return "Keep";
+        case AK_BUFFERPOOL_INVALID: return "Invalid";
+        case AK_BUFFERPOOL_DEFAULT: return "Default";
+        case AK_BUFFERPOOL_RECYCLE: return "Recycle";
+        case AK_BUFFERPOOL_KEEP:    return "Keep";
+        default:
+        std::abort();
     }
-    std::abort();
 }

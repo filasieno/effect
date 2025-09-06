@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ak/base/base_api.hpp> // Assuming this includes necessary types like AkVoid, AkSize, AkBool, etc.
+#include <ak/base/base_api.hpp> // Assuming this includes necessary types like void, AkSize, bool, etc.
 
 struct AkJSONParser;
 struct AkJSONParserCtx;    
@@ -79,11 +79,11 @@ enum class AkJSONEvent {
 
 union AkJSONEventData {
     struct {
-        const AkChar* str;
+        const char* str;
         AkSize len;
     } string_data;
 
-    AkBool bool_value;
+    bool bool_value;
     AkI64 int_value;
     AkF64 float_value;
 
@@ -94,7 +94,7 @@ union AkJSONEventData {
 };
 
 ///\brief Define the Continuation state routine
-using AkJSONParserStateFn = AkJSONParserState(AkJSONParser* session, AkU32 sub_state, AkChar* head, AkChar* end, AkU64 json_size, AkU64 string_size) noexcept;
+using AkJSONParserStateFn = AkJSONParserState(AkJSONParser* session, AkU32 sub_state, char* head, char* end, AkU64 json_size, AkU64 string_size) noexcept;
 
 ///\brief Unified event callback function type
 ///\details Returns 0 to continue parsing; non-zero to abort with USER_ABORTED error.
@@ -119,12 +119,12 @@ struct AkJSONParserConfig {
 ///\brief The JSON parse session
 struct AkJSONParser {
     AkJSONParserConfig       config;              ///< Contains the users configuration parameters
-    AkVoid*                  user_data;           ///< Original user session context
+    void*                  user_data;           ///< Original user session context
     AkJSONParserCallbackFn*  on_event;            ///< Unified event callback
-    AkVoid*                  parser_buffer;       ///< The buffer that holds the unaligned parser
+    void*                  parser_buffer;       ///< The buffer that holds the unaligned parser
     AkU64                    parser_buffer_size;  ///< The size of the buffer that holds the unaligned parser
     
-    AkChar*                  buffer;              ///< Current input buffer
+    char*                  buffer;              ///< Current input buffer
     AkSize                   buffer_len;          ///< Length of the current input buffer
     AkJSONParserState        state;               ///< The current state of the parser
     AkU32                    sub_state;           ///< The current sub-state of the parser
@@ -138,7 +138,7 @@ struct AkJSONParser {
 
     ///\brief Partial parse buffer used to save partial number values for instance.
     ///\details if the suspend buffer is 
-    AkChar                   suspend_buffer[128]; 
+    char                   suspend_buffer[128]; 
     AkU64                    suspend_buffer_size;
 
 };
@@ -155,12 +155,12 @@ AkU64             ak_get_required_buffer_size(AkJSONParserConfig* cfg) noexcept;
 ///\param on_event           the event callback function
 ///\param user_data          the initial user data    
 ///\return The Initialized parse session or nullptr if the session could not be initialized
-AkJSONParser*     ak_init_json_parser(AkVoid *buffer, AkU64 buffer_size, AkJSONParserConfig *cfg, AkJSONParserCallbackFn* on_event, AkVoid *user_data) noexcept;
+AkJSONParser*     ak_init_json_parser(void *buffer, AkU64 buffer_size, AkJSONParserConfig *cfg, AkJSONParserCallbackFn* on_event, void *user_data) noexcept;
 
 ///\brief Parse the JSON data
 ///\param session The session to parse
 ///\return The parser state
-AkJSONParserState ak_run_json_parser(AkJSONParser* parser, AkVoid* buffer, AkU64 buffer_size) noexcept;
+AkJSONParserState ak_run_json_parser(AkJSONParser* parser, void* buffer, AkU64 buffer_size) noexcept;
 
 ///\brief Marks the end of file for the JSON data
 ///\param session the active parse session
@@ -169,7 +169,7 @@ AkJSONParserState ak_eof_json_parser(AkJSONParser* parser) noexcept;
 
 ///\brief Reset the JSON parser
 ///\param session The parser to reset
-AkVoid            ak_reset_json_parser(AkJSONParser* parser) noexcept;
+void            ak_reset_json_parser(AkJSONParser* parser) noexcept;
 
 
 

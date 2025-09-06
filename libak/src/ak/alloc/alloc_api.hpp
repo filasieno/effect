@@ -2,17 +2,17 @@
 
 #include "ak/base/base_api.hpp" // base types/macros
 
-enum class AkAllocBlockState 
+enum ak_alloc_block_state 
 {
-    INVALID              = 0b0000,
-    USED                 = 0b0010,
-    FREE                 = 0b0001,
-    WILD_BLOCK           = 0b0011,
-    BEGIN_SENTINEL       = 0b0100,
-    LARGE_BLOCK_SENTINEL = 0b0110,
-    END_SENTINEL         = 0b1100,
+    AK_ALLOC_BLOCK_STATE_INVALID              = 0b0000,
+    AK_ALLOC_BLOCK_STATE_USED                 = 0b0010,
+    AK_ALLOC_BLOCK_STATE_FREE                 = 0b0001,
+    AK_ALLOC_BLOCK_STATE_WILD_BLOCK           = 0b0011,
+    AK_ALLOC_BLOCK_STATE_BEGIN_SENTINEL       = 0b0100,
+    AK_ALLOC_BLOCK_STATE_LARGE_BLOCK_SENTINEL = 0b0110,
+    AK_ALLOC_BLOCK_STATE_END_SENTINEL         = 0b1100,
 };
-const AkChar* to_string(AkAllocBlockState) noexcept;
+const char* to_string(enum ak_alloc_block_state) noexcept;
 
 enum class AkAllocKind 
 {
@@ -24,37 +24,37 @@ enum class AkAllocKind
     FREE_SEGMENT_INDEX_LEAF_EXTENSION
 };
 
-struct AkAllocBlockDesc 
+struct ak_alloc_block_desc 
 { 
     AkU64 size:48; 
     AkU64 state:4; 
     AkU64 kind:12; 
 };
 
-struct AkAllocBlockHeader 
+struct ak_alloc_block_header 
 { 
-    AkAllocBlockDesc this_desc; 
-    AkAllocBlockDesc prev_desc; 
+    struct ak_alloc_block_desc this_desc; 
+    struct ak_alloc_block_desc prev_desc; 
 };
 
-struct AkAllocPooledFreeBlockHeader : public AkAllocBlockHeader 
+struct AkAllocPooledFreeBlockHeader : public ak_alloc_block_header 
 { 
-    AkDLink freelist_link; 
+    ak_dlink freelist_link; 
 };
 static_assert(sizeof(AkAllocPooledFreeBlockHeader) == 32);
 
-struct AkAllocFreeBlockHeader : public AkAllocBlockHeader 
+struct ak_alloc_free_block_header : public ak_alloc_block_header 
 {
-    AkDLink                 multimap_link;
-    AkAllocFreeBlockHeader* parent;
-    AkAllocFreeBlockHeader* left;
-    AkAllocFreeBlockHeader* right;
-    AkI32                   height;
-    AkI32                   balance;
+    struct ak_dlink                    multimap_link;
+    struct ak_alloc_free_block_header* parent;
+    struct ak_alloc_free_block_header* left;
+    struct ak_alloc_free_block_header* right;
+    int                                height;
+    int                                balance;
 };
-static_assert(sizeof(AkAllocFreeBlockHeader) == 64, "AllocFreeBlockHeader size is not 64 bytes");
+static_assert(sizeof(ak_alloc_free_block_header) == 64, "AllocFreeBlockHeader size is not 64 bytes");
 
-struct AkAllocStats 
+struct ak_alloc_stats 
 {
     static constexpr int ALLOCATOR_BIN_COUNT = 64;
     static constexpr int STATS_BIN_COUNT = 66;
@@ -72,25 +72,25 @@ struct AkAllocStats
 };
 
 
-struct AkAllocTable 
+struct ak_alloc_table 
 {
-    static constexpr int ALLOCATOR_BIN_COUNT = AkAllocStats::ALLOCATOR_BIN_COUNT;
+    static constexpr int ALLOCATOR_BIN_COUNT = ak_alloc_stats::ALLOCATOR_BIN_COUNT;
 
     alignas(8)  AkU64                         freelist_mask;
-    alignas(64) AkDLink                       freelist_head[ALLOCATOR_BIN_COUNT];
+    alignas(64) struct ak_dlink               freelist_head[ALLOCATOR_BIN_COUNT];
     alignas(64) AkU32                         freelist_count[ALLOCATOR_BIN_COUNT];
-    alignas(8)  AkChar*                       heap_begin;
-    alignas(8)  AkChar*                       heap_end;
-    alignas(8)  AkChar*                       mem_begin;
-    alignas(8)  AkChar*                       mem_end;
+    alignas(8)  char*                         heap_begin;
+    alignas(8)  char*                         heap_end;
+    alignas(8)  char*                         mem_begin;
+    alignas(8)  char*                         mem_end;
     alignas(8)  AkSize                        mem_size;
     alignas(8)  AkSize                        free_mem_size;
     alignas(8)  AkSize                        max_free_block_size;
-    alignas(8)  AkAllocStats                  stats;
+    alignas(8)  ak_alloc_stats                stats;
     alignas(8)  AkAllocPooledFreeBlockHeader* sentinel_begin;
     alignas(8)  AkAllocPooledFreeBlockHeader* sentinel_end;
     alignas(8)  AkAllocPooledFreeBlockHeader* wild_block;
-    alignas(8)  AkAllocFreeBlockHeader*       root_free_block;
+    alignas(8)  ak_alloc_free_block_header*   root_free_block;
 };
 
 

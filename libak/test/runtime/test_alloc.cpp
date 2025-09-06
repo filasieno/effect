@@ -6,7 +6,7 @@ using namespace ak;
 
 class KernelAllocTest : public ::testing::Test {
 protected:
-	AkVoid* buffer = nullptr;
+	void* buffer = nullptr;
 	AkU64   buffer_size = 8192;
 	void SetUp() override {
 		buffer = std::malloc(buffer_size);
@@ -22,13 +22,13 @@ protected:
 };
 
 TEST_F(KernelAllocTest, BasicAllocFree) {
-	AkVoid* buff1 = ak_alloc_mem(32);
+	void* buff1 = ak_alloc_mem(32);
 	ASSERT_NE(buff1, nullptr);
-	AkVoid* buff2 = ak_alloc_mem(33);
+	void* buff2 = ak_alloc_mem(33);
 	ASSERT_NE(buff2, nullptr);
-	AkVoid* buff3 = ak_alloc_mem(63);
+	void* buff3 = ak_alloc_mem(63);
 	ASSERT_NE(buff3, nullptr);
-	AkVoid* buff4 = ak_alloc_mem(64 - 16);
+	void* buff4 = ak_alloc_mem(64 - 16);
 	ASSERT_NE(buff4, nullptr);
 	ak_free_mem(buff4);
 	ak_free_mem(buff3);

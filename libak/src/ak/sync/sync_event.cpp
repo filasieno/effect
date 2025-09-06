@@ -21,12 +21,12 @@ AkCoroutineHandle AkWaitEventOp::await_suspend(AkCoroutineHandle hdl) const noex
 // Event routines implementation
 // ----------------------------------------------------------------------------------------------------------------
 
-AkI32 ak_signal_event(AkEvent* event) {
+int ak_signal_event(AkEvent* event) {
     AK_ASSERT(event != nullptr);
     
     if (ak_dlink_is_detached(&event->wait_list)) return 0;
 
-    AkDLink* link = ak_dlink_dequeue(&event->wait_list);
+    struct ak_dlink* link = ak_dlink_dequeue(&event->wait_list);
     AkPromise* ctx = runtime_get_linked_task_context(link);
     AK_ASSERT(ctx->state == AkCoroutineState::WAITING);
     
@@ -39,12 +39,12 @@ AkI32 ak_signal_event(AkEvent* event) {
     return 1;
 }
 
-AkI32 ak_signal_event_n(AkEvent* event, int n) {
+int ak_signal_event_n(AkEvent* event, int n) {
     AK_ASSERT(event != nullptr);
     AK_ASSERT(n >= 0);
     int count = 0;
     while (count < n && !ak_dlink_is_detached(&event->wait_list)) {
-        AkDLink* link = ak_dlink_dequeue(&event->wait_list);
+        struct ak_dlink* link = ak_dlink_dequeue(&event->wait_list);
         AkPromise* ctx = runtime_get_linked_task_context(link);
         AK_ASSERT(ctx->state == AkCoroutineState::WAITING);
         
@@ -59,11 +59,11 @@ AkI32 ak_signal_event_n(AkEvent* event, int n) {
     return count;
 }
 
-AkI32 ak_signal_event_all(AkEvent* event) {
+int ak_signal_event_all(AkEvent* event) {
     AK_ASSERT(event != nullptr);
     int signalled = 0;
     while (!ak_dlink_is_detached(&event->wait_list)) {
-        AkDLink* link = ak_dlink_dequeue(&event->wait_list);
+        struct ak_dlink* link = ak_dlink_dequeue(&event->wait_list);
         AkPromise* ctx = runtime_get_linked_task_context(link);
         AK_ASSERT(ctx->state == AkCoroutineState::WAITING);
         

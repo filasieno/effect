@@ -6,9 +6,9 @@
 
 class KernelAllocFreeBlockTest : public ::testing::Test {
 protected:
-	AkVoid* buffer = nullptr;
+	void* buffer = nullptr;
 	AkU64   buffer_size = 1024 * 1024;
-	AkAllocTable table{};
+	struct ak_alloc_table table{};
 	void SetUp() override {
 		buffer = std::malloc(buffer_size);
 		ASSERT_NE(buffer, nullptr);

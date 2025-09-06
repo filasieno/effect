@@ -19,26 +19,26 @@ inline AkPromise::AkPromise() {
     // check_invariants();
 }
 
-inline AkVoid* ak_alloc_mem(AkSize sz) noexcept 
+inline void* ak_alloc_mem(AkSize sz) noexcept 
 { 
     return alloc_table_try_malloc(&global_kernel_state.alloc_table, sz); 
 }
 
-inline AkVoid ak_free_mem(AkVoid* ptr, AkU32 side_coalesching) noexcept 
+inline void ak_free_mem(void* ptr, AkU32 side_coalesching) noexcept 
 { 
     alloc_table_free(&global_kernel_state.alloc_table, ptr, side_coalesching); 
 }
 
-inline AkI32 ak_defragment_mem(AkU64 millis_time_budget) noexcept { 
+inline int ak_defragment_mem(AkU64 millis_time_budget) noexcept { 
     return alloc_table_defrag(&global_kernel_state.alloc_table, millis_time_budget); 
 }
 
-inline AkPromise* runtime_get_linked_task_context(const AkDLink* link) noexcept {
+inline AkPromise* runtime_get_linked_task_context(const ak_dlink* link) noexcept {
     unsigned long long promise_off = ((unsigned long long)link) - offsetof(AkPromise, wait_link);
     return reinterpret_cast<AkPromise*>(promise_off);
 }
 
-inline const AkChar* ak_to_string(AkCoroutineState state) noexcept 
+inline const char* ak_to_string(AkCoroutineState state) noexcept 
 {
     switch (state) {
         case AkCoroutineState::INVALID:    return "INVALID";
@@ -67,20 +67,20 @@ namespace ak
         // ----------------------------------------------------------------------------------------------------------------
 
         struct RunSchedulerOp {
-            constexpr AkBool  await_ready() const noexcept { return false; }
-            constexpr AkVoid  await_resume() const noexcept { }
+            constexpr bool  await_ready() const noexcept { return false; }
+            constexpr void  await_resume() const noexcept { }
             AkCoroutineHandle await_suspend(BootCThread::Hdl current_task_hdl) const noexcept;
         };
     
         struct TerminateSchedulerOp {
-            constexpr AkBool await_ready() const noexcept  { return false; }
-            constexpr AkVoid await_resume() const noexcept { }
+            constexpr bool await_ready() const noexcept  { return false; }
+            constexpr void await_resume() const noexcept { }
             BootCThread::Hdl await_suspend(AkCoroutineHandle hdl) const noexcept;
         };
 
         constexpr RunSchedulerOp       run_scheduler() noexcept       { return {}; }
         constexpr TerminateSchedulerOp terminate_scheduler() noexcept { return {}; }
-        AkVoid                         destroy_scheduler(AkTask hdl) noexcept;
+        void                         destroy_scheduler(AkTask hdl) noexcept;
         
         // Coroutine System Boot
         // ----------------------------------------------------------------------------------------------------------------
@@ -124,7 +124,7 @@ namespace ak
 
                 // If we have a ready task, resume it
                 if (global_kernel_state.ready_task_count > 0) {
-                    AkDLink* next_node = global_kernel_state.ready_list.prev;
+                    ak_dlink* next_node = global_kernel_state.ready_list.prev;
                     AkPromise* next_promise = runtime_get_linked_task_context(next_node);
                     AkCoroutineHandle next_task = AkCoroutineHandle::from_promise(*next_promise);
                     AK_ASSERT(next_task != global_kernel_state.scheduler_task);
@@ -135,7 +135,7 @@ namespace ak
 
                 // Zombie bashing
                 while (global_kernel_state.zombie_task_count > 0) {
-                    AkDLink* zombie_link = ak_dlink_dequeue(&global_kernel_state.zombie_list);
+                    ak_dlink* zombie_link = ak_dlink_dequeue(&global_kernel_state.zombie_list);
                     AkPromise* ctx = runtime_get_linked_task_context(zombie_link);
                     AK_ASSERT(ctx->state == AkCoroutineState::ZOMBIE);
 
@@ -153,7 +153,7 @@ namespace ak
                     zombieTaskHdl.destroy();
                 }
 
-                AkBool waiting_cc = global_kernel_state.iowaiting_task_count;
+                bool waiting_cc = global_kernel_state.iowaiting_task_count;
                 if (waiting_cc) {
                     // Process all available completions
                     struct io_uring_cqe *cqe;
@@ -190,7 +190,7 @@ namespace ak
 }
 
 template <typename... Args>
-AkI32 ak_run_main(AkTask(*main_proc)(Args ...) noexcept , Args... args) noexcept {
+int ak_run_main(AkTask(*main_proc)(Args ...) noexcept , Args... args) noexcept {
     auto boot_cthread = ak::priv::boot_main_proc(main_proc, std::forward<Args>(args) ...);
     global_kernel_state.boot_task = boot_cthread;
     boot_cthread.hdl.resume();
@@ -202,9 +202,9 @@ inline AkPromise*                ak_get_promise() noexcept             { return 
 inline constexpr AkSuspendTaskOp ak_suspend_task() noexcept            { return {}; }
 inline AkJoinTaskOp              ak_join_task(AkTask ct) noexcept      { return AkJoinTaskOp(ct); }
 inline AkCoroutineState          ak_get_task_state(AkTask ct) noexcept { return ct.hdl.promise().state; }
-inline AkBool                    ak_is_task_done(AkTask ct) noexcept   { return ct.hdl.done(); }
+inline bool                    ak_is_task_done(AkTask ct) noexcept   { return ct.hdl.done(); }
 inline AkResumeTaskOp            ak_resume_task(AkTask ct) noexcept    { return AkResumeTaskOp(ct); }
-inline AkBool                    ak_is_task_valid(AkTask ct) noexcept  { return ct.hdl.address() != nullptr; }
+inline bool                    ak_is_task_valid(AkTask ct) noexcept  { return ct.hdl.address() != nullptr; }
 inline AkGetCurrentTaskOp        ak_get_task_promise_async() noexcept  { return {}; }
 inline AkJoinTaskOp              operator co_await(AkTask ct) noexcept { return AkJoinTaskOp(ct); }
 
