@@ -1,0 +1,38 @@
+{
+    "name": "lspd-vscode-plugin",
+    "displayName": "VSCode plugin for the lspd server",    
+    "publisher": "lspd",
+    "version": "0.0.1",
+    "engines": {
+      "vscode": "^1.84.0"
+    },
+    "categories": [
+      "Metacompiler"
+    ],
+    "main": "./lspd-plugin/dist/extension.js",
+    "activationEvents": [
+      "onCommand:lspd.helloWorld"
+    ],
+    "contributes": {
+      "commands": [
+        {
+          "command": "lspd.helloWorld",
+          "title": "LSPD: Hello World"
+        }
+      ]
+    },
+    "scripts": {
+      "build": "tsc -p lspd-plugin",
+      "watch": "tsc -w -p lspd-plugin",
+      "clean": "rimraf lspd-plugin/dist || rm -rf lspd-plugin/dist",
+      "vscode:prepublish": "npm run build",
+      "package": "vsce package"
+    },
+    "devDependencies": {
+      "@types/node": "^20.12.0",
+      "@types/vscode": "1.84.0",
+      "rimraf": "^6.0.1",
+      "typescript": "^5.4.0",
+      "vsce": "^2.15.0"
+    }
+}

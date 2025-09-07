@@ -161,6 +161,7 @@
               clang 
               clang-tools
               ccache
+              nodejs_20
             ] ++ [
               ak_gtest 
               ak_gbenchmark
