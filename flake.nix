@@ -198,6 +198,7 @@
               echo "gbenchmark inc : ${pkgs.gbenchmark}/include"
               echo "gbenchmark lib : ${pkgs.gbenchmark}/lib"
               
+              mkdir -p $PROJECT_ROOT/build/lspd-client-workspace
               cd $PROJECT_ROOT/libak
             '';
           };
