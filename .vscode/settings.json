@@ -78,6 +78,7 @@
         "valarray": "cpp",
         "variant": "cpp",
         "*.inc": "cpp",
+        "*.inl": "cpp",
         "exception": "cpp",
         "expected": "cpp",
         "fstream": "cpp",

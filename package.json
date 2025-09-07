@@ -1,38 +1,39 @@
 {
     "name": "lspd-vscode-plugin",
-    "displayName": "VSCode plugin for the lspd server",    
+    "displayName": "VSCode plugin for the lspd server",
     "publisher": "lspd",
     "version": "0.0.1",
     "categories": [
-      "Programming Languages"
+        "Programming Languages"
     ],
     "main": "./lspd-plugin/dist/extension.js",
     "contributes": {
-      "commands": [
-        {
-          "command": "lspd.helloWorld",
-          "title": "LSPD: Hello World"
-        }
-      ]
+        "commands": [
+            {
+                "command": "lspd.helloWorld",
+                "title": "LSPD: Hello World"
+            }
+        ]
     },
     "scripts": {
-      "build": "tsc -p lspd-plugin",
-      "watch": "tsc -w -p lspd-plugin",
-      "clean": "rimraf lspd-plugin/dist || rm -rf lspd-plugin/dist",
-      "vscode:prepublish": "npm run build",
-      "package": "vsce package"
+        "build": "tsc -p lspd-plugin",
+        "watch": "tsc -w -p lspd-plugin",
+        "clean": "rimraf lspd-plugin/dist || rm -rf lspd-plugin/dist",
+        "vscode:prepublish": "npm run build",
+        "package": "vsce package"
     },
     "engines": {
-		"vscode": "^1.100.0"
-	},
-	"dependencies": {
-		"glob": "^11.0.0",
-		"vscode-languageclient": "^9.0.1"
-	},
+        "vscode": "^1.80.0"
+    },
+    "dependencies": {
+        "glob": "^11.0.0",
+        "vscode-languageclient": "^9.0.1"
+    },
     "devDependencies": {
-      "@types/node": "^20.12.0",
-      "@types/vscode": "^1.100.0",
-      "rimraf": "^6.0.1",
-      "typescript": "^5.4.0"
+        "@types/node": "^20.12.0",
+        "@types/vscode": "^1.80.0",
+        "@vscode/vsce": "^3.6.0",
+        "rimraf": "^6.0.1",
+        "typescript": "^5.4.0"
     }
 }
