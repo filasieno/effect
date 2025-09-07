@@ -4,7 +4,7 @@
     "publisher": "lspd",
     "version": "0.0.1",
     "categories": [
-      "Metacompiler"
+      "Programming Languages"
     ],
     "main": "./lspd-plugin/dist/extension.js",
     "contributes": {
@@ -33,7 +33,6 @@
       "@types/node": "^20.12.0",
       "@types/vscode": "^1.100.0",
       "rimraf": "^6.0.1",
-      "typescript": "^5.4.0",
-      "@vscode/vsce": "^3.0.0"
+      "typescript": "^5.4.0"
     }
 }
