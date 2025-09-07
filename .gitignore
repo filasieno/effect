@@ -9,7 +9,7 @@ result-dev
 
 # others
 *.original
-scratch.*
+scratch
 compile_commands.json
 
 

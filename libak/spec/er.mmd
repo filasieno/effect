@@ -1,0 +1,10 @@
+erDiagram
+    Notebook ||--o{ Cell : "has many"
+    Cell ||--|| File : "stored as"
+    Language ||--|| Grammar : "defines"
+    Cell ||--o{ AST_Node : "generates"
+    AST_Node ||--o{ Scopegraph_Node : "scopes"
+    AST_Node ||--o{ Semantic_Token : "tokens"
+    File ||--|| Catalog_Entry : "indexed by"
+    Catalog_Entry ||--o{ Version : "has versions"
+    File ||--o{ Log_Entry : "log-structured"

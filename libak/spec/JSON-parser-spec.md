@@ -46,7 +46,7 @@ struct ParseHandlers {
 };
 ```
 
-- **Notes**: 
+- **Notes**:
   - Strings and numbers are provided as pointers to the input buffer with length, not null-terminated, to avoid copying.
   - The `parse_state_changed` handler is optional but useful for monitoring progress.
 
