@@ -6,7 +6,7 @@
     "categories": [
         "Programming Languages"
     ],
-    "main": "./lspd-plugin/dist/extension.js",
+    "main": "./build/lspd-vscode-client/dist/extension.js",
     "contributes": {
         "commands": [
             {
@@ -16,9 +16,9 @@
         ]
     },
     "scripts": {
-        "build": "tsc -p lspd-plugin",
-        "watch": "tsc -w -p lspd-plugin",
-        "clean": "rimraf lspd-plugin/dist || rm -rf lspd-plugin/dist",
+        "build": "tsc -p lspd-vscode-client",
+        "watch": "tsc -w -p lspd-vscode-client",
+        "clean": "rimraf build/lspd-vscode-client/dist || rm -rf build/lspd-vscode-client/dist",
         "vscode:prepublish": "npm run build",
         "package": "vsce package"
     },
