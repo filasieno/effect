@@ -1,0 +1,17 @@
+/* Minimal doxygen-awesome placeholder */
+:root {
+  --primary-color: #2f6fdd;
+  --bg-color: #ffffff;
+  --text-color: #1b1f23;
+}
+html { color-scheme: light dark; }
+body { background: var(--bg-color); color: var(--text-color); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif; line-height: 1.5; }
+a { color: var(--primary-color); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.navpath, #navrow1, #navrow2, #navrow3 { position: sticky; top: 0; z-index: 10; }
+#MSearchBox .left { background: transparent; }
+.fragment { background: #f6f8fa; border-radius: 6px; padding: 8px 10px; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg-color: #0d1117; --text-color: #c9d1d9; --primary-color: #7aa2f7; }
+  .fragment { background: #161b22; }
+}
