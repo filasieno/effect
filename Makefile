@@ -1,9 +1,20 @@
 #!/usr/bin/make
 
+# ------------------------------------------------------------------------------------------------------------------------------
+# Project setup
+# ------------------------------------------------------------------------------------------------------------------------------
+
 PROJECT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+
+# ak library project
 libak_build_dir  := $(PROJECT_DIR)/build/libak
 libak_source_dir := $(PROJECT_DIR)/libak/src
 libak_test_dir   := $(PROJECT_DIR)/libak/test
+
+# lspd server project
+lspd_server_build_dir  := $(PROJECT_DIR)/build/lspd-server
+lspd_server_source_dir := $(PROJECT_DIR)/lspd-server/src
+lspd_server_bin_dir    := $(lspd_server_build_dir)/bin
 
 # Default values
 CONFIG ?= debug
@@ -18,14 +29,15 @@ CXX         ?= clang++
 ifneq ($(shell command -v ccache 2>/dev/null),)
   CXX := ccache $(CXX)
 endif
-CXXFLAGS    := 
-CXXFLAGS    += -fno-exceptions -fno-rtti
-CXXFLAGS    += -Wall -Wextra -std=c++2c  
-CXXFLAGS    += -fdiagnostics-color=always 
-CXXFLAGS    += -mavx2 -mbmi -mbmi2 -fPIC
-CXXFLAGS    += $(TARGET_ARCH)
-CXXFLAGS    += -I$(libak_source_dir)
-CXXFLAGS    += -I$(libak_test_dir)
+CXXFLAGS := 
+CXXFLAGS += -fno-exceptions -fno-rtti
+CXXFLAGS += -Wall -Wextra -std=c++2c  
+CXXFLAGS += -fdiagnostics-color=always 
+CXXFLAGS += -mavx2 -mbmi -mbmi2 -fPIC
+CXXFLAGS += $(TARGET_ARCH)
+CXXFLAGS += -I$(libak_source_dir)
+CXXFLAGS += -I$(libak_test_dir)
+CXXFLAGS += -I$(lspd_server_source_dir)
 
 # Optional dependency discovery
 PKGCONFIG := $(shell command -v pkg-config 2>/dev/null)
@@ -42,7 +54,6 @@ ifdef LIBURING_LIB
   LDFLAGS  += -L$(LIBURING_LIB)
 endif
 
-
 # Dependency flags
 DEPFLAGS := -MMD -MP
 
@@ -57,14 +68,20 @@ endif
 
 # Precompiled headers
 ifeq ($(ENABLE_PCH),yes)
-  PCH = $(libak_build_dir)/precompiled.pch
-  PCH_FLAG = -include-pch $(PCH)
+  PCH           = $(libak_build_dir)/precompiled.pch
+  PCH_FLAG      = -include-pch $(PCH)
+  LSPD_PCH      = $(lspd_server_build_dir)/precompiled.pch
+  LSPD_PCH_FLAG = -include-pch $(LSPD_PCH)
 else
-  PCH =
-  PCH_FLAG =
+  PCH           =
+  PCH_FLAG      =
+  LSPD_PCH      =
+  LSPD_PCH_FLAG =
 endif
 
-LDFLAGS += -L$(LIBARGTABLE)
+ifdef LIBARGTABLE
+  LDFLAGS += -L$(LIBARGTABLE)
+endif
 LDLIBS  += -largtable3
 
 # Valgrind support
@@ -75,8 +92,34 @@ else
 endif
 
 # ------------------------------------------------------------------------------------------------------------------------------
+# Help
+# ------------------------------------------------------------------------------------------------------------------------------
+
+.PHONY: help
+help:
+	@echo "Build system for libak (libraries) and lspd-server (leaf executable)"
+	@echo ""
+	@echo "Common targets:"
+	@echo "  all        : Build libak static lib, run tests, and build lspd"
+	@echo "  lspd       : Build the lspd executable (build/lspd-server/bin/lspd)"
+	@echo "  test       : Run all unit test binaries"
+	@echo "  clean      : Remove build artifacts (libak and lspd-server)"
+	@echo "  doc        : Generate libak documentation via doxygen"
+	@echo "  help       : Show this help"
+	@echo ""
+	@echo "Configurable variables (env or CLI):"
+	@echo "  CONFIG=debug|release        (default: debug)"
+	@echo "  ENABLE_PCH=yes|no           (default: yes)"
+	@echo "  RUN_WITH_VALGRIND=yes|no    (default: no)"
+	@echo "  LIBURING_INCLUDE, LIBURING_LIB, LIBARGTABLE (optional -L and -I paths)"
+
+# ------------------------------------------------------------------------------------------------------------------------------
 # Pattern Rules
 # ------------------------------------------------------------------------------------------------------------------------------
+
+# Directories
+$(libak_build_dir):
+	mkdir -p $@
 
 $(libak_build_dir)/%.o: $(libak_source_dir)/%.cpp $(PCH) | $(libak_build_dir)
 	@mkdir -p $(@D)
@@ -86,8 +129,11 @@ $(libak_build_dir)/test/%.o: $(libak_test_dir)/%.cpp $(PCH) | $(libak_build_dir)
 	@mkdir -p $(@D)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(PCH_FLAG) $(DEPFLAGS) -c $< -o $@
 
-# Directories
-$(libak_build_dir):
+# lspd-server build directory
+$(lspd_server_build_dir):
+	mkdir -p $@
+
+$(lspd_server_bin_dir): | $(lspd_server_build_dir)
 	mkdir -p $@
 
 # Doxygen
@@ -106,8 +152,13 @@ $(PCH): $(libak_source_dir)/precompiled.hpp | $(libak_build_dir)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -x c++-header $< -o $@
 endif
 
+ifneq ($(LSPD_PCH),)
+$(LSPD_PCH): $(lspd_server_source_dir)/precompiled.hpp | $(lspd_server_build_dir)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -x c++-header $< -o $@
+endif
+
 # ==============================================================================================================================
-# Modules 
+# Modules libak
 # ==============================================================================================================================
 
 # Notes:
@@ -117,7 +168,7 @@ endif
 #   $$ is the first argument of the target
 
 # ------------------------------------------------------------------------------------------------------------------------------
-# libak base
+# libak/base
 # ------------------------------------------------------------------------------------------------------------------------------
 
 base_sources := $(shell find $(libak_source_dir)/ak/base -name "*.cpp")
@@ -131,7 +182,7 @@ $(libak_build_dir)/test_base: $(test_base_objects) $(libak_build_dir)/libak_base
 	$(CXX) $(LDFLAGS) -L$(libak_build_dir) $^ -lgtest_main -lgtest -o $@
 
 # ------------------------------------------------------------------------------------------------------------------------------
-# libak alloc
+# libak/alloc
 # ------------------------------------------------------------------------------------------------------------------------------
 
 alloc_sources := $(shell find $(libak_source_dir)/ak/alloc -name "*.cpp")
@@ -145,7 +196,7 @@ $(libak_build_dir)/test_alloc: $(test_alloc_objects) $(libak_build_dir)/libak_ba
 	$(CXX) $(LDFLAGS) -L$(libak_build_dir) $^ -lgtest_main -lgtest -o $@
 
 # ------------------------------------------------------------------------------------------------------------------------------
-# libak runtime
+# libak/runtime
 # ------------------------------------------------------------------------------------------------------------------------------
 
 runtime_sources := $(shell find $(libak_source_dir)/ak/runtime -name "*.cpp")
@@ -159,7 +210,7 @@ $(libak_build_dir)/test_runtime: $(test_runtime_objects) $(libak_build_dir)/liba
 	$(CXX) $(LDFLAGS) -L$(libak_build_dir) $^ -lgtest_main -lgtest -luring -o $@
 
 # ------------------------------------------------------------------------------------------------------------------------------
-# libak sync
+# libak/sync
 # ------------------------------------------------------------------------------------------------------------------------------
 
 sync_sources := $(shell find $(libak_source_dir)/ak/sync -name "*.cpp")
@@ -173,7 +224,7 @@ $(libak_build_dir)/test_sync: $(test_sync_objects) $(libak_build_dir)/libak_base
 	$(CXX) $(LDFLAGS) -L$(libak_build_dir) $^ -lgtest_main -lgtest -luring -o $@
 
 # ------------------------------------------------------------------------------------------------------------------------------
-# libak json
+# libak/json
 # ------------------------------------------------------------------------------------------------------------------------------
 
 json_sources := $(shell find $(libak_source_dir)/ak/json -name "*.cpp")
@@ -187,7 +238,7 @@ $(libak_build_dir)/test_json: $(test_json_objects) $(libak_build_dir)/libak_base
 	$(CXX) $(LDFLAGS) -L$(libak_build_dir) $^ -lgtest_main -lgtest -luring -o $@
 
 # ------------------------------------------------------------------------------------------------------------------------------
-# libak storage
+# libak/storage
 # ------------------------------------------------------------------------------------------------------------------------------
 
 storage_sources := $(shell find $(libak_source_dir)/ak/storage -name "*.cpp")
@@ -201,17 +252,22 @@ $(libak_build_dir)/test_storage: $(test_storage_objects) $(libak_build_dir)/liba
 	$(CXX) $(LDFLAGS) -L$(libak_build_dir) $^ -lgtest_main -lgtest -luring -o $@
 
 # ------------------------------------------------------------------------------------------------------------------------------
-# libak lspd
+# lspd-server/lspd (executable)
 # ------------------------------------------------------------------------------------------------------------------------------
 
-lspd_sources := $(shell find $(libak_source_dir)/ak/lspd -name "*.cpp")
-lspd_objects := $(patsubst $(libak_source_dir)/%.cpp, $(libak_build_dir)/%.o, $(lspd_sources))
+# Pattern rule for lspd-server objects (placed under obj/ to avoid name clash with executable)
+$(lspd_server_build_dir)/obj/%.o: $(lspd_server_source_dir)/%.cpp $(LSPD_PCH) | $(lspd_server_build_dir)
+	@mkdir -p $(@D)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(LSPD_PCH_FLAG) $(DEPFLAGS) -c $< -o $@
 
-$(libak_build_dir)/lspd: $(lspd_objects) $(libak_build_dir)/libak_base.a $(libak_build_dir)/libak_runtime.a $(libak_build_dir)/libak_alloc.a $(libak_build_dir)/libak_sync.a
+lspd_server_sources := $(shell find $(lspd_server_source_dir)/lspd -name "*.cpp")
+lspd_server_objects := $(patsubst $(lspd_server_source_dir)/%.cpp, $(lspd_server_build_dir)/obj/%.o, $(lspd_server_sources))
+
+$(lspd_server_bin_dir)/lspd: $(lspd_server_objects) $(libak_build_dir)/libak_base.a $(libak_build_dir)/libak_runtime.a $(libak_build_dir)/libak_alloc.a $(libak_build_dir)/libak_sync.a | $(lspd_server_bin_dir)
 	$(CXX) $(LDFLAGS) -L$(libak_build_dir) $^ -luring -largtable3 -o $@
 
 .PHONY: lspd
-lspd:: $(libak_build_dir)/lspd
+lspd:: $(lspd_server_bin_dir)/lspd
 
 # ==============================================================================================================================
 # Test
@@ -256,12 +312,16 @@ $(libak_build_dir)/test_output/json:
 test_storage: $(libak_build_dir)/test_storage
 	$(run_test)
 
+# ------------------------------------------------------------------------------------------------------------------------------
 # Dependency includes
+# ------------------------------------------------------------------------------------------------------------------------------
+
 all_test_objects := $(test_base_objects) $(test_alloc_objects) $(test_runtime_objects) $(test_sync_objects) $(test_json_objects) $(test_storage_objects)
-all_objects := $(base_objects) $(alloc_objects) $(runtime_objects) $(sync_objects) $(json_objects) $(storage_objects) $(lspd_objects)
+all_objects      := $(base_objects) $(alloc_objects) $(runtime_objects) $(sync_objects) $(json_objects) $(storage_objects)
 
 -include $(all_objects:.o=.d)
 -include $(all_test_objects:.o=.d)
+ -include $(lspd_server_objects:.o=.d)
 
 # ==============================================================================================================================
 # Libraries
@@ -286,9 +346,12 @@ $(libak_build_dir)/libak.so: $(all_objects)
 # ==============================================================================================================================
 
 .PHONY: all
+all:: test
 all:: $(libak_build_dir)/libak.a
+all:: lspd
 
 .PHONY: clean
 clean::
 	rm -rf $(libak_build_dir)
+	rm -rf $(lspd_server_build_dir)
 
