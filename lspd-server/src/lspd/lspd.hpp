@@ -9,15 +9,15 @@ enum class LDSP_ERROR_CODE : int {
     INVALID_ARGUMENT = 300, //...
 };
 
-enum class LSPDTransportType {
-    INVALID = 0,
-    STDIO,
-    UNIX_SOCKET,
-    TCP_SOCKET
+enum ldpd_transport_type {
+    LSPD_TRANSPORT_TYPE_INVALID = 0,
+    LSPD_TRANSPORT_TYPE_STDIO,
+    LSPD_TRANSPORT_TYPE_UNIX_SOCKET,
+    LSPD_TRANSPORT_TYPE_TCP_SOCKET
 };
 
 struct LSPDTransport {
-    LSPDTransportType type;
+    ldpd_transport_type type;
     const char*       file_name;
     const char*       sock_addr;
     int               port;    
@@ -25,13 +25,13 @@ struct LSPDTransport {
 
 inline int describe_transport(const LSPDTransport* t, char* buffer, size_t buffer_size) noexcept {
     switch (t->type) {
-    case LSPDTransportType::INVALID:
+    case LSPD_TRANSPORT_TYPE_INVALID:
         return std::snprintf(buffer, buffer_size, "INVALID");
-    case LSPDTransportType::STDIO:
+    case LSPD_TRANSPORT_TYPE_STDIO:
         return std::snprintf(buffer, buffer_size, "STDIO");
-    case LSPDTransportType::UNIX_SOCKET:
+    case LSPD_TRANSPORT_TYPE_UNIX_SOCKET:
         return std::snprintf(buffer, buffer_size, "UNIX_SOCKET name: '%s'", t->file_name);
-    case LSPDTransportType::TCP_SOCKET:
+    case LSPD_TRANSPORT_TYPE_TCP_SOCKET:
         return std::snprintf(buffer, buffer_size, "TCP_SOCKET addr: '%s' port: %d", t->sock_addr, t->port);
     default:
         std::abort();

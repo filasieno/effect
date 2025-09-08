@@ -44,7 +44,7 @@ int parse_transport(LSPDConfig *out_config)
     if (mode_count == 0) {
         args.stdio->count = 1;
         mode_count = 1;
-        out_config->transport.type = LSPDTransportType::STDIO;
+        out_config->transport.type = LSPD_TRANSPORT_TYPE_STDIO;
         return 0;
     }
     if (mode_count > 1) {
@@ -57,7 +57,7 @@ int parse_transport(LSPDConfig *out_config)
     if (args.sock->count) {
         // Ensure that either file or an addr is provided
         if (args.named->count == 0 && args.addr->count == 0) {
-            out_config->transport.type = LSPDTransportType::TCP_SOCKET;
+            out_config->transport.type = LSPD_TRANSPORT_TYPE_TCP_SOCKET;
             out_config->transport.sock_addr = "127.0.0.1";
 
             // if port is not set it to the default port 2026
@@ -91,14 +91,14 @@ int parse_transport(LSPDConfig *out_config)
                 return 1;
             }
             // set the transport type and file name
-            out_config->transport.type = LSPDTransportType::UNIX_SOCKET;
+            out_config->transport.type = LSPD_TRANSPORT_TYPE_UNIX_SOCKET;
             out_config->transport.file_name = args.named->sval[0];
             return 0;
         }
 
         // Addr case
         if (args.addr->count) {
-            out_config->transport.type = LSPDTransportType::TCP_SOCKET;
+            out_config->transport.type = LSPD_TRANSPORT_TYPE_TCP_SOCKET;
 
             // if addr is not set the it is set by default to 127.0.0.1
             if (args.addr->count == 0) {
@@ -118,7 +118,7 @@ int parse_transport(LSPDConfig *out_config)
     }
 
     if (args.stdio->count) {
-        out_config->transport.type = LSPDTransportType::STDIO;
+        out_config->transport.type = LSPD_TRANSPORT_TYPE_STDIO;
         return 0;
     }
 
@@ -134,13 +134,13 @@ int lspd_parse_args(int argc, char **argv, LSPDConfig *out_config)
     if (args.help->count) {
         print_help(argtable);
         arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
-        out_config->transport.type = LSPDTransportType::INVALID;
+        out_config->transport.type = LSPD_TRANSPORT_TYPE_INVALID;
         return 0;
     }
     if (args.version->count) {
         std::print("lspd v0.0.1\n");
         arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
-        out_config->transport.type = LSPDTransportType::INVALID;
+        out_config->transport.type = LSPD_TRANSPORT_TYPE_INVALID;
         return 0;
     }
 

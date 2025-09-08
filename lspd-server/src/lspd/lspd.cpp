@@ -15,7 +15,7 @@ int main(int argc, char** argv)
         return res;
     }
 
-    if (config.transport.type == LSPDTransportType::INVALID) {
+    if (config.transport.type == LSPD_TRANSPORT_TYPE_INVALID) {
         // INVALID Transport and no error -> help or version
         return 0;
     }
