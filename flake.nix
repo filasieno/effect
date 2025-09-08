@@ -185,6 +185,7 @@
               export LIBRARY_PATH="${pkgs.gtest}/lib:${pkgs.gbenchmark}/lib:${pkgs.liburing}/lib:$LIBRARY_PATH:${pkgs.argtable}/lib"
               export PS1='\[\033[1;33m\](libak)\[\033[0m\] \[\033[1;32m\][\w]$\[\033[0m\] '
               export PROJECT_ROOT=$(git rev-parse --show-toplevel)
+              export PATH="$PROJECT_ROOT/build/lspd-server/bin:$PATH"
 
               echo "liburing inc   : ${pkgs.liburing.dev}" 
               echo "liburing lib   : ${pkgs.liburing}" 

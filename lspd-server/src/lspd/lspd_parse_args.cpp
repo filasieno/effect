@@ -4,7 +4,7 @@
 #include <ak/runtime/runtime.hpp>
 
 constexpr char prog_name[] = "lspd";
-constexpr char help_header[] = R"(Select transport: stdio or socket)";
+constexpr char help_header[] = R"(Select transport: stdio (--stdio) or socket (--sock))";
 
 struct Args {
     struct arg_lit *sock;
@@ -19,8 +19,8 @@ struct Args {
 } args;
 
 void *argtable[] = {
-    args.stdio = arg_lit0(NULL, "stdio", "use stdio [default]"),
-    args.sock = arg_lit0(NULL, "sock", "use socket transport"),
+    args.stdio = arg_lit0(NULL, "stdio", "transport option: use stdio"),
+    args.sock = arg_lit0(NULL, "sock", "transport option: use socket transport"),
     args.named = arg_str0("n", "named", "PATH", "unix domain socket (with --sock)"),
     args.addr = arg_str0("a", "addr", "ADDR", "tcp socket address (with --sock) [defaults to 127.0.0.1]"),
     args.port = arg_int0(NULL, "port", "N", "tcp port (with --sock) [defaults to 2026]"),
@@ -42,14 +42,13 @@ int parse_transport(LSPDConfig *out_config)
     // Enforce mutually exclusive mode with default
     int mode_count = args.stdio->count + args.sock->count;
     if (mode_count == 0) {
-        args.stdio->count = 1;
-        mode_count = 1;
-        out_config->transport.type = LSPD_TRANSPORT_TYPE_STDIO;
-        return 0;
+        std::fprintf(stderr, "%s: you must choose exactly one transport: --stdio or --sock\n", prog_name);
+        std::fprintf(stderr, "Try '%s --help' for more information.\n", prog_name);
+        return 1;
     }
     if (mode_count > 1) {
-        std::fprintf(stderr, "%s: choose exactly one of --stdio or --sock; the default is --stdio\n", prog_name);
-        arg_print_errors(stderr, args.end, prog_name);
+        std::fprintf(stderr, "%s: choose exactly one of --stdio or --sock\n", prog_name);
+        std::fprintf(stderr, "Try '%s --help' for more information.\n", prog_name);
         return 1;
     }
 
