@@ -8,6 +8,8 @@ If:
     - "libak/benchmark/.*\\.cpp"
     - "libak/examples/echo/.*\\.hpp"
     - "libak/examples/echo/.*\\.cpp"
+    - "lspd-server/src/.*\\.hpp"
+    - "lspd-server/src/.*\\.cpp"
 
 CompileFlags:
   Compiler: clang++
@@ -20,6 +22,8 @@ CompileFlags:
     - "-mbmi"
     - "-mbmi2"
     - "-I./libak/src"
+    - "-I./lspd-server/src"
+    - "-I/nix/store/lsdbbahyaah9nnv0yqm3bwnk1wgg1z90-argtable-3.2.2/include"
     - "-I/nix/store/gbwf7by78vgqjmcjf1smbh1zib0mycf8-libcxx-20.1.6-dev/include"
     - "-I/nix/store/qqjsw1fzand71ajx326r84zgi485mqb8-liburing-2.11-dev/include"
     - "-I/nix/store/5xrzl2s73vp8ff9ywz748hnkg0kflxsr-gtest-1.17.0-dev/include"

@@ -5,7 +5,8 @@
 
 AkTask lspd_main(LSPDConfig* config) noexcept;
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv) 
+{
     int res;
     LSPDConfig config;
     
