@@ -1,1 +1,1 @@
-# this file is intentionally empty to keep working directory here
+# this file is intentionally empty to keep clangd working directory here
