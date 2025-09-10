@@ -1,14 +1,14 @@
 #include <print>   // IWYU pragma: keep
 #include "ak.hpp"  // IWYU pragma: keep
 #include <argtable3.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include "lspd.hpp"
-
-AkTask lspd_main(LSPDConfig* config) noexcept;
 
 int main(int argc, char** argv) 
 {
     int res;
-    LSPDConfig config;
+    lspd_config config;
     
     res = lspd_parse_args(argc, argv, &config);
     if (res != 0) {
@@ -34,7 +34,7 @@ int main(int argc, char** argv)
         return res;
     }
 
-    res = ak_run_main(&lspd_main, &config);    
+    res = ak_run_main(&lspd_main);    
 
     ak_fini_kernel();
     

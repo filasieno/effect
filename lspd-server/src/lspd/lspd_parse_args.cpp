@@ -37,7 +37,7 @@ void print_help(void **argtable) noexcept
     arg_print_glossary(stdout, argtable, "  %-25s %s\n");
 }
 
-int parse_transport(LSPDConfig *out_config) 
+int parse_transport(lspd_config *out_config) 
 {
     // Enforce mutually exclusive mode with default
     int mode_count = args.stdio->count + args.sock->count;
@@ -124,7 +124,7 @@ int parse_transport(LSPDConfig *out_config)
     std::abort();
 }
 
-int lspd_parse_args(int argc, char **argv, LSPDConfig *out_config) 
+int lspd_parse_args(int argc, char **argv, lspd_config *out_config) 
 {
 
     int nerrors = arg_parse(argc, argv, argtable);
