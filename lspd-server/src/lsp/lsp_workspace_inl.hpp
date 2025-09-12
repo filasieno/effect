@@ -134,6 +134,20 @@ static inline struct lsp_workspace_did_change_workspace_folders_notification* ls
     return notif;
 }
 
+static inline struct lsp_workspace_did_change_configuration_notification* lsp_init_workspace_did_change_configuration_notification(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_did_change_configuration_notification* notif = (struct lsp_workspace_did_change_configuration_notification*)mem;
+    notif->hdr.timestamp_nanos = ak_query_timer_ns();
+    notif->hdr.refcount.store(1, std::memory_order_relaxed);
+    return notif;
+}
+
+static inline struct lsp_workspace_did_change_watched_files_notification* lsp_init_workspace_did_change_watched_files_notification(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_did_change_watched_files_notification* notif = (struct lsp_workspace_did_change_watched_files_notification*)mem;
+    notif->hdr.timestamp_nanos = ak_query_timer_ns();
+    notif->hdr.refcount.store(1, std::memory_order_relaxed);
+    return notif;
+}
+
 static inline struct lsp_workspace_configuration_request* lsp_init_workspace_configuration_request(void *mem, AkU64 tag_id) noexcept {
     struct lsp_workspace_configuration_request* req = (struct lsp_workspace_configuration_request*)mem;
     req->hdr.timestamp_nanos = ak_query_timer_ns();
@@ -208,6 +222,198 @@ static inline struct lsp_workspace_folders_error_result* lsp_init_workspace_fold
     // resp->hdr.interaction_kind = LSP_INTERACT_ERROR_RESULT;
     // resp->hdr.method_type = LSP_METHOD_WORKSPACE_WORKSPACE_FOLDERS;
     // resp->hdr.op_tag = LSP_OP_NONE;
+    return resp;
+}
+
+static inline struct lsp_workspace_will_create_files_request* lsp_init_workspace_will_create_files_request(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_will_create_files_request* req = (struct lsp_workspace_will_create_files_request*)mem;
+    req->hdr.timestamp_nanos = ak_query_timer_ns();
+    req->hdr.refcount.store(1, std::memory_order_relaxed);
+    return req;
+}
+static inline struct lsp_workspace_will_create_files_response* lsp_init_workspace_will_create_files_response(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_will_create_files_response* resp = (struct lsp_workspace_will_create_files_response*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    resp->result.kind = LSP_OPT_NONE;
+    return resp;
+}
+static inline struct lsp_workspace_will_create_files_error_result* lsp_init_workspace_will_create_files_error_result(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_will_create_files_error_result* resp = (struct lsp_workspace_will_create_files_error_result*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}
+
+static inline struct lsp_workspace_will_rename_files_request* lsp_init_workspace_will_rename_files_request(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_will_rename_files_request* req = (struct lsp_workspace_will_rename_files_request*)mem;
+    req->hdr.timestamp_nanos = ak_query_timer_ns();
+    req->hdr.refcount.store(1, std::memory_order_relaxed);
+    return req;
+}
+static inline struct lsp_workspace_will_rename_files_response* lsp_init_workspace_will_rename_files_response(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_will_rename_files_response* resp = (struct lsp_workspace_will_rename_files_response*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    resp->result.kind = LSP_OPT_NONE;
+    return resp;
+}
+static inline struct lsp_workspace_will_rename_files_error_result* lsp_init_workspace_will_rename_files_error_result(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_will_rename_files_error_result* resp = (struct lsp_workspace_will_rename_files_error_result*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}
+
+static inline struct lsp_workspace_will_delete_files_request* lsp_init_workspace_will_delete_files_request(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_will_delete_files_request* req = (struct lsp_workspace_will_delete_files_request*)mem;
+    req->hdr.timestamp_nanos = ak_query_timer_ns();
+    req->hdr.refcount.store(1, std::memory_order_relaxed);
+    return req;
+}
+static inline struct lsp_workspace_will_delete_files_response* lsp_init_workspace_will_delete_files_response(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_will_delete_files_response* resp = (struct lsp_workspace_will_delete_files_response*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    resp->result.kind = LSP_OPT_NONE;
+    return resp;
+}
+static inline struct lsp_workspace_will_delete_files_error_result* lsp_init_workspace_will_delete_files_error_result(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_will_delete_files_error_result* resp = (struct lsp_workspace_will_delete_files_error_result*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}
+
+static inline struct lsp_workspace_did_create_files_notification* lsp_init_workspace_did_create_files_notification(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_did_create_files_notification* notif = (struct lsp_workspace_did_create_files_notification*)mem;
+    notif->hdr.timestamp_nanos = ak_query_timer_ns();
+    notif->hdr.refcount.store(1, std::memory_order_relaxed);
+    return notif;
+}
+static inline struct lsp_workspace_did_rename_files_notification* lsp_init_workspace_did_rename_files_notification(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_did_rename_files_notification* notif = (struct lsp_workspace_did_rename_files_notification*)mem;
+    notif->hdr.timestamp_nanos = ak_query_timer_ns();
+    notif->hdr.refcount.store(1, std::memory_order_relaxed);
+    return notif;
+}
+static inline struct lsp_workspace_did_delete_files_notification* lsp_init_workspace_did_delete_files_notification(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_did_delete_files_notification* notif = (struct lsp_workspace_did_delete_files_notification*)mem;
+    notif->hdr.timestamp_nanos = ak_query_timer_ns();
+    notif->hdr.refcount.store(1, std::memory_order_relaxed);
+    return notif;
+}
+static inline struct lsp_workspace_code_lens_refresh_request* lsp_init_workspace_code_lens_refresh_request(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_code_lens_refresh_request* req = (struct lsp_workspace_code_lens_refresh_request*)mem;
+    req->hdr.timestamp_nanos = ak_query_timer_ns();
+    req->hdr.refcount.store(1, std::memory_order_relaxed);
+    return req;
+}
+static inline struct lsp_workspace_code_lens_refresh_response* lsp_init_workspace_code_lens_refresh_response(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_code_lens_refresh_response* resp = (struct lsp_workspace_code_lens_refresh_response*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}
+static inline struct lsp_workspace_code_lens_refresh_error_result* lsp_init_workspace_code_lens_refresh_error_result(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_code_lens_refresh_error_result* resp = (struct lsp_workspace_code_lens_refresh_error_result*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}
+
+static inline struct lsp_workspace_semantic_tokens_refresh_request* lsp_init_workspace_semantic_tokens_refresh_request(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_semantic_tokens_refresh_request* req = (struct lsp_workspace_semantic_tokens_refresh_request*)mem;
+    req->hdr.timestamp_nanos = ak_query_timer_ns();
+    req->hdr.refcount.store(1, std::memory_order_relaxed);
+    return req;
+}
+static inline struct lsp_workspace_semantic_tokens_refresh_response* lsp_init_workspace_semantic_tokens_refresh_response(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_semantic_tokens_refresh_response* resp = (struct lsp_workspace_semantic_tokens_refresh_response*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}
+static inline struct lsp_workspace_semantic_tokens_refresh_error_result* lsp_init_workspace_semantic_tokens_refresh_error_result(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_semantic_tokens_refresh_error_result* resp = (struct lsp_workspace_semantic_tokens_refresh_error_result*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}
+
+static inline struct lsp_workspace_folding_range_refresh_request* lsp_init_workspace_folding_range_refresh_request(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_folding_range_refresh_request* req = (struct lsp_workspace_folding_range_refresh_request*)mem;
+    req->hdr.timestamp_nanos = ak_query_timer_ns();
+    req->hdr.refcount.store(1, std::memory_order_relaxed);
+    return req;
+}
+static inline struct lsp_workspace_folding_range_refresh_response* lsp_init_workspace_folding_range_refresh_response(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_folding_range_refresh_response* resp = (struct lsp_workspace_folding_range_refresh_response*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}
+static inline struct lsp_workspace_folding_range_refresh_error_result* lsp_init_workspace_folding_range_refresh_error_result(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_folding_range_refresh_error_result* resp = (struct lsp_workspace_folding_range_refresh_error_result*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}
+
+static inline struct lsp_workspace_inline_value_refresh_request* lsp_init_workspace_inline_value_refresh_request(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_inline_value_refresh_request* req = (struct lsp_workspace_inline_value_refresh_request*)mem;
+    req->hdr.timestamp_nanos = ak_query_timer_ns();
+    req->hdr.refcount.store(1, std::memory_order_relaxed);
+    return req;
+}
+static inline struct lsp_workspace_inline_value_refresh_response* lsp_init_workspace_inline_value_refresh_response(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_inline_value_refresh_response* resp = (struct lsp_workspace_inline_value_refresh_response*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}
+static inline struct lsp_workspace_inline_value_refresh_error_result* lsp_init_workspace_inline_value_refresh_error_result(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_inline_value_refresh_error_result* resp = (struct lsp_workspace_inline_value_refresh_error_result*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}
+
+static inline struct lsp_workspace_inlay_hint_refresh_request* lsp_init_workspace_inlay_hint_refresh_request(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_inlay_hint_refresh_request* req = (struct lsp_workspace_inlay_hint_refresh_request*)mem;
+    req->hdr.timestamp_nanos = ak_query_timer_ns();
+    req->hdr.refcount.store(1, std::memory_order_relaxed);
+    return req;
+}
+static inline struct lsp_workspace_inlay_hint_refresh_response* lsp_init_workspace_inlay_hint_refresh_response(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_inlay_hint_refresh_response* resp = (struct lsp_workspace_inlay_hint_refresh_response*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}
+static inline struct lsp_workspace_inlay_hint_refresh_error_result* lsp_init_workspace_inlay_hint_refresh_error_result(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_inlay_hint_refresh_error_result* resp = (struct lsp_workspace_inlay_hint_refresh_error_result*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}
+
+static inline struct lsp_workspace_diagnostic_request* lsp_init_workspace_diagnostic_request(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_diagnostic_request* req = (struct lsp_workspace_diagnostic_request*)mem;
+    req->hdr.timestamp_nanos = ak_query_timer_ns();
+    req->hdr.refcount.store(1, std::memory_order_relaxed);
+    return req;
+}
+static inline struct lsp_workspace_diagnostic_response* lsp_init_workspace_diagnostic_response(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_diagnostic_response* resp = (struct lsp_workspace_diagnostic_response*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}
+static inline struct lsp_workspace_diagnostic_error_result* lsp_init_workspace_diagnostic_error_result(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_workspace_diagnostic_error_result* resp = (struct lsp_workspace_diagnostic_error_result*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
     return resp;
 }
 

@@ -149,3 +149,41 @@ static inline void lsp_text_edit_list_init_some(lsp_text_edit_list* list, struct
 static inline bool lsp_text_edit_list_is_some(const lsp_text_edit_list* list) noexcept {
     return list->kind == LSP_OPT_SOME;
 }
+
+static inline struct lsp_notebook_document_did_open_notification* lsp_init_notebook_document_did_open_notification(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_notebook_document_did_open_notification* n = (struct lsp_notebook_document_did_open_notification*)mem;
+    n->hdr.timestamp_nanos = ak_query_timer_ns();
+    n->hdr.refcount.store(1, std::memory_order_relaxed);
+    return n;
+}
+static inline struct lsp_notebook_document_did_change_notification* lsp_init_notebook_document_did_change_notification(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_notebook_document_did_change_notification* n = (struct lsp_notebook_document_did_change_notification*)mem;
+    n->hdr.timestamp_nanos = ak_query_timer_ns();
+    n->hdr.refcount.store(1, std::memory_order_relaxed);
+    return n;
+}
+static inline struct lsp_notebook_document_did_save_notification* lsp_init_notebook_document_did_save_notification(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_notebook_document_did_save_notification* n = (struct lsp_notebook_document_did_save_notification*)mem;
+    n->hdr.timestamp_nanos = ak_query_timer_ns();
+    n->hdr.refcount.store(1, std::memory_order_relaxed);
+    return n;
+}
+static inline struct lsp_notebook_document_did_close_notification* lsp_init_notebook_document_did_close_notification(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_notebook_document_did_close_notification* n = (struct lsp_notebook_document_did_close_notification*)mem;
+    n->hdr.timestamp_nanos = ak_query_timer_ns();
+    n->hdr.refcount.store(1, std::memory_order_relaxed);
+    return n;
+}
+
+/// \brief Initialize an lsp_text_document_item
+/// \param item Pointer to item to initialize
+/// \param uri Document URI
+/// \param language_id Language identifier
+/// \param version Document version
+/// \param text Document text content
+static inline void lsp_text_document_item_init(lsp_text_document_item* item, const lsp_uri* uri, const lsp_string* language_id, int version, const lsp_string* text) noexcept {
+    item->uri.chars = uri->chars;
+    item->language_id = *language_id;
+    item->version = version;
+    item->text = *text;
+}

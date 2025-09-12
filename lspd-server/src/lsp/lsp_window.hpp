@@ -1,6 +1,7 @@
 #pragma once
 
 #include "lsp_basic.hpp" // IWYU pragma: keep
+#include "lsp_dyn.hpp"   // IWYU pragma: keep
 
 /// \file lsp_window.hpp
 /// \brief Window and UI message declarations (showMessage, logMessage, showDocument)
@@ -24,6 +25,16 @@ enum lsp_message_type {
     LSP_MSG_WARNING = 2,  ///< Warning message - medium severity
     LSP_MSG_INFO = 3,     ///< Informational message - normal severity
     LSP_MSG_LOG = 4       ///< Log message - lowest severity
+};
+
+/// Work done progress create parameters
+struct lsp_work_done_progress_create_params {
+    struct lsp_dyn* token;  ///< Progress token (string | number)
+};
+
+/// Work done progress cancel parameters
+struct lsp_work_done_progress_cancel_params {
+    struct lsp_dyn* token;  ///< Progress token (string | number)
 };
 
 /// Window log message notification parameters
@@ -182,5 +193,49 @@ static struct lsp_window_show_message_request*          lsp_init_window_show_mes
 static struct lsp_window_show_message_partial_response* lsp_init_window_show_message_partial_response(void *mem, AkU64 tag_id) noexcept;
 static struct lsp_window_show_message_response*         lsp_init_window_show_message_response(void *mem, AkU64 tag_id) noexcept;
 static struct lsp_window_show_message_error_result*     lsp_init_window_show_message_error_result(void *mem, AkU64 tag_id) noexcept;
+
+/// The `window/logMessage` notification is sent from the server to the client to log a message.
+/// Params: LogMessageParams.
+struct lsp_window_log_message_notification {
+    /// \brief Header.
+    struct lsp_msg_hdr hdr;
+    /// \brief Params.
+    struct lsp_log_message_params params;
+};
+static struct lsp_window_log_message_notification* lsp_init_window_log_message_notification(void *mem, AkU64 tag_id) noexcept;
+
+/// The `window/workDoneProgress/create` request is sent from the server to the client to create a work done progress.
+/// Params: WorkDoneProgressCreateParams. Result: null.
+struct lsp_window_work_done_progress_create_request {
+    struct lsp_msg_hdr hdr;
+    struct lsp_work_done_progress_create_params params;
+};
+struct lsp_window_work_done_progress_create_response {
+    struct lsp_msg_hdr hdr;
+};
+struct lsp_window_work_done_progress_create_error_result {
+    struct lsp_msg_hdr hdr;
+    struct lsp_error_result error;
+};
+static struct lsp_window_work_done_progress_create_request*      lsp_init_window_work_done_progress_create_request(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_window_work_done_progress_create_response*     lsp_init_window_work_done_progress_create_response(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_window_work_done_progress_create_error_result* lsp_init_window_work_done_progress_create_error_result(void *mem, AkU64 tag_id) noexcept;
+
+/// The `window/workDoneProgress/cancel` request is sent from the client to the server to cancel progress.
+/// Params: WorkDoneProgressCancelParams. Result: null.
+struct lsp_window_work_done_progress_cancel_request {
+    struct lsp_msg_hdr hdr;
+    struct lsp_work_done_progress_cancel_params params;
+};
+struct lsp_window_work_done_progress_cancel_response {
+    struct lsp_msg_hdr hdr;
+};
+struct lsp_window_work_done_progress_cancel_error_result {
+    struct lsp_msg_hdr hdr;
+    struct lsp_error_result error;
+};
+static struct lsp_window_work_done_progress_cancel_request*      lsp_init_window_work_done_progress_cancel_request(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_window_work_done_progress_cancel_response*     lsp_init_window_work_done_progress_cancel_response(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_window_work_done_progress_cancel_error_result* lsp_init_window_work_done_progress_cancel_error_result(void *mem, AkU64 tag_id) noexcept;
 
 

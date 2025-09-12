@@ -1,6 +1,9 @@
 #pragma once
 #include "ak/base/base_api.hpp"
 
+/// Forward declaration for dynamic value used by some params
+struct lsp_dyn;
+
 /// \file lsp_basic.hpp
 /// \brief Base/common LSP message declarations shared across groups
 
@@ -368,6 +371,9 @@ enum lsp_opt_kind {
     LSP_OPT_SOME = 1   ///< Value is present
 };
 
+/// Forward declaration for dynamic value used by some params
+struct lsp_dyn;
+
 /// \ingroup lsp_optional_types
 /// \brief Optional string value
 ///
@@ -408,15 +414,14 @@ enum lsp_opt_bool_type {
     LSP_BOOL_FALSE = 'f'    ///< Boolean false
 };
 
-/// \ingroup lsp_base_types
-/// \brief Client information supplied during initialization
-///
-/// Identifies the language client connecting to the server. Used for
-/// capability negotiation and diagnostics.
-struct lsp_client_info {
-    struct lsp_string     name;    ///< Human-readable client name
-    struct lsp_opt_string version; ///< Optional client version
+/// Trace value enumeration (shared)
+enum lsp_trace_value {
+    LSP_TRACE_OFF = 0,
+    LSP_TRACE_MESSAGES = 1,
+    LSP_TRACE_VERBOSE = 2
 };
+
+// lsp_client_info moved to lsp_lifecycle.hpp
 
 /// \ingroup lsp_document_types
 /// \brief Text edit operation
@@ -451,15 +456,6 @@ struct lsp_error_result {
     struct lsp_opt_string message;   ///< Optional error message
 };
 
-// moved to lsp_window.hpp
-
-
-// moved to lsp_workspace.hpp
-
-// moved to lsp_window.hpp
-
-// moved to lsp_window.hpp
-
 /// \ingroup lsp_document_symbol_types
 /// \brief Symbol tags list
 ///
@@ -485,150 +481,25 @@ struct lsp_text_document_identifier {
     lsp_uri uri;  ///< Document URI
 };
 
-/// \ingroup lsp_document_types
-/// \brief Complete text document information
-/// \details Represents the full content and metadata of a text document
-/// as provided in the didOpen notification.
-struct lsp_text_document_item {
-    lsp_uri    uri;          ///< Document URI
-    lsp_string language_id;  ///< Language identifier (e.g., "cpp", "python")
-    int        version;      ///< Document version number
-    lsp_string text;         ///< Full document text content
-};
+// lsp_text_document_item moved to lsp_doc_sync.hpp
 
-/// Linked editing ranges
-struct lsp_linked_editing_ranges {
-    struct lsp_list<lsp_range>* ranges;
-    lsp_opt_string              word_pattern; // regex pattern for word matching
-};
+// lsp_linked_editing_ranges moved to lsp_language.hpp
 
 struct lsp_versioned_text_document_id  {
     struct lsp_uri uri;
     int            version;
 };
 
-/// Moniker kind enumeration
-enum lsp_moniker_kind {
-    LSP_MONIKER_IMPORT = 0,
-    LSP_MONIKER_EXPORT,
-    LSP_MONIKER_LOCAL
-};
-
-/// Uniqueness level enumeration
-enum lsp_uniqueness_level {
-    LSP_UNIQUENESS_DOCUMENT = 0,
-    LSP_UNIQUENESS_PROJECT,
-    LSP_UNIQUENESS_GROUP,
-    LSP_UNIQUENESS_SCHEME,
-    LSP_UNIQUENESS_GLOBAL
-};
-
-/// Moniker structure
-struct lsp_moniker {
-    lsp_string                scheme;
-    lsp_string                identifier;
-    enum lsp_uniqueness_level unique;
-    enum lsp_moniker_kind     kind;
-};
-
-/// Moniker list
-struct lsp_moniker_list {
-    struct lsp_list<struct lsp_moniker>* head;
-    int                                  count;
-};
+// moniker types moved to lsp_language.hpp
 
 
-/// Inline value union
-enum lsp_inline_value_kind {
-    LSP_INLINE_VALUE_TEXT = 0,
-    LSP_INLINE_VALUE_VARIABLE_LOOKUP,
-    LSP_INLINE_VALUE_EVALUATABLE_EXPRESSION
-};
 
 
-// Placeholder structures for inline values
-struct lsp_inline_value_text {
-    struct lsp_range  range;
-    lsp_string text;
-};
 
-struct lsp_inline_value_variable_lookup {
-    struct lsp_range  range;
-    lsp_string variable_name;
-    bool       case_sensitive_lookup;
-};
-
-struct lsp_inline_value_evaluatable_expression {
-    struct lsp_range  range;
-    lsp_string expression;
-};
-
-struct lsp_inline_value {
-    int kind; // lsp_inline_value_kind
-    union {
-        struct lsp_inline_value_text                   text;
-        struct lsp_inline_value_variable_lookup        variable_lookup;
-        struct lsp_inline_value_evaluatable_expression evaluatable_expression;
-    } value;
-};
-
-/// Inline value list
-struct lsp_inline_value_list {
-    struct lsp_list<struct lsp_inline_value>* head;
-    int count;
-};
+// inline value group moved to lsp_language.hpp
 
 
-/// Inlay hint kind enumeration
-enum lsp_inlay_hint_kind {
-    LSP_INLAY_HINT_TYPE = 1,
-    LSP_INLAY_HINT_PARAMETER = 2
-};
-
-/// Inlay hint label part
-struct lsp_inlay_hint_label_part {
-    struct lsp_string      value;
-    struct lsp_opt_string  tooltip;
-    struct lsp_opt_string  location_present;
-    struct lsp_location    location; // valid if present
-    struct lsp_opt_string  command_present;
-    
-    // struct lsp_dyn         command; // valid if present
-};
-
-/// Inlay hint label union
-enum lsp_inlay_hint_label_kind {
-    LSP_INLAY_HINT_LABEL_STRING = 0,
-    LSP_INLAY_HINT_LABEL_PARTS
-};
-
-struct lsp_inlay_hint_label {
-    int kind; // lsp_inlay_hint_label_kind
-    union {
-        lsp_string string_value;
-        struct lsp_list<struct lsp_inlay_hint_label_part>* parts;
-    } value;
-};
-
-
-/// Inlay hint structure
-struct lsp_inlay_hint {
-    lsp_position                position;
-    struct lsp_inlay_hint_label label;
-    enum lsp_inlay_hint_kind    kind;
-    lsp_opt_string              text_edits_present;
-    struct lsp_text_edit_list   text_edits; // valid if present
-    lsp_opt_string              tooltip;
-    lsp_opt_bool                padding_left;
-    lsp_opt_bool                padding_right;
-    lsp_opt_string              data;
-};
-
-/// Inlay hint list
-struct lsp_inlay_hint_list {
-    struct lsp_list<struct lsp_inlay_hint>* head;
-    int count;
-};
+// inlay hint group moved to lsp_language.hpp
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Diagnostic types (LSP 3.17)
@@ -771,7 +642,7 @@ struct lsp_telemetry_event_params {
 
 /// Set trace notification parameters
 struct lsp_set_trace_params {
-    lsp_string value;
+    enum lsp_trace_value value;
 };
 
 /// Log trace notification parameters
@@ -782,38 +653,16 @@ struct lsp_log_trace_params {
 
 /// Cancel request parameters
 struct lsp_cancel_params {
-    // TODO: Telemetry event params
-    // lsp_dyn id; // number | string
+    struct lsp_dyn* id; // number | string (by dynamic)
 };
 
 /// Progress parameters
 struct lsp_progress_params {
-
-    // struct lsp_dyn token; // ProgressToken
-    // struct lsp_dyn value; // LSPAny
+    struct lsp_dyn* token; // ProgressToken
+    struct lsp_dyn* value; // LSPAny
 };
 
-/// Client register capability parameters
-struct lsp_registration_params {
-    struct lsp_list<struct lsp_registration>* registrations;
-};
-
-/// Client unregister capability parameters
-struct lsp_unregisteration_params {
-    struct lsp_list<struct lsp_unregisteration>* unregisterations;
-};
-
-// Placeholder structures
-struct lsp_registration {
-    struct lsp_string id;
-    struct lsp_string method;
-    // struct lsp_dyn register_options;
-};
-
-struct lsp_unregisteration {
-    lsp_string id;
-    lsp_string method;
-};
+// registration params moved to lsp_lifecycle.hpp
 
 /// \ingroup lsp_workspace_types
 /// \brief Workspace edit structure
@@ -873,135 +722,10 @@ struct lsp_workspace_edit {
 // File operation types
 // ---------------------------------------------------------------------------------------------------------------------
 
-/// Create files parameters
-struct lsp_create_files_params {
-    struct lsp_list<struct lsp_file_create>* files;
-};
-
-/// Rename files parameters
-struct lsp_rename_files_params {
-    struct lsp_list<struct lsp_file_rename>* files;
-};
-
-/// Delete files parameters
-struct lsp_delete_files_params {
-    struct lsp_list<struct lsp_file_delete>* files;
-};
-
-/// File create
-struct lsp_file_create {
-    lsp_uri uri;
-};
-
-/// File rename
-struct lsp_file_rename {
-    lsp_string old_uri;
-    lsp_string new_uri;
-};
-
-/// File delete
-struct lsp_file_delete {
-    lsp_uri uri;
-};
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Configuration and watched files types
-// ---------------------------------------------------------------------------------------------------------------------
-
-/// Did change configuration parameters
-// struct lsp_did_change_configuration_params {
-//     struct lsp_dyn settings;
-// };
-
-/// Did change watched files parameters
-// struct lsp_did_change_watched_files_params {
-//     struct lsp_file_event_list changes;
-// };
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Publish diagnostics types
-// ---------------------------------------------------------------------------------------------------------------------
-
-/// Publish diagnostics parameters
-// struct lsp_publish_diagnostics_params {
-//     lsp_uri uri;
-//     lsp_opt_string version;
-//     struct lsp_list<struct lsp_diagnostic>* diagnostics;
-// };
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Log message types
-// ---------------------------------------------------------------------------------------------------------------------
-
-/// Log message parameters
-// struct lsp_log_message_params {
-//     enum lsp_message_type type;
-//     lsp_string message;
-// };
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Notebook document types
-// ---------------------------------------------------------------------------------------------------------------------
-enum lsp_notebook_cell_kind {
-    LSP_NOTEBOOK_CELL_MARKUP = 1,
-    LSP_NOTEBOOK_CELL_CODE = 2
-};
-
-struct lsp_notebook_document_sync_registration_options {
-    bool save;
-};
-
-// Placeholder structures for notebook documents
-struct lsp_notebook_document {
-    using lsp_notebook_cell_list_t = struct lsp_list<struct lsp_notebook_cell>;
-
-    struct lsp_uri uri;
-    struct lsp_string notebook_type;
-    int version;
-    bool is_dirty;
-    lsp_notebook_cell_list_t* cells;
-};
-
-struct lsp_notebook_document_identifier {
-    struct lsp_uri uri;
-};
-
-struct lsp_versioned_notebook_document_identifier {
-    struct lsp_uri uri;
-    int version;
-};
-
-/// Did open notebook document parameters
-struct lsp_did_open_notebook_document_params {
-    struct lsp_notebook_document notebook_document;
-    struct lsp_notebook_document_sync_registration_options cell_text_documents;
-};
-
-/// Did change notebook document parameters
-struct lsp_did_change_notebook_document_params {
-    struct lsp_versioned_notebook_document_identifier notebook_document;
-    struct lsp_list<struct lsp_notebook_cell>* change; // TODO: define notebook cell changes
-};
-
-/// Did save notebook document parameters
-struct lsp_did_save_notebook_document_params {
-    struct lsp_notebook_document_identifier notebook_document;
-};
-
-/// Did close notebook document parameters
-struct lsp_did_close_notebook_document_params {
-    struct lsp_notebook_document_identifier notebook_document;
-    bool save;
-};
+// file operation parameter structs moved to lsp_workspace.hpp
 
 
-
-
-
-struct lsp_notebook_cell {
-    enum lsp_notebook_cell_kind kind;
-    struct lsp_list<struct lsp_text_document_item>* documents;
-};
+// notebook types moved to lsp_doc_sync.hpp
 
 
 
@@ -1032,21 +756,7 @@ struct lsp_symbol_information {
     struct lsp_location    location;        ///< Symbol location
 };
 
-struct lsp_text_document_position_params  {
-    struct lsp_text_document_identifier text_document;
-    struct lsp_position                 position;
-};
+// lsp_text_document_position_params moved to lsp_language.hpp
 
-/// \ingroup lsp_color_types
-/// \brief Color representation (RGBA)
-///
-/// Represents a color with red, green, blue, and alpha components.
-/// All components are stored as unsigned shorts in the range 0-65535,
-/// representing values from 0.0 to 1.0.
-struct lsp_color {
-    unsigned short red;    ///< Red component (0-65535, maps to 0.0-1.0)
-    unsigned short green;  ///< Green component (0-65535, maps to 0.0-1.0)
-    unsigned short blue;   ///< Blue component (0-65535, maps to 0.0-1.0)
-    unsigned short alpha;  ///< Alpha component (0-65535, maps to 0.0-1.0)
-};
+// lsp_color moved to lsp_language.hpp
 

@@ -159,18 +159,6 @@ static inline void lsp_text_document_identifier_init(lsp_text_document_identifie
 // TEXT DOCUMENT ITEM UTILITIES
 // ======================================================================================================================
 
-/// \brief Initialize an lsp_text_document_item
-/// \param item Pointer to item to initialize
-/// \param uri Document URI
-/// \param language_id Language identifier
-/// \param version Document version
-/// \param text Document text content
-static inline void lsp_text_document_item_init(lsp_text_document_item* item, const lsp_uri* uri, const lsp_string* language_id, int version, const lsp_string* text) noexcept {
-    item->uri.chars = uri->chars;
-    item->language_id = *language_id;
-    item->version = version;
-    item->text = *text;
-}
 
 // ======================================================================================================================
 // VERSIONED TEXT DOCUMENT ID UTILITIES
@@ -189,14 +177,6 @@ static inline void lsp_versioned_text_document_id_init(lsp_versioned_text_docume
 // TEXT DOCUMENT POSITION PARAMS UTILITIES
 // ======================================================================================================================
 
-/// \brief Initialize an lsp_text_document_position_params
-/// \param params Pointer to params to initialize
-/// \param text_document Document identifier
-/// \param position Position within the document
-static inline void lsp_text_document_position_params_init(lsp_text_document_position_params* params, const lsp_text_document_identifier* text_document, const lsp_position* position) noexcept {
-    params->text_document = *text_document;
-    params->position = *position;
-}
 
 // ======================================================================================================================
 // TEXT EDIT UTILITIES

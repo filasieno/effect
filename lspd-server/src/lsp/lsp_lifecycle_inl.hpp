@@ -40,3 +40,41 @@ static inline void lsp_client_info_init(lsp_client_info* info, const lsp_string*
     info->name = *name;
     info->version = *version;
 }
+
+static inline struct lsp_client_register_capability_request* lsp_init_client_register_capability_request(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_client_register_capability_request* req = (struct lsp_client_register_capability_request*)mem;
+    req->hdr.timestamp_nanos = ak_query_timer_ns();
+    req->hdr.refcount.store(1, std::memory_order_relaxed);
+    return req;
+}
+static inline struct lsp_client_register_capability_response* lsp_init_client_register_capability_response(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_client_register_capability_response* resp = (struct lsp_client_register_capability_response*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}
+static inline struct lsp_client_register_capability_error_result* lsp_init_client_register_capability_error_result(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_client_register_capability_error_result* resp = (struct lsp_client_register_capability_error_result*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}
+
+static inline struct lsp_client_unregister_capability_request* lsp_init_client_unregister_capability_request(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_client_unregister_capability_request* req = (struct lsp_client_unregister_capability_request*)mem;
+    req->hdr.timestamp_nanos = ak_query_timer_ns();
+    req->hdr.refcount.store(1, std::memory_order_relaxed);
+    return req;
+}
+static inline struct lsp_client_unregister_capability_response* lsp_init_client_unregister_capability_response(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_client_unregister_capability_response* resp = (struct lsp_client_unregister_capability_response*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}
+static inline struct lsp_client_unregister_capability_error_result* lsp_init_client_unregister_capability_error_result(void *mem, AkU64 tag_id) noexcept {
+    struct lsp_client_unregister_capability_error_result* resp = (struct lsp_client_unregister_capability_error_result*)mem;
+    resp->hdr.timestamp_nanos = ak_query_timer_ns();
+    resp->hdr.refcount.store(1, std::memory_order_relaxed);
+    return resp;
+}

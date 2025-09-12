@@ -2,6 +2,134 @@
 
 #include "lsp_basic.hpp" // IWYU pragma: keep
 #include "lsp_dyn.hpp"   // IWYU pragma: keep
+/// Linked editing ranges (moved from lsp_basic.hpp)
+struct lsp_linked_editing_ranges {
+    struct lsp_list<lsp_range>* ranges;
+    lsp_opt_string              word_pattern; // regex pattern for word matching
+};
+
+// Moniker types (moved from lsp_basic.hpp)
+enum lsp_moniker_kind {
+    LSP_MONIKER_IMPORT = 0,
+    LSP_MONIKER_EXPORT,
+    LSP_MONIKER_LOCAL
+};
+
+enum lsp_uniqueness_level {
+    LSP_UNIQUENESS_DOCUMENT = 0,
+    LSP_UNIQUENESS_PROJECT,
+    LSP_UNIQUENESS_GROUP,
+    LSP_UNIQUENESS_SCHEME,
+    LSP_UNIQUENESS_GLOBAL
+};
+
+struct lsp_moniker {
+    lsp_string                scheme;
+    lsp_string                identifier;
+    enum lsp_uniqueness_level unique;
+    enum lsp_moniker_kind     kind;
+};
+
+struct lsp_moniker_list {
+    struct lsp_list<struct lsp_moniker>* head;
+    int                                  count;
+};
+
+// Text document position params (moved from lsp_basic.hpp)
+struct lsp_text_document_position_params  {
+    struct lsp_text_document_identifier text_document;
+    struct lsp_position                 position;
+};
+
+// Inline value group (moved from lsp_basic.hpp)
+struct lsp_inline_value_text {
+    struct lsp_range  range;
+    struct lsp_string text;
+};
+
+// Inlay hint group (moved from lsp_basic.hpp)
+enum lsp_inlay_hint_kind {
+    LSP_INLAY_HINT_TYPE = 1,
+    LSP_INLAY_HINT_PARAMETER = 2
+};
+
+struct lsp_inlay_hint_label_part {
+    struct lsp_string      value;
+    struct lsp_opt_string  tooltip;
+    struct lsp_opt_string  location_present;
+    struct lsp_location    location; // valid if present
+    struct lsp_opt_string  command_present;
+};
+
+enum lsp_inlay_hint_label_kind {
+    LSP_INLAY_HINT_LABEL_STRING = 0,
+    LSP_INLAY_HINT_LABEL_PARTS
+};
+
+struct lsp_inlay_hint_label {
+    int kind; // lsp_inlay_hint_label_kind
+    union {
+        lsp_string string_value;
+        struct lsp_list<struct lsp_inlay_hint_label_part>* parts;
+    } value;
+};
+
+struct lsp_inlay_hint {
+    lsp_position                position;
+    struct lsp_inlay_hint_label label;
+    enum lsp_inlay_hint_kind    kind;
+    lsp_opt_string              text_edits_present;
+    struct lsp_text_edit_list   text_edits; // valid if present
+    lsp_opt_string              tooltip;
+    lsp_opt_bool                padding_left;
+    lsp_opt_bool                padding_right;
+    lsp_opt_string              data;
+};
+
+struct lsp_inlay_hint_list {
+    struct lsp_list<struct lsp_inlay_hint>* head;
+    int count;
+};
+
+// Color type (moved from lsp_basic.hpp)
+struct lsp_color {
+    unsigned short red;
+    unsigned short green;
+    unsigned short blue;
+    unsigned short alpha;
+};
+
+struct lsp_inline_value_variable_lookup {
+    struct lsp_range  range;
+    struct lsp_string variable_name;
+    bool              case_sensitive_lookup;
+};
+
+struct lsp_inline_value_evaluatable_expression {
+    struct lsp_range  range;
+    struct lsp_string expression;
+};
+
+enum lsp_inline_value_kind {
+    LSP_INLINE_VALUE_TEXT = 0,
+    LSP_INLINE_VALUE_VARIABLE_LOOKUP,
+    LSP_INLINE_VALUE_EVALUATABLE_EXPRESSION
+};
+
+struct lsp_inline_value {
+    int kind; // lsp_inline_value_kind
+    union {
+        struct lsp_inline_value_text                   text;
+        struct lsp_inline_value_variable_lookup        variable_lookup;
+        struct lsp_inline_value_evaluatable_expression evaluatable_expression;
+    } value;
+};
+
+struct lsp_inline_value_list {
+    struct lsp_list<struct lsp_inline_value>* head;
+    int count;
+};
+
 
 /// \defgroup lsp_language_features Language Features
 /// \brief Language-intelligence features and related messages
@@ -1226,25 +1354,41 @@ static struct lsp_code_lens_resolve_error_result* lsp_init_code_lens_resolve_err
 /// The `workspace/codeLens/refresh` request is sent from the server to the client to refresh all code lenses.
 /// This request has no parameters and the response has no result.
 /// \since 3.16.0
-struct lsp_workspace_code_lens_refresh_request {
+// moved to lsp_workspace.hpp
+
+/// The `textDocument/diagnostic` request is sent from the client to compute diagnostics for a document.
+/// Params: DocumentDiagnosticParams. Result: DocumentDiagnosticReport.
+/// \since 3.17.0
+struct lsp_text_document_diagnostic_request {
     /// \brief Common message header.
     struct lsp_msg_hdr hdr;
+    /// \brief Diagnostic parameters.
+    struct lsp_document_diagnostic_params params;
 };
-/// \brief Response to code lens refresh (null result).
-struct lsp_workspace_code_lens_refresh_response {
+/// \brief Final document diagnostic response.
+struct lsp_text_document_diagnostic_response {
     /// \brief Common message header.
     struct lsp_msg_hdr hdr;
+    /// \brief Diagnostic report.
+    struct lsp_document_diagnostic_report result;
 };
-/// \brief Error result for code lens refresh.
-struct lsp_workspace_code_lens_refresh_error_result {
+/// \brief Error result for document diagnostic request.
+struct lsp_text_document_diagnostic_error_result {
     /// \brief Common message header.
     struct lsp_msg_hdr hdr;
     /// \brief JSON-RPC error fields.
     struct lsp_error_result error;
 };
-static struct lsp_workspace_code_lens_refresh_request*      lsp_init_workspace_code_lens_refresh_request(void *mem, AkU64 tag_id) noexcept;
-static struct lsp_workspace_code_lens_refresh_response*     lsp_init_workspace_code_lens_refresh_response(void *mem, AkU64 tag_id) noexcept;
-static struct lsp_workspace_code_lens_refresh_error_result* lsp_init_workspace_code_lens_refresh_error_result(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_text_document_diagnostic_request*      lsp_init_text_document_diagnostic_request(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_text_document_diagnostic_response*     lsp_init_text_document_diagnostic_response(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_text_document_diagnostic_error_result* lsp_init_text_document_diagnostic_error_result(void *mem, AkU64 tag_id) noexcept;
+
+/// The `textDocument/publishDiagnostics` notification is sent from the server to the client to publish diagnostics for a document.
+struct lsp_text_document_publish_diagnostics_notification {
+    struct lsp_msg_hdr hdr;
+    struct lsp_publish_diagnostics_params params;
+};
+static struct lsp_text_document_publish_diagnostics_notification* lsp_init_text_document_publish_diagnostics_notification(void *mem, AkU64 tag_id) noexcept;
 
 /// \defgroup lsp_document_link_types Document Link Types
 /// \brief Types for document link requests and responses
@@ -1743,25 +1887,7 @@ static struct lsp_text_document_semantic_tokens_range_error_result* lsp_init_tex
 /// The `workspace/semanticTokens/refresh` request is sent from the server to the client to refresh all semantic tokens.
 /// This request has no parameters and the response has no result.
 /// \since 3.16.0
-struct lsp_workspace_semantic_tokens_refresh_request {
-    /// \brief Common message header.
-    struct lsp_msg_hdr hdr;
-};
-/// \brief Response to semantic tokens refresh (null result).
-struct lsp_workspace_semantic_tokens_refresh_response {
-    /// \brief Common message header.
-    struct lsp_msg_hdr hdr;
-};
-/// \brief Error result for semantic tokens refresh.
-struct lsp_workspace_semantic_tokens_refresh_error_result {
-    /// \brief Common message header.
-    struct lsp_msg_hdr hdr;
-    /// \brief JSON-RPC error fields.
-    struct lsp_error_result error;
-};
-static struct lsp_workspace_semantic_tokens_refresh_request*      lsp_init_workspace_semantic_tokens_refresh_request(void *mem, AkU64 tag_id) noexcept;
-static struct lsp_workspace_semantic_tokens_refresh_response*     lsp_init_workspace_semantic_tokens_refresh_response(void *mem, AkU64 tag_id) noexcept;
-static struct lsp_workspace_semantic_tokens_refresh_error_result* lsp_init_workspace_semantic_tokens_refresh_error_result(void *mem, AkU64 tag_id) noexcept;
+// moved to lsp_workspace.hpp
 
 
 /// \ingroup lsp_call_hierarchy_types
@@ -2111,25 +2237,7 @@ static struct lsp_text_document_folding_range_error_result* lsp_init_text_docume
 /// The `workspace/foldingRange/refresh` request is sent from the server to the client to refresh all folding ranges.
 /// This request has no parameters and the response has no result.
 /// \since 3.18.0
-struct lsp_workspace_folding_range_refresh_request {
-    /// \brief Common message header.
-    struct lsp_msg_hdr hdr;
-};
-/// \brief Response to folding range refresh (null result).
-struct lsp_workspace_folding_range_refresh_response {
-    /// \brief Common message header.
-    struct lsp_msg_hdr hdr;
-};
-/// \brief Error result for folding range refresh.
-struct lsp_workspace_folding_range_refresh_error_result {
-    /// \brief Common message header.
-    struct lsp_msg_hdr hdr;
-    /// \brief JSON-RPC error fields.
-    struct lsp_error_result error;
-};
-static struct lsp_workspace_folding_range_refresh_request*      lsp_init_workspace_folding_range_refresh_request(void *mem, AkU64 tag_id) noexcept;
-static struct lsp_workspace_folding_range_refresh_response*     lsp_init_workspace_folding_range_refresh_response(void *mem, AkU64 tag_id) noexcept;
-static struct lsp_workspace_folding_range_refresh_error_result* lsp_init_workspace_folding_range_refresh_error_result(void *mem, AkU64 tag_id) noexcept;
+// moved to lsp_workspace.hpp
 
 /// The `textDocument/linkedEditingRange` request is sent from the client to the server to return linked editing ranges for a position.
 /// The request's parameter is of type {@link TextDocumentPosition} and the response is of type {@link LinkedEditingRanges} or a Thenable that resolves to such.
@@ -2350,25 +2458,7 @@ static struct lsp_text_document_inline_value_error_result* lsp_init_text_documen
 /// The `workspace/inlineValue/refresh` request is sent from the server to the client to refresh all inline values.
 /// This request has no parameters and the response has no result.
 /// \since 3.17.0
-struct lsp_workspace_inline_value_refresh_request {
-    /// \brief Common message header.
-    struct lsp_msg_hdr hdr;
-};
-/// \brief Response to inline value refresh (null result).
-struct lsp_workspace_inline_value_refresh_response {
-    /// \brief Common message header.
-    struct lsp_msg_hdr hdr;
-};
-/// \brief Error result for inline value refresh.
-struct lsp_workspace_inline_value_refresh_error_result {
-    /// \brief Common message header.
-    struct lsp_msg_hdr hdr;
-    /// \brief JSON-RPC error fields.
-    struct lsp_error_result error;
-};
-static struct lsp_workspace_inline_value_refresh_request*      lsp_init_workspace_inline_value_refresh_request(void *mem, AkU64 tag_id) noexcept;
-static struct lsp_workspace_inline_value_refresh_response*     lsp_init_workspace_inline_value_refresh_response(void *mem, AkU64 tag_id) noexcept;
-static struct lsp_workspace_inline_value_refresh_error_result* lsp_init_workspace_inline_value_refresh_error_result(void *mem, AkU64 tag_id) noexcept;
+// moved to lsp_workspace.hpp
 
 /// \defgroup lsp_inlay_hint_types Inlay Hint Types
 /// \brief Types for inlay hint requests and responses
@@ -2442,25 +2532,7 @@ static struct lsp_inlay_hint_resolve_error_result* lsp_init_inlay_hint_resolve_e
 /// The `workspace/inlayHint/refresh` request is sent from the server to the client to refresh all inlay hints.
 /// This request has no parameters and the response has no result.
 /// \since 3.17.0
-struct lsp_workspace_inlay_hint_refresh_request {
-    /// \brief Common message header.
-    struct lsp_msg_hdr hdr;
-};
-/// \brief Response to inlay hint refresh (null result).
-struct lsp_workspace_inlay_hint_refresh_response {
-    /// \brief Common message header.
-    struct lsp_msg_hdr hdr;
-};
-/// \brief Error result for inlay hint refresh.
-struct lsp_workspace_inlay_hint_refresh_error_result {
-    /// \brief Common message header.
-    struct lsp_msg_hdr hdr;
-    /// \brief JSON-RPC error fields.
-    struct lsp_error_result error;
-};
-static struct lsp_workspace_inlay_hint_refresh_request*      lsp_init_workspace_inlay_hint_refresh_request(void *mem, AkU64 tag_id) noexcept;
-static struct lsp_workspace_inlay_hint_refresh_response*     lsp_init_workspace_inlay_hint_refresh_response(void *mem, AkU64 tag_id) noexcept;
-static struct lsp_workspace_inlay_hint_refresh_error_result* lsp_init_workspace_inlay_hint_refresh_error_result(void *mem, AkU64 tag_id) noexcept;
+// moved to lsp_workspace.hpp
 
 /// \defgroup lsp_signature_help_types Signature Help Types
 /// \brief Types for signature help requests and responses

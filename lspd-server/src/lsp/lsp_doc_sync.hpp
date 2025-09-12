@@ -1,6 +1,7 @@
 #pragma once
 
 #include "lsp_basic.hpp" // IWYU pragma: keep
+#include "lsp_dyn.hpp"   // IWYU pragma: keep
 
 /// \file lsp_doc_sync.hpp
 /// \brief Text document synchronization message declarations
@@ -23,6 +24,14 @@ struct lsp_text_document_id {
     struct lsp_uri uri;
     /// \brief Document version.
     int            version;
+};
+
+/// Text document item (moved from lsp_basic.hpp)
+struct lsp_text_document_item {
+    struct lsp_uri    uri;
+    struct lsp_string language_id;
+    int               version;
+    struct lsp_string text;
 };
 
 /// \ingroup lsp_text_document
@@ -157,5 +166,93 @@ static struct lsp_text_document_will_save_wait_until_request*          lsp_init_
 static struct lsp_text_document_will_save_wait_until_partial_response* lsp_init_text_document_will_save_wait_until_partial_response(void *mem, AkU64 tag_id) noexcept;
 static struct lsp_text_document_will_save_wait_until_response*         lsp_init_text_document_will_save_wait_until_response(void *mem, AkU64 tag_id) noexcept;
 static struct lsp_text_document_will_save_wait_until_error_result*     lsp_init_text_document_will_save_wait_until_error_result(void *mem, AkU64 tag_id) noexcept;
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Notebook document types (moved from lsp_basic.hpp)
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+enum lsp_notebook_cell_kind {
+    LSP_NOTEBOOK_CELL_MARKUP = 1,
+    LSP_NOTEBOOK_CELL_CODE = 2
+};
+
+struct lsp_notebook_document_sync_registration_options {
+    bool save;
+};
+
+struct lsp_notebook_document_identifier {
+    struct lsp_uri uri;
+};
+
+struct lsp_versioned_notebook_document_identifier {
+    struct lsp_uri uri;
+    int version;
+};
+
+struct lsp_notebook_cell;
+
+struct lsp_notebook_document {
+    using lsp_notebook_cell_list_t = struct lsp_list<struct lsp_notebook_cell>;
+
+    struct lsp_uri uri;
+    struct lsp_string notebook_type;
+    int version;
+    bool is_dirty;
+    lsp_notebook_cell_list_t* cells;
+};
+
+struct lsp_notebook_cell {
+    enum lsp_notebook_cell_kind kind;
+    struct lsp_list<struct lsp_text_document_item>* documents;
+};
+
+// Notebook notifications params
+struct lsp_did_open_notebook_document_params {
+    struct lsp_notebook_document notebook_document;
+    struct lsp_notebook_document_sync_registration_options cell_text_documents;
+};
+
+struct lsp_did_change_notebook_document_params {
+    struct lsp_versioned_notebook_document_identifier notebook_document;
+    struct lsp_list<struct lsp_notebook_cell>* change; // TODO: define notebook cell changes
+};
+
+struct lsp_did_save_notebook_document_params {
+    struct lsp_notebook_document_identifier notebook_document;
+};
+
+struct lsp_did_close_notebook_document_params {
+    struct lsp_notebook_document_identifier notebook_document;
+    bool save;
+};
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Notebook document notifications
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+/// notebookDocument/didOpen (notification)
+struct lsp_notebook_document_did_open_notification {
+    struct lsp_msg_hdr hdr;
+    struct lsp_did_open_notebook_document_params params;
+};
+/// notebookDocument/didChange (notification)
+struct lsp_notebook_document_did_change_notification {
+    struct lsp_msg_hdr hdr;
+    struct lsp_did_change_notebook_document_params params;
+};
+/// notebookDocument/didSave (notification)
+struct lsp_notebook_document_did_save_notification {
+    struct lsp_msg_hdr hdr;
+    struct lsp_did_save_notebook_document_params params;
+};
+/// notebookDocument/didClose (notification)
+struct lsp_notebook_document_did_close_notification {
+    struct lsp_msg_hdr hdr;
+    struct lsp_did_close_notebook_document_params params;
+};
+static struct lsp_notebook_document_did_open_notification*   lsp_init_notebook_document_did_open_notification(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_notebook_document_did_change_notification* lsp_init_notebook_document_did_change_notification(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_notebook_document_did_save_notification*   lsp_init_notebook_document_did_save_notification(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_notebook_document_did_close_notification*  lsp_init_notebook_document_did_close_notification(void *mem, AkU64 tag_id) noexcept;
 
 

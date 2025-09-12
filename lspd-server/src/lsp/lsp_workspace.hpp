@@ -44,8 +44,8 @@ struct lsp_symbol_information_list {
 /// Parameters for executing a command in the workspace.
 /// Contains the command identifier and optional arguments.
 struct lsp_execute_command_params {
-    lsp_string command;                              ///< Command identifier
-    struct lsp_list<struct lsp_dyn>* arguments;      ///< Command arguments (LSPAny array)
+    lsp_string                       command;   ///< Command identifier
+    struct lsp_list<struct lsp_dyn>* arguments; ///< Command arguments (LSPAny array)
 };
 
 
@@ -56,8 +56,8 @@ struct lsp_execute_command_params {
 /// Parameters for applying a workspace edit.
 /// Contains an optional label and the workspace edit to apply.
 struct lsp_apply_workspace_edit_params {
-    lsp_string label;                    ///< Optional label for the edit
-    struct lsp_workspace_edit edit;      ///< The workspace edit to apply
+    lsp_string label;               ///< Optional label for the edit
+    struct lsp_workspace_edit edit; ///< The workspace edit to apply
 };
 
 /// \ingroup lsp_workspace_types
@@ -66,8 +66,8 @@ struct lsp_apply_workspace_edit_params {
 /// Result of applying a workspace edit.
 /// Indicates whether the edit was successfully applied.
 struct lsp_apply_workspace_edit_result {
-    bool applied;                      ///< Whether the edit was applied
-    lsp_opt_uinteger failure_reason;   ///< Optional failure reason code
+    bool             applied;        ///< Whether the edit was applied
+    lsp_opt_uinteger failure_reason; ///< Optional failure reason code
 };
 
 /// \ingroup lsp_workspace_types
@@ -86,8 +86,8 @@ enum lsp_file_change_type {
 ///
 /// Represents a file system event with the affected file URI and change type.
 struct lsp_file_event {
-    lsp_uri uri;                           ///< Affected file URI
-    enum lsp_file_change_type type;        ///< Type of change
+    enum lsp_file_change_type type; ///< Type of change
+    lsp_uri                   uri;  ///< Affected file URI
 };
 
 /// \ingroup lsp_workspace_types
@@ -351,5 +351,273 @@ struct lsp_did_change_watched_files_params
 {
     struct lsp_file_event_list changes;
 };
+
+// File operation parameter structs (moved from lsp_basic.hpp)
+struct lsp_file_create {
+    lsp_uri uri;
+};
+
+struct lsp_file_rename {
+    lsp_string old_uri;
+    lsp_string new_uri;
+};
+
+struct lsp_file_delete {
+    lsp_uri uri;
+};
+
+struct lsp_create_files_params {
+    struct lsp_list<struct lsp_file_create>* files;
+};
+
+struct lsp_rename_files_params {
+    struct lsp_list<struct lsp_file_rename>* files;
+};
+
+struct lsp_delete_files_params {
+    struct lsp_list<struct lsp_file_delete>* files;
+};
+
+/// Optional workspace edit result
+struct lsp_opt_workspace_edit {
+    int kind;  ///< LSP_OPT_NONE (null) or LSP_OPT_SOME (edit present)
+    struct lsp_workspace_edit value; ///< Edit value (valid if kind == SOME)
+};
+
+/// The `workspace/willCreateFiles` request (client->server) sent before files are created.
+/// Result: WorkspaceEdit | null
+struct lsp_workspace_will_create_files_request {
+    struct lsp_msg_hdr hdr;
+    struct lsp_create_files_params params;
+};
+struct lsp_workspace_will_create_files_response {
+    struct lsp_msg_hdr hdr;
+    struct lsp_opt_workspace_edit result;
+};
+struct lsp_workspace_will_create_files_error_result {
+    struct lsp_msg_hdr hdr;
+    struct lsp_error_result error;
+};
+static struct lsp_workspace_will_create_files_request*      lsp_init_workspace_will_create_files_request(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_will_create_files_response*     lsp_init_workspace_will_create_files_response(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_will_create_files_error_result* lsp_init_workspace_will_create_files_error_result(void *mem, AkU64 tag_id) noexcept;
+
+/// The `workspace/willRenameFiles` request (client->server) sent before files are renamed.
+/// Result: WorkspaceEdit | null
+struct lsp_workspace_will_rename_files_request {
+    struct lsp_msg_hdr hdr;
+    struct lsp_rename_files_params params;
+};
+struct lsp_workspace_will_rename_files_response {
+    struct lsp_msg_hdr hdr;
+    struct lsp_opt_workspace_edit result;
+};
+struct lsp_workspace_will_rename_files_error_result {
+    struct lsp_msg_hdr hdr;
+    struct lsp_error_result error;
+};
+static struct lsp_workspace_will_rename_files_request*      lsp_init_workspace_will_rename_files_request(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_will_rename_files_response*     lsp_init_workspace_will_rename_files_response(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_will_rename_files_error_result* lsp_init_workspace_will_rename_files_error_result(void *mem, AkU64 tag_id) noexcept;
+
+/// The `workspace/willDeleteFiles` request (client->server) sent before files are deleted.
+/// Result: WorkspaceEdit | null
+struct lsp_workspace_will_delete_files_request {
+    struct lsp_msg_hdr hdr;
+    struct lsp_delete_files_params params;
+};
+struct lsp_workspace_will_delete_files_response {
+    struct lsp_msg_hdr hdr;
+    struct lsp_opt_workspace_edit result;
+};
+struct lsp_workspace_will_delete_files_error_result {
+    struct lsp_msg_hdr hdr;
+    struct lsp_error_result error;
+};
+static struct lsp_workspace_will_delete_files_request*      lsp_init_workspace_will_delete_files_request(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_will_delete_files_response*     lsp_init_workspace_will_delete_files_response(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_will_delete_files_error_result* lsp_init_workspace_will_delete_files_error_result(void *mem, AkU64 tag_id) noexcept;
+
+/// The `workspace/didCreateFiles` notification (client->server) after files were created.
+struct lsp_workspace_did_create_files_notification {
+    struct lsp_msg_hdr hdr;
+    struct lsp_create_files_params params;
+};
+static struct lsp_workspace_did_create_files_notification* lsp_init_workspace_did_create_files_notification(void *mem, AkU64 tag_id) noexcept;
+
+/// The `workspace/didRenameFiles` notification (client->server) after files were renamed.
+struct lsp_workspace_did_rename_files_notification {
+    struct lsp_msg_hdr hdr;
+    struct lsp_rename_files_params params;
+};
+static struct lsp_workspace_did_rename_files_notification* lsp_init_workspace_did_rename_files_notification(void *mem, AkU64 tag_id) noexcept;
+
+/// The `workspace/didDeleteFiles` notification (client->server) after files were deleted.
+struct lsp_workspace_did_delete_files_notification {
+    struct lsp_msg_hdr hdr;
+    struct lsp_delete_files_params params;
+};
+static struct lsp_workspace_did_delete_files_notification* lsp_init_workspace_did_delete_files_notification(void *mem, AkU64 tag_id) noexcept;
+
+/// The `workspace/didChangeConfiguration` notification is sent from the client to the server when configuration changes.
+struct lsp_workspace_did_change_configuration_notification {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+    /// \brief Changed configuration parameters.
+    struct lsp_did_change_configuration_params params;
+};
+static struct lsp_workspace_did_change_configuration_notification* lsp_init_workspace_did_change_configuration_notification(void *mem, AkU64 tag_id) noexcept;
+
+/// The `workspace/didChangeWatchedFiles` notification is sent when files are created, changed or deleted.
+struct lsp_workspace_did_change_watched_files_notification {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+    /// \brief File events.
+    struct lsp_did_change_watched_files_params params;
+};
+static struct lsp_workspace_did_change_watched_files_notification* lsp_init_workspace_did_change_watched_files_notification(void *mem, AkU64 tag_id) noexcept;
+
+
+/// The `workspace/codeLens/refresh` request is sent from the server to the client to refresh all code lenses.
+/// This request has no parameters and the response has no result.
+/// \since 3.16.0
+struct lsp_workspace_code_lens_refresh_request {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+};
+/// \brief Response to code lens refresh (null result).
+struct lsp_workspace_code_lens_refresh_response {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+};
+/// \brief Error result for code lens refresh.
+struct lsp_workspace_code_lens_refresh_error_result {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+    /// \brief JSON-RPC error fields.
+    struct lsp_error_result error;
+};
+static struct lsp_workspace_code_lens_refresh_request*      lsp_init_workspace_code_lens_refresh_request(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_code_lens_refresh_response*     lsp_init_workspace_code_lens_refresh_response(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_code_lens_refresh_error_result* lsp_init_workspace_code_lens_refresh_error_result(void *mem, AkU64 tag_id) noexcept;
+
+/// The `workspace/semanticTokens/refresh` request is sent from the server to the client to refresh all semantic tokens.
+/// This request has no parameters and the response has no result.
+/// \since 3.16.0
+struct lsp_workspace_semantic_tokens_refresh_request {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+};
+/// \brief Response to semantic tokens refresh (null result).
+struct lsp_workspace_semantic_tokens_refresh_response {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+};
+/// \brief Error result for semantic tokens refresh.
+struct lsp_workspace_semantic_tokens_refresh_error_result {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+    /// \brief JSON-RPC error fields.
+    struct lsp_error_result error;
+};
+static struct lsp_workspace_semantic_tokens_refresh_request*      lsp_init_workspace_semantic_tokens_refresh_request(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_semantic_tokens_refresh_response*     lsp_init_workspace_semantic_tokens_refresh_response(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_semantic_tokens_refresh_error_result* lsp_init_workspace_semantic_tokens_refresh_error_result(void *mem, AkU64 tag_id) noexcept;
+
+/// The `workspace/foldingRange/refresh` request is sent from the server to the client to refresh all folding ranges.
+/// This request has no parameters and the response has no result.
+/// \since 3.18.0
+struct lsp_workspace_folding_range_refresh_request {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+};
+/// \brief Response to folding range refresh (null result).
+struct lsp_workspace_folding_range_refresh_response {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+};
+/// \brief Error result for folding range refresh.
+struct lsp_workspace_folding_range_refresh_error_result {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+    /// \brief JSON-RPC error fields.
+    struct lsp_error_result error;
+};
+static struct lsp_workspace_folding_range_refresh_request*      lsp_init_workspace_folding_range_refresh_request(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_folding_range_refresh_response*     lsp_init_workspace_folding_range_refresh_response(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_folding_range_refresh_error_result* lsp_init_workspace_folding_range_refresh_error_result(void *mem, AkU64 tag_id) noexcept;
+
+/// The `workspace/inlineValue/refresh` request is sent from the server to the client to refresh all inline values.
+/// This request has no parameters and the response has no result.
+/// \since 3.17.0
+struct lsp_workspace_inline_value_refresh_request {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+};
+/// \brief Response to inline value refresh (null result).
+struct lsp_workspace_inline_value_refresh_response {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+};
+/// \brief Error result for inline value refresh.
+struct lsp_workspace_inline_value_refresh_error_result {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+    /// \brief JSON-RPC error fields.
+    struct lsp_error_result error;
+};
+static struct lsp_workspace_inline_value_refresh_request*      lsp_init_workspace_inline_value_refresh_request(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_inline_value_refresh_response*     lsp_init_workspace_inline_value_refresh_response(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_inline_value_refresh_error_result* lsp_init_workspace_inline_value_refresh_error_result(void *mem, AkU64 tag_id) noexcept;
+
+/// The `workspace/inlayHint/refresh` request is sent from the server to the client to refresh all inlay hints.
+/// This request has no parameters and the response has no result.
+/// \since 3.17.0
+struct lsp_workspace_inlay_hint_refresh_request {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+};
+/// \brief Response to inlay hint refresh (null result).
+struct lsp_workspace_inlay_hint_refresh_response {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+};
+/// \brief Error result for inlay hint refresh.
+struct lsp_workspace_inlay_hint_refresh_error_result {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+    /// \brief JSON-RPC error fields.
+    struct lsp_error_result error;
+};
+static struct lsp_workspace_inlay_hint_refresh_request*      lsp_init_workspace_inlay_hint_refresh_request(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_inlay_hint_refresh_response*     lsp_init_workspace_inlay_hint_refresh_response(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_inlay_hint_refresh_error_result* lsp_init_workspace_inlay_hint_refresh_error_result(void *mem, AkU64 tag_id) noexcept;
+
+/// The `workspace/diagnostic` request is sent from the client to compute diagnostics for the workspace.
+/// Params: WorkspaceDiagnosticParams. Result: WorkspaceDiagnosticReport.
+/// \since 3.17.0
+struct lsp_workspace_diagnostic_request {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+    /// \brief Workspace diagnostic parameters.
+    struct lsp_workspace_diagnostic_params params;
+};
+/// \brief Final workspace diagnostic response.
+struct lsp_workspace_diagnostic_response {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+    /// \brief Workspace diagnostic report.
+    struct lsp_workspace_diagnostic_report result;
+};
+/// \brief Error result for workspace diagnostic request.
+struct lsp_workspace_diagnostic_error_result {
+    /// \brief Common message header.
+    struct lsp_msg_hdr hdr;
+    /// \brief JSON-RPC error fields.
+    struct lsp_error_result error;
+};
+static struct lsp_workspace_diagnostic_request*      lsp_init_workspace_diagnostic_request(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_diagnostic_response*     lsp_init_workspace_diagnostic_response(void *mem, AkU64 tag_id) noexcept;
+static struct lsp_workspace_diagnostic_error_result* lsp_init_workspace_diagnostic_error_result(void *mem, AkU64 tag_id) noexcept;
 
 
