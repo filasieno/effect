@@ -1,12 +1,12 @@
 #pragma once
 
-#include "lspd_basic.hpp"
+#include "lsp_basic.hpp"
 
-/// \file lspd_basic_inl.hpp
+/// \file lsp_basic_inl.hpp
 /// \brief Inline implementations for basic LSP types
 ///
 /// This file contains inline function implementations for the LSP protocol types
-/// defined in lspd_basic.hpp.
+/// defined in lsp_basic.hpp.
 
 // ======================================================================================================================
 // STRING UTILITIES
@@ -17,7 +17,7 @@
 /// \param c_str C string to copy from (must be null-terminated)
 static inline void lsp_string_init(lsp_string* str, const char* c_str) noexcept {
     str->chars = c_str;
-    str->char_len = (int)strlen(c_str);
+    str->length = (int)strlen(c_str);
 }
 
 /// \brief Check if two lsp_strings are equal
@@ -25,8 +25,8 @@ static inline void lsp_string_init(lsp_string* str, const char* c_str) noexcept 
 /// \param b Second string to compare
 /// \return true if strings are equal
 static inline bool lsp_string_equal(const lsp_string* a, const lsp_string* b) noexcept {
-    if (a->char_len != b->char_len) return false;
-    return memcmp(a->chars, b->chars, (size_t)a->char_len) == 0;
+    if (a->length != b->length) return false;
+    return memcmp(a->chars, b->chars, (size_t)a->length) == 0;
 }
 
 // ======================================================================================================================
@@ -247,50 +247,6 @@ static inline const lsp_string* lsp_opt_string_get(const lsp_opt_string* opt) no
 // DYNAMIC VALUE UTILITIES
 // ======================================================================================================================
 
-/// \brief Initialize an lsp_dyn as null
-/// \param dyn Pointer to dynamic value to initialize
-static inline void lsp_dyn_init_null(lsp_dyn* dyn) noexcept {
-    dyn->kind = LSP_DYN_NULL;
-}
-
-/// \brief Initialize an lsp_dyn as boolean
-/// \param dyn Pointer to dynamic value to initialize
-/// \param value Boolean value
-static inline void lsp_dyn_init_bool(lsp_dyn* dyn, bool value) noexcept {
-    dyn->kind = LSP_DYN_BOOLEAN;
-    dyn->value.as_bool = value;
-}
-
-/// \brief Initialize an lsp_dyn as integer
-/// \param dyn Pointer to dynamic value to initialize
-/// \param value Integer value
-static inline void lsp_dyn_init_i64(lsp_dyn* dyn, long long value) noexcept {
-    dyn->kind = LSP_DYN_INTEGER;
-    dyn->value.as_i64 = value;
-}
-
-/// \brief Initialize an lsp_dyn as unsigned integer
-/// \param dyn Pointer to dynamic value to initialize
-/// \param value Unsigned integer value
-static inline void lsp_dyn_init_u64(lsp_dyn* dyn, unsigned long long value) noexcept {
-    dyn->kind = LSP_DYN_UINTEGER;
-    dyn->value.as_u64 = value;
-}
-
-/// \brief Initialize an lsp_dyn as string
-/// \param dyn Pointer to dynamic value to initialize
-/// \param value String value
-static inline void lsp_dyn_init_string(lsp_dyn* dyn, const lsp_string* value) noexcept {
-    dyn->kind = LSP_DYN_STRING;
-    dyn->value.as_string = *value;
-}
-
-/// \brief Get the type of an lsp_dyn value
-/// \param dyn Pointer to dynamic value
-/// \return Dynamic value kind
-static inline lsp_dyn_kind lsp_dyn_get_kind(const lsp_dyn* dyn) noexcept {
-    return (lsp_dyn_kind)dyn->kind;
-}
 
 // ======================================================================================================================
 // ERROR RESULT UTILITIES

@@ -1,7 +1,7 @@
 #pragma once
 #include "ak/base/base_api.hpp"
 
-/// \file lspd_basic.hpp
+/// \file lsp_basic.hpp
 /// \brief Base/common LSP message declarations shared across groups
 
 
@@ -9,7 +9,7 @@
 // File documentation
 // -----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-/// \file lspd_msg.hpp
+/// \file lsp_msg.hpp
 /// \brief LSP Protocol Message Definitions
 ///
 /// This file defines all LSP 3.17 protocol messages for the language server implementation.
@@ -71,11 +71,11 @@
 /// call hierarchy, type hierarchy, and diagnostics.
 
 // All structures have been moved to their respective feature-specific files:
-// - lspd_lifecycle.hpp: initialize, shutdown, initialized, exit
-// - lspd_doc_sync.hpp: text document synchronization
-// - lspd_workspace.hpp: workspace features
-// - lspd_window.hpp: window/UI features
-// - lspd_language.hpp: language features
+// - lsp_lifecycle.hpp: initialize, shutdown, initialized, exit
+// - lsp_doc_sync.hpp: text document synchronization
+// - lsp_workspace.hpp: workspace features
+// - lsp_window.hpp: window/UI features
+// - lsp_language.hpp: language features
 
 /// \ingroup lsp_base_types
 /// \brief Message direction enumeration
@@ -117,50 +117,34 @@ enum lsp_symbol_tag {
 /// Defines all possible kinds of symbols that can be found in source code.
 /// Used to categorize symbols in document symbol responses.
 enum lsp_symbol_kind {
-    LSP_SYMBOL_FILE = 1,           ///< File symbol
-    LSP_SYMBOL_MODULE = 2,         ///< Module symbol
-    LSP_SYMBOL_NAMESPACE = 3,      ///< Namespace symbol
-    LSP_SYMBOL_PACKAGE = 4,        ///< Package symbol
-    LSP_SYMBOL_CLASS = 5,          ///< Class symbol
-    LSP_SYMBOL_METHOD = 6,         ///< Method symbol
-    LSP_SYMBOL_PROPERTY = 7,       ///< Property symbol
-    LSP_SYMBOL_FIELD = 8,          ///< Field symbol
-    LSP_SYMBOL_CONSTRUCTOR = 9,    ///< Constructor symbol
-    LSP_SYMBOL_ENUM = 10,          ///< Enumeration symbol
-    LSP_SYMBOL_INTERFACE = 11,     ///< Interface symbol
-    LSP_SYMBOL_FUNCTION = 12,      ///< Function symbol
-    LSP_SYMBOL_VARIABLE = 13,      ///< Variable symbol
-    LSP_SYMBOL_CONSTANT = 14,      ///< Constant symbol
-    LSP_SYMBOL_STRING = 15,        ///< String symbol
-    LSP_SYMBOL_NUMBER = 16,        ///< Number symbol
-    LSP_SYMBOL_BOOLEAN = 17,       ///< Boolean symbol
-    LSP_SYMBOL_ARRAY = 18,         ///< Array symbol
-    LSP_SYMBOL_OBJECT = 19,        ///< Object symbol
-    LSP_SYMBOL_KEY = 20,           ///< Key symbol
-    LSP_SYMBOL_NULL = 21,          ///< Null symbol
-    LSP_SYMBOL_ENUM_MEMBER = 22,   ///< Enumeration member symbol
-    LSP_SYMBOL_STRUCT = 23,        ///< Structure symbol
-    LSP_SYMBOL_EVENT = 24,         ///< Event symbol
-    LSP_SYMBOL_OPERATOR = 25,      ///< Operator symbol
-    LSP_SYMBOL_TYPE_PARAMETER = 26 ///< Type parameter symbol
+    LSP_SYMBOL_FILE           = 1,   ///< File symbol
+    LSP_SYMBOL_MODULE         = 2,   ///< Module symbol
+    LSP_SYMBOL_NAMESPACE      = 3,   ///< Namespace symbol
+    LSP_SYMBOL_PACKAGE        = 4,   ///< Package symbol
+    LSP_SYMBOL_CLASS          = 5,   ///< Class symbol
+    LSP_SYMBOL_METHOD         = 6,   ///< Method symbol
+    LSP_SYMBOL_PROPERTY       = 7,   ///< Property symbol
+    LSP_SYMBOL_FIELD          = 8,   ///< Field symbol
+    LSP_SYMBOL_CONSTRUCTOR    = 9,   ///< Constructor symbol
+    LSP_SYMBOL_ENUM           = 10,  ///< Enumeration symbol
+    LSP_SYMBOL_INTERFACE      = 11,  ///< Interface symbol
+    LSP_SYMBOL_FUNCTION       = 12,  ///< Function symbol
+    LSP_SYMBOL_VARIABLE       = 13,  ///< Variable symbol
+    LSP_SYMBOL_CONSTANT       = 14,  ///< Constant symbol
+    LSP_SYMBOL_STRING         = 15,  ///< String symbol
+    LSP_SYMBOL_NUMBER         = 16,  ///< Number symbol
+    LSP_SYMBOL_BOOLEAN        = 17,  ///< Boolean symbol
+    LSP_SYMBOL_ARRAY          = 18,  ///< Array symbol
+    LSP_SYMBOL_OBJECT         = 19,  ///< Object symbol
+    LSP_SYMBOL_KEY            = 20,  ///< Key symbol
+    LSP_SYMBOL_NULL           = 21,  ///< Null symbol
+    LSP_SYMBOL_ENUM_MEMBER    = 22,  ///< Enumeration member symbol
+    LSP_SYMBOL_STRUCT         = 23,  ///< Structure symbol
+    LSP_SYMBOL_EVENT          = 24,  ///< Event symbol
+    LSP_SYMBOL_OPERATOR       = 25,  ///< Operator symbol
+    LSP_SYMBOL_TYPE_PARAMETER = 26   ///< Type parameter symbol
 };
 
-/// \ingroup lsp_dynamic_types
-/// \brief Dynamic value type enumeration
-///
-/// Defines all possible types that can be stored in dynamic values.
-/// This enumeration is used as a discriminant in the tagged union.
-///
-enum lsp_dyn_kind {
-    LSP_DYN_NULL = 0,     ///< Null value
-    LSP_DYN_BOOLEAN,      ///< Boolean value
-    LSP_DYN_INTEGER,      ///< Signed 64-bit integer
-    LSP_DYN_UINTEGER,     ///< Unsigned 64-bit integer
-    LSP_DYN_DECIMAL,      ///< Textual decimal representation (lossless)
-    LSP_DYN_STRING,       ///< String value
-    LSP_DYN_ARRAY,        ///< Array of dynamic values
-    LSP_DYN_OBJECT        ///< Object with string keys and dynamic values
-};
 
 
 enum lsp_method_type {
@@ -258,7 +242,7 @@ enum lsp_method_type {
     LSP_METHOD_WORKSPACE_WILL_RENAME_FILES,
     LSP_METHOD_WORKSPACE_WORKSPACE_FOLDERS,
 
-    LSP_METHOD_COUNT
+    LSP_METHOD__COUNT__
 };
 
 
@@ -304,7 +288,7 @@ struct lsp_position {
 
 struct lsp_string {
     const char* chars;
-    int char_len;
+    int         length;
 };
 
 /// \ingroup lsp_base_types
@@ -318,6 +302,10 @@ struct lsp_range {
     struct lsp_position end;    ///< End position of the range (exclusive)
 };
 
+/// \ingroup lsp_base_types
+/// \brief Identifies a location within a Text Resource
+/// \see https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/
+/// \since 3.17.0
 struct lsp_location
 {
     struct lsp_uri   document_uri;
@@ -341,9 +329,7 @@ struct lsp_list {
 /// \ingroup lsp_base_types
 /// \brief Message header for all LSP protocol messages
 /// \details Standard header that prefixes all LSP messages in memory.
-///Provides timing information, reference counting, and message
-///correlation data for the garbage-collected message store.
-///
+/// Provides timing information, reference counting, and message correlation data for the garbage-collected message store.
 struct lsp_msg_hdr {
     AkU64                     timestamp_nanos; ///< Creation timestamp in nanoseconds
     AkU64                     op_tag;          ///< Operation tag combining method and interaction
@@ -360,57 +346,10 @@ struct lsp_msg_hdr {
 /// structures are kept here, while single-use types are defined in their respective
 /// message files.
 ///
-/// \see https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/
-/// \since 3.17.0
 
 
 
-
-/// \defgroup lsp_dynamic_types Dynamic Types
-/// \brief JSON-like dynamic value system for LSP protocol
-/// 
-/// Provides a type-safe way to represent JSON-like values without using
-/// floating-point numbers (doubles). Uses discriminated unions and
-/// tagged types for memory safety and performance.
-/// 
-
-struct lsp_dyn_decimal {
-    lsp_string repr; // textual, lossless
-};
-
-struct lsp_dyn; // fwd
-
-struct lsp_dyn_array {
-    struct lsp_list<struct lsp_dyn *> *head;
-    int count;
-};
-
-struct lsp_dyn_obj_entry {
-    lsp_string key;
-    struct lsp_dyn *value;
-    struct lsp_dyn_obj_entry *next;
-};
-
-struct lsp_dyn_object {
-    struct lsp_dyn_obj_entry **buckets;
-    int capacity;
-    int size;
-};
-
-struct lsp_dyn {
-    int kind; // lsp_dyn_kind
-    union {
-        bool as_bool;
-        long long as_i64;
-        unsigned long long as_u64;
-        lsp_dyn_decimal as_decimal;
-        lsp_string as_string;
-        lsp_dyn_array as_array;
-        lsp_dyn_object as_object;
-    } value;
-};
-
-// moved to lspd_language.hpp
+// moved to lsp_language.hpp
 
 /// \defgroup lsp_optional_types Optional Types
 /// \brief Tagged optional value types
@@ -512,14 +451,14 @@ struct lsp_error_result {
     struct lsp_opt_string message;   ///< Optional error message
 };
 
-// moved to lspd_window.hpp
+// moved to lsp_window.hpp
 
 
-// moved to lspd_workspace.hpp
+// moved to lsp_workspace.hpp
 
-// moved to lspd_window.hpp
+// moved to lsp_window.hpp
 
-// moved to lspd_window.hpp
+// moved to lsp_window.hpp
 
 /// \ingroup lsp_document_symbol_types
 /// \brief Symbol tags list
@@ -535,7 +474,7 @@ struct lsp_symbol_tags {
 
 
 /// Completion item kind enumeration
-// moved to lspd_language.hpp
+// moved to lsp_language.hpp
 
 /// \ingroup lsp_document_types
 /// \brief Text document identifier
@@ -653,7 +592,8 @@ struct lsp_inlay_hint_label_part {
     struct lsp_opt_string  location_present;
     struct lsp_location    location; // valid if present
     struct lsp_opt_string  command_present;
-    struct lsp_dyn         command; // valid if present
+    
+    // struct lsp_dyn         command; // valid if present
 };
 
 /// Inlay hint label union
@@ -799,7 +739,8 @@ struct lsp_workspace_folders_change_event {
 
 /// Did change configuration parameters
 struct lsp_did_change_configuration_params {
-    struct lsp_dyn settings;
+    // TODO: Configuration Params
+    // struct lsp_dyn settings;
 };
 
 // /// Did change watched files parameters
@@ -824,7 +765,8 @@ struct lsp_publish_diagnostics_params {
 
 /// Telemetry event parameters
 struct lsp_telemetry_event_params {
-    struct lsp_dyn data;
+    // TODO: Telemetry event params
+    // struct lsp_dyn data;
 };
 
 /// Set trace notification parameters
@@ -840,13 +782,15 @@ struct lsp_log_trace_params {
 
 /// Cancel request parameters
 struct lsp_cancel_params {
-    lsp_dyn id; // number | string
+    // TODO: Telemetry event params
+    // lsp_dyn id; // number | string
 };
 
 /// Progress parameters
 struct lsp_progress_params {
-    lsp_dyn        token; // ProgressToken
-    struct lsp_dyn value; // LSPAny
+
+    // struct lsp_dyn token; // ProgressToken
+    // struct lsp_dyn value; // LSPAny
 };
 
 /// Client register capability parameters
@@ -861,14 +805,24 @@ struct lsp_unregisteration_params {
 
 // Placeholder structures
 struct lsp_registration {
-    lsp_string     id;
-    lsp_string     method;
-    struct lsp_dyn register_options;
+    struct lsp_string id;
+    struct lsp_string method;
+    // struct lsp_dyn register_options;
 };
 
 struct lsp_unregisteration {
     lsp_string id;
     lsp_string method;
+};
+
+/// \ingroup lsp_workspace_types
+/// \brief Workspace edit structure
+///
+/// Represents a set of changes to be applied to the workspace.
+/// Contains document changes and deprecated changes field.
+struct lsp_workspace_edit {
+    struct lsp_list<struct lsp_text_document_edit>* document_changes;  ///< Document-specific changes
+    struct lsp_list<struct lsp_text_edit>* changes;                    ///< Deprecated changes (use document_changes)
 };
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -997,23 +951,24 @@ struct lsp_notebook_document_sync_registration_options {
     bool save;
 };
 
-
 // Placeholder structures for notebook documents
 struct lsp_notebook_document {
-    lsp_uri uri;
-    lsp_string notebook_type;
+    using lsp_notebook_cell_list_t = struct lsp_list<struct lsp_notebook_cell>;
+
+    struct lsp_uri uri;
+    struct lsp_string notebook_type;
     int version;
     bool is_dirty;
-    struct lsp_list<struct lsp_notebook_cell>* cells;
+    lsp_notebook_cell_list_t* cells;
 };
 
 struct lsp_notebook_document_identifier {
-    lsp_uri uri;
+    struct lsp_uri uri;
 };
 
 struct lsp_versioned_notebook_document_identifier {
+    struct lsp_uri uri;
     int version;
-    lsp_uri uri;
 };
 
 /// Did open notebook document parameters
@@ -1052,8 +1007,10 @@ struct lsp_notebook_cell {
 
 /// Code action result
 struct lsp_code_action_result {
+    using lsp_code_action_list_t = struct lsp_list<struct lsp_code_action>;
+
     int kind; // LSP_OPT_NONE or LSP_OPT_SOME
-    struct lsp_list<struct lsp_code_action>* value; // valid if kind == SOME
+    lsp_code_action_list_t* value; // valid if kind == SOME
 };
 
 /// Code action disabled reason
@@ -1062,23 +1019,34 @@ struct lsp_code_action_disabled {
 };
 
 
-
-
 /// \ingroup lsp_document_symbol_types
 /// \brief Symbol information (flat)
 ///
 /// Flat representation of a symbol with location information.
 /// Used for workspace-wide symbol operations.
 struct lsp_symbol_information {
-    lsp_string name;                ///< Symbol name
-    enum lsp_symbol_kind kind;      ///< Symbol kind
-    struct lsp_symbol_tags tags;    ///< Symbol tags
-    lsp_opt_string container_name;  ///< Optional container name
-    struct lsp_location location;   ///< Symbol location
+    lsp_string             name;            ///< Symbol name
+    enum lsp_symbol_kind   kind;            ///< Symbol kind
+    struct lsp_symbol_tags tags;            ///< Symbol tags
+    lsp_opt_string         container_name;  ///< Optional container name
+    struct lsp_location    location;        ///< Symbol location
 };
 
 struct lsp_text_document_position_params  {
     struct lsp_text_document_identifier text_document;
     struct lsp_position                 position;
+};
+
+/// \ingroup lsp_color_types
+/// \brief Color representation (RGBA)
+///
+/// Represents a color with red, green, blue, and alpha components.
+/// All components are stored as unsigned shorts in the range 0-65535,
+/// representing values from 0.0 to 1.0.
+struct lsp_color {
+    unsigned short red;    ///< Red component (0-65535, maps to 0.0-1.0)
+    unsigned short green;  ///< Green component (0-65535, maps to 0.0-1.0)
+    unsigned short blue;   ///< Blue component (0-65535, maps to 0.0-1.0)
+    unsigned short alpha;  ///< Alpha component (0-65535, maps to 0.0-1.0)
 };
 

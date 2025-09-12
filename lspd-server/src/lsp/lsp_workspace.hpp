@@ -1,9 +1,8 @@
 #pragma once
 
-#include "lspd_basic.hpp" // IWYU pragma: keep
+#include "lsp_basic.hpp" // IWYU pragma: keep
+#include "lsp_dyn.hpp"
 
-/// \file lspd_workspace.hpp
-/// \brief Workspace feature message declarations (symbols, applyEdit, file ops, config)
 
 /// \defgroup lsp_workspace_types Workspace Types
 /// \brief Types for workspace-level operations and features
@@ -49,15 +48,7 @@ struct lsp_execute_command_params {
     struct lsp_list<struct lsp_dyn>* arguments;      ///< Command arguments (LSPAny array)
 };
 
-/// \ingroup lsp_workspace_types
-/// \brief Workspace edit structure
-///
-/// Represents a set of changes to be applied to the workspace.
-/// Contains document changes and deprecated changes field.
-struct lsp_workspace_edit {
-    struct lsp_list<struct lsp_text_document_edit>* document_changes;  ///< Document-specific changes
-    struct lsp_list<struct lsp_text_edit>* changes;                    ///< Deprecated changes (use document_changes)
-};
+
 
 /// \ingroup lsp_workspace_types
 /// \brief Apply workspace edit parameters

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lspd_basic.hpp"
+#include "lsp_basic.hpp"
 
 /// \ingroup lsp_base_types
 /// \brief Opaque reference to a message in the GC-managed store

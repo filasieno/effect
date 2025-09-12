@@ -1,8 +1,9 @@
 #pragma once
 
-#include "lspd_basic.hpp" // IWYU pragma: keep
+#include "lsp_basic.hpp" // IWYU pragma: keep
+#include "lsp_dyn.hpp"   // IWYU pragma: keep
 
-/// \file lspd_misc.hpp
+/// \file lsp_misc.hpp
 /// \brief Miscellaneous message declarations (progress, telemetry, cancel, registration)
 
 // ======================================================================================================================
@@ -449,12 +450,4 @@ struct lsp_execute_command_result {
     struct lsp_dyn result;  ///< Command result (LSPAny)
 };
 
-/// \brief Workspace edit
-///
-/// Represents a set of changes to be applied to the workspace.
-/// Contains document changes and deprecated changes field.
-struct lsp_workspace_edit {
-    struct lsp_list<struct lsp_text_document_edit>* document_changes;  ///< Document-specific changes
-    struct lsp_list<struct lsp_text_edit>* changes;                    ///< Deprecated changes (use document_changes)
-};
 

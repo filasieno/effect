@@ -1,8 +1,8 @@
 #pragma once
 
-#include "lspd_basic.hpp" // IWYU pragma: keep
+#include "lsp_basic.hpp" // IWYU pragma: keep
 
-/// \file lspd_doc_sync.hpp
+/// \file lsp_doc_sync.hpp
 /// \brief Text document synchronization message declarations
 ///
 /// This file contains LSP messages related to text document synchronization,

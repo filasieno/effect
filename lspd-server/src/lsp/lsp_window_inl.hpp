@@ -1,8 +1,8 @@
 #pragma once
 
-#include "lspd_window.hpp" // IWYU pragma: keep
+#include "lsp_window.hpp" // IWYU pragma: keep
 
-/// \file lspd_window_inl.hpp
+/// \file lsp_window_inl.hpp
 /// \brief Window and UI message inline implementations
 
 static inline struct lsp_window_show_document_request* lsp_init_window_show_document_request(void *mem, AkU64 tag_id) noexcept {

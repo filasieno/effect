@@ -1,8 +1,8 @@
 #pragma once
 
-#include "lspd_basic.hpp" // IWYU pragma: keep
+#include "lsp_basic.hpp" // IWYU pragma: keep
 
-/// \file lspd_window.hpp
+/// \file lsp_window.hpp
 /// \brief Window and UI message declarations (showMessage, logMessage, showDocument)
 ///
 /// This file contains LSP messages related to window and user interface interactions,

@@ -1,8 +1,9 @@
 #pragma once
 
-#include "lspd_basic.hpp" // IWYU pragma: keep
+#include "lsp_basic.hpp" // IWYU pragma: keep
+#include "lsp_dyn.hpp"   // IWYU pragma: keep
 
-/// \file lspd_lifecycle.hpp
+/// \file lsp_lifecycle.hpp
 /// \brief LSP lifecycle message declarations (initialize, shutdown, exit)
 
 /// Initialize params/result and request/response/error

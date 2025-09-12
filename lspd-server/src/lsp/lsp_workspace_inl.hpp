@@ -1,8 +1,8 @@
 #pragma once
 
-#include "lspd_workspace.hpp" // IWYU pragma: keep
+#include "lsp_workspace.hpp" // IWYU pragma: keep
 
-/// \file lspd_workspace_inl.hpp
+/// \file lsp_workspace_inl.hpp
 /// \brief Workspace feature message inline implementations
 
 static inline struct lsp_workspace_symbol_request* lsp_init_workspace_symbol_request(void *mem, AkU64 tag_id) noexcept {

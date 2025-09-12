@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lspd_basic.hpp"
+#include "lsp_basic.hpp"
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
@@ -40,7 +40,7 @@ static inline void lsp_method_map_init(lsp_method_map* map, lsp_method_map_entry
     map->capacity = capacity;
     for (std::size_t i = 0; i < capacity; ++i) {
         map->buckets[i].key = nullptr;
-        map->buckets[i].value = LSP_METHOD_COUNT;
+        map->buckets[i].value = LSP_METHOD__COUNT__;
     }
 }
 
@@ -67,20 +67,20 @@ static inline bool lsp_method_map_put(lsp_method_map* map, const char* key, lsp_
 
 static inline lsp_method_type lsp_method_map_get(const lsp_method_map* map, const char* key) noexcept {
     std::size_t cap = map->capacity;
-    if (cap == 0) { return LSP_METHOD_COUNT; }
+    if (cap == 0) { return LSP_METHOD__COUNT__; }
     std::uint64_t h = lsp_fnv1a64(key);
     std::size_t idx = (std::size_t)(h % cap);
     for (std::size_t probe = 0; probe < cap; ++probe) {
         std::size_t i = (idx + probe) % cap;
         const char* k = map->buckets[i].key;
         if (k == nullptr) {
-            return LSP_METHOD_COUNT;
+            return LSP_METHOD__COUNT__;
         }
         if (std::strcmp(k, key) == 0) {
             return map->buckets[i].value;
         }
     }
-    return LSP_METHOD_COUNT;
+    return LSP_METHOD__COUNT__;
 }
 
 // Two direction-specific maps

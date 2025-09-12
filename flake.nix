@@ -176,7 +176,7 @@
             shellHook = ''
               export PROJECT_ROOT=$(git rev-parse --show-toplevel)
               export LIBAK_ROOT="$PROJECT_ROOT/libak"
-              export LSPD_ROOT="$PROJECT_ROOT/lspd"
+              export lsp_ROOT="$PROJECT_ROOT/lspd"
               export TERM=xterm-256color
               export COMPILER="clang++"
               export CC="clang++"

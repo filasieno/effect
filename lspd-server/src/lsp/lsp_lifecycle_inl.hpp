@@ -1,12 +1,12 @@
 #pragma once
 
-#include "lspd_lifecycle.hpp"
+#include "lsp_lifecycle.hpp"
 
-/// \file lspd_lifecycle_inl.hpp
+/// \file lsp_lifecycle_inl.hpp
 /// \brief Inline implementations for lifecycle LSP types
 ///
 /// This file contains inline function implementations for the LSP lifecycle types
-/// defined in lspd_lifecycle.hpp.
+/// defined in lsp_lifecycle.hpp.
 
 // ======================================================================================================================
 // INITIALIZE REQUEST/RESPONSE UTILITIES

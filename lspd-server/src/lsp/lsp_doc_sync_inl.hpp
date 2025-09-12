@@ -1,12 +1,12 @@
 #pragma once
 
-#include "lspd_doc_sync.hpp"
+#include "lsp_doc_sync.hpp"
 
-/// \file lspd_doc_sync_inl.hpp
+/// \file lsp_doc_sync_inl.hpp
 /// \brief Inline implementations for document synchronization LSP types
 ///
 /// This file contains inline function implementations for the LSP document synchronization types
-/// defined in lspd_doc_sync.hpp.
+/// defined in lsp_doc_sync.hpp.
 
 // ======================================================================================================================
 // TEXT DOCUMENT IDENTIFIER UTILITIES

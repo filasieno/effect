@@ -12,9 +12,9 @@ libak_source_dir := $(PROJECT_DIR)/libak/src
 libak_test_dir   := $(PROJECT_DIR)/libak/test
 
 # lspd server project
-lspd_server_build_dir  := $(PROJECT_DIR)/build/lspd-server
-lspd_server_source_dir := $(PROJECT_DIR)/lspd-server/src
-lspd_server_bin_dir    := $(lspd_server_build_dir)/bin
+lsp_server_build_dir  := $(PROJECT_DIR)/build/lspd-server
+lsp_server_source_dir := $(PROJECT_DIR)/lspd-server/src
+lsp_server_bin_dir    := $(lsp_server_build_dir)/bin
 
 # Default values
 CONFIG ?= debug
@@ -37,7 +37,7 @@ CXXFLAGS += -mavx2 -mbmi -mbmi2 -fPIC
 CXXFLAGS += $(TARGET_ARCH)
 CXXFLAGS += -I$(libak_source_dir)
 CXXFLAGS += -I$(libak_test_dir)
-CXXFLAGS += -I$(lspd_server_source_dir)
+CXXFLAGS += -I$(lsp_server_source_dir)
 
 # Optional dependency discovery
 PKGCONFIG := $(shell command -v pkg-config 2>/dev/null)
@@ -70,13 +70,13 @@ endif
 ifeq ($(ENABLE_PCH),yes)
   PCH           = $(libak_build_dir)/precompiled.pch
   PCH_FLAG      = -include-pch $(PCH)
-  LSPD_PCH      = $(lspd_server_build_dir)/precompiled.pch
-  LSPD_PCH_FLAG = -include-pch $(LSPD_PCH)
+  lsp_PCH      = $(lsp_server_build_dir)/precompiled.pch
+  lsp_PCH_FLAG = -include-pch $(lsp_PCH)
 else
   PCH           =
   PCH_FLAG      =
-  LSPD_PCH      =
-  LSPD_PCH_FLAG =
+  lsp_PCH      =
+  lsp_PCH_FLAG =
 endif
 
 ifdef LIBARGTABLE
@@ -130,10 +130,10 @@ $(libak_build_dir)/test/%.o: $(libak_test_dir)/%.cpp $(PCH) | $(libak_build_dir)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(PCH_FLAG) $(DEPFLAGS) -c $< -o $@
 
 # lspd-server build directory
-$(lspd_server_build_dir):
+$(lsp_server_build_dir):
 	mkdir -p $@
 
-$(lspd_server_bin_dir): | $(lspd_server_build_dir)
+$(lsp_server_bin_dir): | $(lsp_server_build_dir)
 	mkdir -p $@
 
 # Doxygen
@@ -152,8 +152,8 @@ $(PCH): $(libak_source_dir)/precompiled.hpp | $(libak_build_dir)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -x c++-header $< -o $@
 endif
 
-ifneq ($(LSPD_PCH),)
-$(LSPD_PCH): $(lspd_server_source_dir)/precompiled.hpp | $(lspd_server_build_dir)
+ifneq ($(lsp_PCH),)
+$(lsp_PCH): $(lsp_server_source_dir)/precompiled.hpp | $(lsp_server_build_dir)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -x c++-header $< -o $@
 endif
 
@@ -256,18 +256,18 @@ $(libak_build_dir)/test_storage: $(test_storage_objects) $(libak_build_dir)/liba
 # ------------------------------------------------------------------------------------------------------------------------------
 
 # Pattern rule for lspd-server objects (placed under obj/ to avoid name clash with executable)
-$(lspd_server_build_dir)/obj/%.o: $(lspd_server_source_dir)/%.cpp $(LSPD_PCH) | $(lspd_server_build_dir)
+$(lsp_server_build_dir)/obj/%.o: $(lsp_server_source_dir)/%.cpp $(lsp_PCH) | $(lsp_server_build_dir)
 	@mkdir -p $(@D)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(LSPD_PCH_FLAG) $(DEPFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(lsp_PCH_FLAG) $(DEPFLAGS) -c $< -o $@
 
-lspd_server_sources := $(shell find $(lspd_server_source_dir)/lspd -name "*.cpp")
-lspd_server_objects := $(patsubst $(lspd_server_source_dir)/%.cpp, $(lspd_server_build_dir)/obj/%.o, $(lspd_server_sources))
+lsp_server_sources := $(shell find $(lsp_server_source_dir)/lspd -name "*.cpp")
+lsp_server_objects := $(patsubst $(lsp_server_source_dir)/%.cpp, $(lsp_server_build_dir)/obj/%.o, $(lsp_server_sources))
 
-$(lspd_server_bin_dir)/lspd: $(lspd_server_objects) $(libak_build_dir)/libak_base.a $(libak_build_dir)/libak_runtime.a $(libak_build_dir)/libak_alloc.a $(libak_build_dir)/libak_sync.a | $(lspd_server_bin_dir)
+$(lsp_server_bin_dir)/lspd: $(lsp_server_objects) $(libak_build_dir)/libak_base.a $(libak_build_dir)/libak_runtime.a $(libak_build_dir)/libak_alloc.a $(libak_build_dir)/libak_sync.a | $(lsp_server_bin_dir)
 	$(CXX) $(LDFLAGS) -L$(libak_build_dir) $^ -luring -largtable3 -o $@
 
 .PHONY: lspd
-lspd:: $(lspd_server_bin_dir)/lspd
+lspd:: $(lsp_server_bin_dir)/lspd
 
 # ==============================================================================================================================
 # Test
@@ -321,7 +321,7 @@ all_objects      := $(base_objects) $(alloc_objects) $(runtime_objects) $(sync_o
 
 -include $(all_objects:.o=.d)
 -include $(all_test_objects:.o=.d)
- -include $(lspd_server_objects:.o=.d)
+ -include $(lsp_server_objects:.o=.d)
 
 # ==============================================================================================================================
 # Libraries
@@ -353,5 +353,5 @@ all:: lspd
 .PHONY: clean
 clean::
 	rm -rf $(libak_build_dir)
-	rm -rf $(lspd_server_build_dir)
+	rm -rf $(lsp_server_build_dir)
 

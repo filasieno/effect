@@ -1,15 +1,7 @@
 #pragma once
 
-#include "lspd_basic.hpp" // IWYU pragma: keep
-#include "lspd_misc.hpp"  // IWYU pragma: keep
-
-/// \file lspd_language.hpp
-/// \brief Language feature message declarations (hover, completion, etc.)
-///
-/// This header organizes language feature messages following the
-/// specification's language features order for clarity and navigation.
-/// Types are organized in topological order (dependencies first) and
-/// grouped by related functionality.
+#include "lsp_basic.hpp" // IWYU pragma: keep
+#include "lsp_dyn.hpp"   // IWYU pragma: keep
 
 /// \defgroup lsp_language_features Language Features
 /// \brief Language-intelligence features and related messages
@@ -1491,6 +1483,17 @@ static struct lsp_text_document_on_type_formatting_request*      lsp_init_text_d
 static struct lsp_text_document_on_type_formatting_response*     lsp_init_text_document_on_type_formatting_response(void *mem, AkU64 tag_id) noexcept;
 static struct lsp_text_document_on_type_formatting_error_result* lsp_init_text_document_on_type_formatting_error_result(void *mem, AkU64 tag_id) noexcept;
 
+
+/// \ingroup lsp_document_types
+/// \brief Rename parameters
+///
+/// Parameters for a rename request, containing the position to rename
+/// and the new name to use.
+struct lsp_rename_params {
+    struct lsp_text_document_position_params text_document_position;  ///< Position to rename
+    lsp_string new_name;                                              ///< New name for the symbol
+};
+
 /// The `textDocument/rename` request is sent from the client to the server to perform a workspace-wide rename of a symbol.
 /// The request's parameter is of type {@link RenameParams} and the response is of type {@link WorkspaceEdit} or a Thenable that resolves to such.
 /// \since 3.0.0
@@ -1501,6 +1504,7 @@ struct lsp_text_document_rename_request {
     // forward-declared below; ensure full definition appears before usage
     struct lsp_rename_params params;
 };
+
 /// \brief Final rename response.
 struct lsp_text_document_rename_response {
     /// \brief Common message header.
@@ -1508,6 +1512,8 @@ struct lsp_text_document_rename_response {
     /// \brief Workspace edit with changes or null.
     struct lsp_workspace_edit result;
 };
+
+
 /// \brief Error result for rename request.
 struct lsp_text_document_rename_error_result {
     /// \brief Common message header.
@@ -1528,6 +1534,23 @@ struct lsp_text_document_prepare_rename_request {
     /// \brief Text document position for prepare rename.
     struct lsp_text_document_position_params params;
 };
+
+/// \ingroup lsp_document_types
+/// \brief Prepare rename result union
+///
+/// Union type representing the result of a prepare rename request.
+/// Can contain a range or a range with placeholder text.
+struct lsp_prepare_rename_result {
+    int kind;  ///< lsp_prepare_rename_result_kind discriminant
+    union {
+        lsp_range range;                           ///< Range (if kind == LSP_PREP_RENAME_RANGE)
+        struct {
+            lsp_range range;                       ///< Range
+            lsp_string placeholder;                ///< Placeholder text
+        } range_with_placeholder;                   ///< Range with placeholder (if kind == LSP_PREP_RENAME_RANGE_WITH_PLACEHOLDER)
+    } value;
+};
+
 /// \brief Final prepare rename response.
 struct lsp_text_document_prepare_rename_response {
     /// \brief Common message header.
@@ -1536,6 +1559,7 @@ struct lsp_text_document_prepare_rename_response {
     // forward-declared below; ensure full definition appears before usage
     struct lsp_prepare_rename_result result;
 };
+
 /// \brief Error result for prepare rename request.
 struct lsp_text_document_prepare_rename_error_result {
     /// \brief Common message header.
@@ -1739,6 +1763,17 @@ static struct lsp_workspace_semantic_tokens_refresh_request*      lsp_init_works
 static struct lsp_workspace_semantic_tokens_refresh_response*     lsp_init_workspace_semantic_tokens_refresh_response(void *mem, AkU64 tag_id) noexcept;
 static struct lsp_workspace_semantic_tokens_refresh_error_result* lsp_init_workspace_semantic_tokens_refresh_error_result(void *mem, AkU64 tag_id) noexcept;
 
+
+/// \ingroup lsp_call_hierarchy_types
+/// \brief Call hierarchy item list
+///
+/// Contains a list of call hierarchy items.
+/// Used as the result of prepare call hierarchy requests.
+struct lsp_call_hierarchy_item_list {
+    struct lsp_list<struct lsp_call_hierarchy_item>* head;  ///< List of call hierarchy items
+    int count;                                              ///< Number of items
+};
+
 /// The `textDocument/prepareCallHierarchy` request is sent from the client to the server to prepare for call hierarchy computation.
 /// The request's parameter is of type {@link TextDocumentPosition} and the response is of type {@link CallHierarchyItem CallHierarchyItem[]} or a Thenable that resolves to such.
 /// \since 3.16.0
@@ -1788,15 +1823,7 @@ struct lsp_call_hierarchy_item {
     lsp_opt_string data;                  ///< Optional data
 };
 
-/// \ingroup lsp_call_hierarchy_types
-/// \brief Call hierarchy item list
-///
-/// Contains a list of call hierarchy items.
-/// Used as the result of prepare call hierarchy requests.
-struct lsp_call_hierarchy_item_list {
-    struct lsp_list<struct lsp_call_hierarchy_item>* head;  ///< List of call hierarchy items
-    int count;                                              ///< Number of items
-};
+
 
 /// \ingroup lsp_call_hierarchy_types
 /// \brief Call hierarchy incoming calls parameters
@@ -1908,6 +1935,23 @@ static struct lsp_call_hierarchy_outgoing_calls_request*      lsp_init_call_hier
 static struct lsp_call_hierarchy_outgoing_calls_response*     lsp_init_call_hierarchy_outgoing_calls_response(void *mem, AkU64 tag_id) noexcept;
 static struct lsp_call_hierarchy_outgoing_calls_error_result* lsp_init_call_hierarchy_outgoing_calls_error_result(void *mem, AkU64 tag_id) noexcept;
 
+/// \ingroup lsp_color_types
+/// \brief Color information list
+///
+/// Contains all colors found in a document.
+struct lsp_color_information_list {
+    struct lsp_list<struct lsp_color_information>* head;  ///< List of color information
+    int count;                                             ///< Number of color information entries
+};
+
+/// \ingroup lsp_color_types
+/// \brief Document color parameters
+///
+/// Parameters for a document color request.
+struct lsp_document_color_params {
+    struct lsp_text_document_identifier text_document;  ///< Document to analyze
+};
+
 /// The `textDocument/documentColor` request is sent from the client to the server to list all color references in a given text document.
 /// The request's parameter is of type {@link DocumentColorParams} and the response is of type {@link ColorInformation ColorInformation[]} or a Thenable that resolves to such.
 /// \since 3.6.0
@@ -1917,6 +1961,7 @@ struct lsp_text_document_document_color_request {
     /// \brief Document color parameters.
     struct lsp_document_color_params params;
 };
+
 /// \brief Final document colors response.
 struct lsp_text_document_document_color_response {
     /// \brief Common message header.
@@ -1924,6 +1969,7 @@ struct lsp_text_document_document_color_response {
     /// \brief Array of color information.
     struct lsp_color_information_list result;
 };
+
 /// \brief Error result for document color request.
 struct lsp_text_document_document_color_error_result {
     /// \brief Common message header.
@@ -1935,6 +1981,17 @@ static struct lsp_text_document_document_color_request*      lsp_init_text_docum
 static struct lsp_text_document_document_color_response*     lsp_init_text_document_document_color_response(void *mem, AkU64 tag_id) noexcept;
 static struct lsp_text_document_document_color_error_result* lsp_init_text_document_document_color_error_result(void *mem, AkU64 tag_id) noexcept;
 
+/// \ingroup lsp_color_types
+/// \brief Color presentation parameters
+///
+/// Parameters for a color presentation request, containing the
+/// color to present and the range it applies to.
+struct lsp_color_presentation_params {
+    struct lsp_text_document_identifier text_document;  ///< Document containing the color
+    struct lsp_color color;                             ///< Color to present
+    struct lsp_range range;                             ///< Range where color appears
+};
+
 /// The `textDocument/colorPresentation` request is sent from the client to the server to request color presentations for a color.
 /// The request's parameter is of type {@link ColorPresentationParams} and the response is of type {@link ColorPresentation ColorPresentation[]} or a Thenable that resolves to such.
 /// \since 3.6.0
@@ -1944,6 +2001,16 @@ struct lsp_text_document_color_presentation_request {
     /// \brief Color presentation parameters.
     struct lsp_color_presentation_params params;
 };
+
+/// \ingroup lsp_color_types
+/// \brief Color presentation list
+///
+/// Contains all possible presentations for a color.
+struct lsp_color_presentation_list {
+    struct lsp_list<struct lsp_color_presentation>* head;  ///< List of presentations
+    int count;                                             ///< Number of presentations
+};
+
 /// \brief Final color presentations response.
 struct lsp_text_document_color_presentation_response {
     /// \brief Common message header.
@@ -1951,6 +2018,7 @@ struct lsp_text_document_color_presentation_response {
     /// \brief Array of color presentations.
     struct lsp_color_presentation_list result;
 };
+
 /// \brief Error result for color presentation request.
 struct lsp_text_document_color_presentation_error_result {
     /// \brief Common message header.
@@ -1958,6 +2026,7 @@ struct lsp_text_document_color_presentation_error_result {
     /// \brief JSON-RPC error fields.
     struct lsp_error_result error;
 };
+
 static struct lsp_text_document_color_presentation_request*      lsp_init_text_document_color_presentation_request(void *mem, AkU64 tag_id) noexcept;
 static struct lsp_text_document_color_presentation_response*     lsp_init_text_document_color_presentation_response(void *mem, AkU64 tag_id) noexcept;
 static struct lsp_text_document_color_presentation_error_result* lsp_init_text_document_color_presentation_error_result(void *mem, AkU64 tag_id) noexcept;
@@ -2609,15 +2678,7 @@ struct lsp_diagnostic_related_information {
 //     lsp_position position;                               ///< Position within document
 // };
 
-/// \ingroup lsp_document_types
-/// \brief Rename parameters
-///
-/// Parameters for a rename request, containing the position to rename
-/// and the new name to use.
-struct lsp_rename_params {
-    struct lsp_text_document_position_params text_document_position;  ///< Position to rename
-    lsp_string new_name;                                              ///< New name for the symbol
-};
+
 
 /// \ingroup lsp_document_types
 /// \brief Prepare rename result kind enumeration
@@ -2630,21 +2691,7 @@ enum lsp_prepare_rename_result_kind {
     LSP_PREP_RENAME_RANGE_WITH_PLACEHOLDER ///< Range with placeholder text
 };
 
-/// \ingroup lsp_document_types
-/// \brief Prepare rename result union
-///
-/// Union type representing the result of a prepare rename request.
-/// Can contain a range or a range with placeholder text.
-struct lsp_prepare_rename_result {
-    int kind;  ///< lsp_prepare_rename_result_kind discriminant
-    union {
-        lsp_range range;                           ///< Range (if kind == LSP_PREP_RENAME_RANGE)
-        struct {
-            lsp_range range;                       ///< Range
-            lsp_string placeholder;                ///< Placeholder text
-        } range_with_placeholder;                   ///< Range with placeholder (if kind == LSP_PREP_RENAME_RANGE_WITH_PLACEHOLDER)
-    } value;
-};
+
 
 /// \defgroup lsp_code_lens_types Code Lens Types
 /// \brief Types for code lens requests and responses
@@ -2736,36 +2783,6 @@ struct lsp_location_list {
 // };
 
 
-
-/// \defgroup lsp_color_types Color Types
-/// \brief Types for document color operations
-///
-/// Types used specifically for color-related operations in documents.
-
-/// \ingroup lsp_color_types
-/// \brief Color representation (RGBA)
-///
-/// Represents a color with red, green, blue, and alpha components.
-/// All components are stored as unsigned shorts in the range 0-65535,
-/// representing values from 0.0 to 1.0.
-struct lsp_color {
-    unsigned short red;    ///< Red component (0-65535, maps to 0.0-1.0)
-    unsigned short green;  ///< Green component (0-65535, maps to 0.0-1.0)
-    unsigned short blue;   ///< Blue component (0-65535, maps to 0.0-1.0)
-    unsigned short alpha;  ///< Alpha component (0-65535, maps to 0.0-1.0)
-};
-
-/// \ingroup lsp_color_types
-/// \brief Color presentation parameters
-///
-/// Parameters for a color presentation request, containing the
-/// color to present and the range it applies to.
-struct lsp_color_presentation_params {
-    struct lsp_text_document_identifier text_document;  ///< Document containing the color
-    struct lsp_color color;                             ///< Color to present
-    struct lsp_range range;                             ///< Range where color appears
-};
-
 /// \ingroup lsp_color_types
 /// \brief Color presentation
 ///
@@ -2778,22 +2795,9 @@ struct lsp_color_presentation {
     struct lsp_text_edit_list additional_text_edits;  ///< Additional text edits
 };
 
-/// \ingroup lsp_color_types
-/// \brief Color presentation list
-///
-/// Contains all possible presentations for a color.
-struct lsp_color_presentation_list {
-    struct lsp_list<struct lsp_color_presentation>* head;  ///< List of presentations
-    int count;                                             ///< Number of presentations
-};
 
-/// \ingroup lsp_color_types
-/// \brief Document color parameters
-///
-/// Parameters for a document color request.
-struct lsp_document_color_params {
-    struct lsp_text_document_identifier text_document;  ///< Document to analyze
-};
+
+
 
 /// \ingroup lsp_color_types
 /// \brief Color information
@@ -2804,14 +2808,7 @@ struct lsp_color_information {
     struct lsp_color color; ///< The color at this range
 };
 
-/// \ingroup lsp_color_types
-/// \brief Color information list
-///
-/// Contains all colors found in a document.
-struct lsp_color_information_list {
-    struct lsp_list<struct lsp_color_information>* head;  ///< List of color information
-    int count;                                             ///< Number of color information entries
-};
+
 
 /// \defgroup lsp_document_link_types Document Link Types
 /// \brief Types for document link requests and responses
